@@ -7,7 +7,6 @@ These models extend the basic metrics with additional dimensions:
 - Detailed resource consumption
 """
 
-import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List

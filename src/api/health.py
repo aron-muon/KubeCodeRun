@@ -1,6 +1,5 @@
 """Health check and monitoring endpoints."""
 
-from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 import structlog
@@ -42,11 +41,11 @@ async def detailed_health_check(
         # Prepare response
         response_data = {
             "status": overall_status.value,
-            "timestamp": service_results[
-                list(service_results.keys())[0]
-            ].timestamp.isoformat()
-            if service_results
-            else None,
+            "timestamp": (
+                service_results[list(service_results.keys())[0]].timestamp.isoformat()
+                if service_results
+                else None
+            ),
             "services": {
                 name: result.to_dict() for name, result in service_results.items()
             },

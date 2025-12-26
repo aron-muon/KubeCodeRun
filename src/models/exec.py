@@ -2,8 +2,7 @@
 
 # Standard library imports
 from datetime import datetime
-from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 
 # Third-party imports
 from pydantic import BaseModel, Field
@@ -45,7 +44,7 @@ class ExecRequest(BaseModel):
         default=None,
         description="Optional session ID to continue an existing session (for state persistence)",
     )
-    files: Optional[List[RequestFile]] = Field(
+    files: List[RequestFile] = Field(
         default_factory=list,
         description="Array of file references to be used during execution",
     )

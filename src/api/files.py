@@ -3,27 +3,18 @@
 # Standard library imports
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import List, Optional
 from urllib.parse import quote
 
 # Third-party imports
 import structlog
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form, Query
 from fastapi.responses import Response, StreamingResponse
 from unidecode import unidecode
 
 # Local application imports
 from ..config import settings
 from ..dependencies import FileServiceDep
-from ..models import (
-    FileUploadRequest,
-    FileUploadResponse,
-    FileInfo,
-    FileListResponse,
-    FileDownloadResponse,
-    FileDeleteResponse,
-)
-from ..services.interfaces import FileServiceInterface
 from ..utils.id_generator import generate_session_id
 
 

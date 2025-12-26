@@ -59,7 +59,8 @@ LANGUAGES: Dict[str, LanguageConfig] = {
         image="code-interpreter/nodejs:latest",
         user_id=1001,
         file_extension="ts",
-        execution_command="tsc /mnt/data/code.ts --outDir /mnt/data --module commonjs --target ES2019 && node /mnt/data/code.js",
+        execution_command="tsc /mnt/data/code.ts --outDir /mnt/data --module commonjs "
+        "--target ES2019 && node /mnt/data/code.js",
         uses_stdin=False,
         timeout_multiplier=1.2,
         memory_multiplier=1.0,

@@ -370,9 +370,11 @@ class CodeExecutionRunner:
                 memory_peak_mb=execution.memory_peak_mb,
                 exit_code=execution.exit_code,
                 file_count=len(files) if files else 0,
-                output_size_bytes=sum(len(o.content) for o in execution.outputs)
-                if execution.outputs
-                else 0,
+                output_size_bytes=(
+                    sum(len(o.content) for o in execution.outputs)
+                    if execution.outputs
+                    else 0
+                ),
             )
             metrics_collector.record_execution_metrics(metrics)
         except Exception as e:

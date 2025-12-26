@@ -8,7 +8,6 @@ Provides extended metrics tracking with:
 """
 
 import json
-from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
@@ -129,9 +128,9 @@ class DetailedMetricsService:
                 "Recorded detailed metrics",
                 execution_id=metrics.execution_id,
                 language=metrics.language,
-                api_key_hash=metrics.api_key_hash[:8]
-                if metrics.api_key_hash
-                else "unknown",
+                api_key_hash=(
+                    metrics.api_key_hash[:8] if metrics.api_key_hash else "unknown"
+                ),
             )
 
         except Exception as e:

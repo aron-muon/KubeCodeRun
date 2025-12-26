@@ -30,7 +30,6 @@ from ..models import (
     ExecRequest,
     ExecResponse,
     FileRef,
-    RequestFile,
     SessionCreate,
     ExecuteCodeRequest,
     ValidationError,
@@ -63,9 +62,9 @@ class ExecutionContext:
     generated_files: Optional[List[FileRef]] = None
     stdout: str = ""
     stderr: str = ""
-    container: Optional[
-        Any
-    ] = None  # Container used for execution (avoids session lookup)
+    container: Optional[Any] = (
+        None  # Container used for execution (avoids session lookup)
+    )
     # State persistence fields
     initial_state: Optional[str] = None
     new_state: Optional[str] = None
@@ -467,9 +466,11 @@ class ExecutionOrchestrator:
             "Code execution completed",
             session_id=ctx.session_id,
             status=execution.status.value,
-            container_id=ctx.container.id[:12]
-            if ctx.container and hasattr(ctx.container, "id")
-            else None,
+            container_id=(
+                ctx.container.id[:12]
+                if ctx.container and hasattr(ctx.container, "id")
+                else None
+            ),
             has_state=ctx.new_state is not None,
         )
 
@@ -649,9 +650,9 @@ class ExecutionOrchestrator:
 
             await event_bus.publish(
                 ExecutionCompleted(
-                    execution_id=ctx.execution.execution_id
-                    if ctx.execution
-                    else ctx.request_id,
+                    execution_id=(
+                        ctx.execution.execution_id if ctx.execution else ctx.request_id
+                    ),
                     session_id=ctx.session_id,
                     success=success,
                     execution_time_ms=execution_time_ms,
@@ -707,9 +708,9 @@ class ExecutionOrchestrator:
             )
 
             metrics = DetailedExecutionMetrics(
-                execution_id=ctx.execution.execution_id
-                if ctx.execution
-                else ctx.request_id,
+                execution_id=(
+                    ctx.execution.execution_id if ctx.execution else ctx.request_id
+                ),
                 session_id=ctx.session_id or "",
                 api_key_hash=ctx.api_key_hash[:16] if ctx.api_key_hash else "unknown",
                 user_id=ctx.request.user_id,

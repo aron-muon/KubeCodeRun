@@ -2,10 +2,10 @@
 
 # Standard library imports
 from functools import lru_cache
-from typing import Annotated, Optional
+from typing import Annotated
 
 # Third-party imports
-from fastapi import Depends, Request
+from fastapi import Depends
 import structlog
 
 # Local application imports

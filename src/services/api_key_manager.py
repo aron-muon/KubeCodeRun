@@ -11,7 +11,7 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple, List, Dict, Any
+from typing import Optional, Tuple, List, Dict
 
 import redis.asyncio as redis
 import structlog
