@@ -8,7 +8,7 @@ A secure, open-source code interpreter API that provides sandboxed code executio
 
 ## Quick Start
 
-Get up and running in minutes.
+Get up and running in minutes using prebuilt Docker images.
 
 1. **Clone the repository**
 
@@ -21,31 +21,27 @@ Get up and running in minutes.
 
    ```bash
    cp .env.example .env
-   # The default settings in .env work out-of-the-box for local development
+   # The default settings work out-of-the-box for local development
    ```
 
-3. **Build Execution Environments**
-
-   The API requires language-specific execution images.
-
-   **Minimal Setup (Python only):**
+3. **Pull execution environment images**
 
    ```bash
-   cd docker && ./build-images.sh -l python && cd ..
+   # Python only (minimal)
+   docker pull ghcr.io/usnavy13/librecodeinterpreter/python:latest
+
+   # Or pull all 12 languages
+   for lang in python nodejs go java c-cpp php rust r fortran d; do
+     docker pull ghcr.io/usnavy13/librecodeinterpreter/$lang:latest
+   done
    ```
-
-   **Full Suite (All 12 Languages):**
-
-   ```bash
-   cd docker && ./build-images.sh -p && cd ..
-   ```
-
-   > **Note:** The `-p` flag enables parallel builds, which significantly reduces build time for the full suite.
 
 4. **Start the API**
    ```bash
-   docker compose up -d --build
+   docker compose up -d
    ```
+
+> **Building from source?** See the [Development Guide](docs/DEVELOPMENT.md) for instructions on building images locally.
 
 The API will be available at `http://localhost:8000`.
 Visit `http://localhost:8000/docs` for the interactive API documentation.
