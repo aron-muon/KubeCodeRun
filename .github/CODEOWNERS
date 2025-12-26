@@ -1,0 +1,16 @@
+# Default owner for everything
+* @usnavy13
+
+# Security-sensitive files require owner review
+/src/middleware/auth.py @usnavy13
+/src/middleware/security.py @usnavy13
+/src/services/auth.py @usnavy13
+/src/services/api_key_manager.py @usnavy13
+/src/config/security.py @usnavy13
+/docker/*.Dockerfile @usnavy13
+
+# CI/CD changes require owner review
+/.github/workflows/ @usnavy13
+
+# Documentation can be more open (remove this line to require review)
+# /docs/ 
