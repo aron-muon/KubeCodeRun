@@ -115,6 +115,10 @@ class Settings(BaseSettings):
         default="code-interpreter",
         description="Registry/namespace prefix for execution environment images",
     )
+    docker_image_tag: str = Field(
+        default="latest",
+        description="Tag for execution environment images (e.g. 'latest', 'dev')",
+    )
     docker_timeout: int = Field(default=60, ge=10)
     docker_network_mode: str = Field(default="none")
     docker_security_opt: List[str] = Field(
@@ -599,7 +603,7 @@ class Settings(BaseSettings):
         
         # Fallback to languages.py logic if not in settings
         from .languages import get_image_for_language as get_img
-        return get_img(code, registry=self.docker_image_registry)
+        return get_img(code, registry=self.docker_image_registry, tag=self.docker_image_tag)
 
     def get_execution_timeout(self, language: str) -> int:
         """Get execution timeout for a specific language."""

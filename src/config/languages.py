@@ -183,11 +183,15 @@ def is_supported_language(code: str) -> bool:
 
 
 # Convenience lookups for backward compatibility during transition
-def get_image_for_language(code: str, registry: Optional[str] = None) -> str:
+def get_image_for_language(code: str, registry: Optional[str] = None, tag: str = "latest") -> str:
     """Get Docker image for a language."""
     lang = get_language(code)
     if lang:
-        return f"{registry}/{lang.image}" if registry else lang.image
+        # Extract base image name without the default :latest tag
+        base_image = lang.image.rsplit(":", 1)[0]
+        if registry:
+            return f"{registry}/{base_image}:{tag}"
+        return f"{base_image}:{tag}"
     raise ValueError(f"Unsupported language: {code}")
 
 
