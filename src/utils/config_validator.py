@@ -2,7 +2,6 @@
 
 import logging
 from typing import List, Dict, Any
-from pathlib import Path
 import docker
 import redis
 from minio import Minio

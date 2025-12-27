@@ -1,8 +1,6 @@
 """Main FastAPI application for the Code Interpreter API."""
 
 # Standard library imports
-import asyncio
-import os
 import sys
 from contextlib import asynccontextmanager
 
@@ -121,9 +119,9 @@ async def lifespan(app: FastAPI):
         cleanup_scheduler.set_services(
             execution_service=get_execution_service(),
             file_service=get_file_service(),
-            state_archival_service=get_state_archival_service()
-            if settings.state_archive_enabled
-            else None,
+            state_archival_service=(
+                get_state_archival_service() if settings.state_archive_enabled else None
+            ),
         )
         cleanup_scheduler.start()
         logger.info(

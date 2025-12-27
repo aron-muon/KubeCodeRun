@@ -1,7 +1,7 @@
 """Error models and exception classes for the Code Interpreter API."""
 
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, List
 from pydantic import BaseModel, Field
 from enum import Enum
 

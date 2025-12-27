@@ -34,7 +34,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "py": LanguageConfig(
         code="py",
         name="Python",
-        image="code-interpreter/python:latest",
+        image="python:latest",
         user_id=999,
         file_extension="py",
         execution_command="python3 -",
@@ -45,7 +45,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "js": LanguageConfig(
         code="js",
         name="JavaScript",
-        image="code-interpreter/nodejs:latest",
+        image="nodejs:latest",
         user_id=1001,
         file_extension="js",
         execution_command="node",
@@ -56,10 +56,11 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "ts": LanguageConfig(
         code="ts",
         name="TypeScript",
-        image="code-interpreter/nodejs:latest",
+        image="nodejs:latest",
         user_id=1001,
         file_extension="ts",
-        execution_command="tsc /mnt/data/code.ts --outDir /mnt/data --module commonjs --target ES2019 && node /mnt/data/code.js",
+        execution_command="tsc /mnt/data/code.ts --outDir /mnt/data --module commonjs "
+        "--target ES2019 && node /mnt/data/code.js",
         uses_stdin=False,
         timeout_multiplier=1.2,
         memory_multiplier=1.0,
@@ -67,7 +68,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "go": LanguageConfig(
         code="go",
         name="Go",
-        image="code-interpreter/go:latest",
+        image="go:latest",
         user_id=1001,
         file_extension="go",
         execution_command="go build -o code code.go && ./code",
@@ -78,7 +79,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "java": LanguageConfig(
         code="java",
         name="Java",
-        image="code-interpreter/java:latest",
+        image="java:latest",
         user_id=999,
         file_extension="java",
         execution_command="javac Code.java && java Code",
@@ -89,7 +90,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "c": LanguageConfig(
         code="c",
         name="C",
-        image="code-interpreter/c-cpp:latest",
+        image="c-cpp:latest",
         user_id=1001,
         file_extension="c",
         execution_command="gcc -o code code.c && ./code",
@@ -100,7 +101,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "cpp": LanguageConfig(
         code="cpp",
         name="C++",
-        image="code-interpreter/c-cpp:latest",
+        image="c-cpp:latest",
         user_id=1001,
         file_extension="cpp",
         execution_command="g++ -o code code.cpp && ./code",
@@ -111,7 +112,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "php": LanguageConfig(
         code="php",
         name="PHP",
-        image="code-interpreter/php:latest",
+        image="php:latest",
         user_id=1001,
         file_extension="php",
         execution_command="php",
@@ -122,7 +123,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "rs": LanguageConfig(
         code="rs",
         name="Rust",
-        image="code-interpreter/rust:latest",
+        image="rust:latest",
         user_id=1001,
         file_extension="rs",
         execution_command="rustc code.rs -o code && ./code",
@@ -133,7 +134,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "r": LanguageConfig(
         code="r",
         name="R",
-        image="code-interpreter/r:latest",
+        image="r:latest",
         user_id=1001,
         file_extension="r",
         execution_command="Rscript /dev/stdin",
@@ -144,7 +145,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "f90": LanguageConfig(
         code="f90",
         name="Fortran",
-        image="code-interpreter/fortran:latest",
+        image="fortran:latest",
         user_id=1001,
         file_extension="f90",
         execution_command="gfortran -o code code.f90 && ./code",
@@ -155,7 +156,7 @@ LANGUAGES: Dict[str, LanguageConfig] = {
     "d": LanguageConfig(
         code="d",
         name="D",
-        image="code-interpreter/d:latest",
+        image="d:latest",
         user_id=0,
         file_extension="d",
         execution_command="ldc2 code.d -of=code && ./code",
@@ -182,11 +183,17 @@ def is_supported_language(code: str) -> bool:
 
 
 # Convenience lookups for backward compatibility during transition
-def get_image_for_language(code: str) -> str:
+def get_image_for_language(
+    code: str, registry: Optional[str] = None, tag: str = "latest"
+) -> str:
     """Get Docker image for a language."""
     lang = get_language(code)
     if lang:
-        return lang.image
+        # Extract base image name without the default :latest tag
+        base_image = lang.image.rsplit(":", 1)[0]
+        if registry:
+            return f"{registry}/{base_image}:{tag}"
+        return f"{base_image}:{tag}"
     raise ValueError(f"Unsupported language: {code}")
 
 

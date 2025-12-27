@@ -3,7 +3,7 @@
 # Standard library imports
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 # Third-party imports
 from pydantic import BaseModel, Field

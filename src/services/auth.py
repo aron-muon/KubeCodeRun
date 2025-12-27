@@ -9,7 +9,7 @@ This service handles API key validation with support for:
 import hashlib
 import hmac
 from datetime import datetime
-from typing import Optional, Dict, Any, Tuple
+from typing import Optional, Dict, Any
 
 # Third-party imports
 import redis.asyncio as redis

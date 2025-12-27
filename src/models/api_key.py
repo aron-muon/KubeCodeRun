@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional, Dict, Any
 
 
@@ -76,21 +76,31 @@ class ApiKeyRecord:
             "name": self.name,
             "created_at": self.created_at.isoformat(),
             "enabled": "true" if self.enabled else "false",
-            "rate_limits_per_second": str(self.rate_limits.per_second)
-            if self.rate_limits.per_second is not None
-            else "",
-            "rate_limits_per_minute": str(self.rate_limits.per_minute)
-            if self.rate_limits.per_minute is not None
-            else "",
-            "rate_limits_hourly": str(self.rate_limits.hourly)
-            if self.rate_limits.hourly is not None
-            else "",
-            "rate_limits_daily": str(self.rate_limits.daily)
-            if self.rate_limits.daily is not None
-            else "",
-            "rate_limits_monthly": str(self.rate_limits.monthly)
-            if self.rate_limits.monthly is not None
-            else "",
+            "rate_limits_per_second": (
+                str(self.rate_limits.per_second)
+                if self.rate_limits.per_second is not None
+                else ""
+            ),
+            "rate_limits_per_minute": (
+                str(self.rate_limits.per_minute)
+                if self.rate_limits.per_minute is not None
+                else ""
+            ),
+            "rate_limits_hourly": (
+                str(self.rate_limits.hourly)
+                if self.rate_limits.hourly is not None
+                else ""
+            ),
+            "rate_limits_daily": (
+                str(self.rate_limits.daily)
+                if self.rate_limits.daily is not None
+                else ""
+            ),
+            "rate_limits_monthly": (
+                str(self.rate_limits.monthly)
+                if self.rate_limits.monthly is not None
+                else ""
+            ),
             "metadata": json.dumps(self.metadata),
             "last_used_at": self.last_used_at.isoformat() if self.last_used_at else "",
             "usage_count": str(self.usage_count),
@@ -101,31 +111,39 @@ class ApiKeyRecord:
         """Create from Redis hash data (bytes keys/values)."""
         # Decode bytes to strings
         decoded = {
-            k.decode()
-            if isinstance(k, bytes)
-            else k: v.decode()
-            if isinstance(v, bytes)
-            else v
+            k.decode() if isinstance(k, bytes) else k: (
+                v.decode() if isinstance(v, bytes) else v
+            )
             for k, v in data.items()
         }
 
         # Parse rate limits
         rate_limits = RateLimits(
-            per_second=int(decoded["rate_limits_per_second"])
-            if decoded.get("rate_limits_per_second")
-            else None,
-            per_minute=int(decoded["rate_limits_per_minute"])
-            if decoded.get("rate_limits_per_minute")
-            else None,
-            hourly=int(decoded["rate_limits_hourly"])
-            if decoded.get("rate_limits_hourly")
-            else None,
-            daily=int(decoded["rate_limits_daily"])
-            if decoded.get("rate_limits_daily")
-            else None,
-            monthly=int(decoded["rate_limits_monthly"])
-            if decoded.get("rate_limits_monthly")
-            else None,
+            per_second=(
+                int(decoded["rate_limits_per_second"])
+                if decoded.get("rate_limits_per_second")
+                else None
+            ),
+            per_minute=(
+                int(decoded["rate_limits_per_minute"])
+                if decoded.get("rate_limits_per_minute")
+                else None
+            ),
+            hourly=(
+                int(decoded["rate_limits_hourly"])
+                if decoded.get("rate_limits_hourly")
+                else None
+            ),
+            daily=(
+                int(decoded["rate_limits_daily"])
+                if decoded.get("rate_limits_daily")
+                else None
+            ),
+            monthly=(
+                int(decoded["rate_limits_monthly"])
+                if decoded.get("rate_limits_monthly")
+                else None
+            ),
         )
 
         # Parse timestamps
@@ -158,9 +176,9 @@ class ApiKeyRecord:
             "name": self.name,
             "enabled": self.enabled,
             "created_at": self.created_at.isoformat(),
-            "last_used_at": self.last_used_at.isoformat()
-            if self.last_used_at
-            else None,
+            "last_used_at": (
+                self.last_used_at.isoformat() if self.last_used_at else None
+            ),
             "usage_count": self.usage_count,
             "rate_limits": {
                 "hourly": self.rate_limits.hourly,

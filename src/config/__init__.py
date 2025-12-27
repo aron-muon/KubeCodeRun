@@ -111,6 +111,14 @@ class Settings(BaseSettings):
 
     # Docker Configuration
     docker_base_url: Optional[str] = Field(default=None)
+    docker_image_registry: str = Field(
+        default="code-interpreter",
+        description="Registry/namespace prefix for execution environment images",
+    )
+    docker_image_tag: str = Field(
+        default="latest",
+        description="Tag for execution environment images (e.g. 'latest', 'dev')",
+    )
     docker_timeout: int = Field(default=60, ge=10)
     docker_network_mode: str = Field(default="none")
     docker_security_opt: List[str] = Field(
@@ -384,16 +392,28 @@ class Settings(BaseSettings):
     enable_filesystem_isolation: bool = Field(default=True)
 
     # Language Configuration - now uses LANGUAGES from languages.py
-    supported_languages: Dict[str, Dict[str, Any]] = Field(
-        default_factory=lambda: {
+    supported_languages: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+
+    @validator("supported_languages", pre=True, always=True)
+    def _set_supported_languages(cls, v, values):
+        """Initialize supported_languages with registry-prefixed images."""
+        if v:
+            return v
+
+        registry = values.get("docker_image_registry", "code-interpreter")
+        tag = values.get("docker_image_tag", "latest")
+        return {
             code: {
-                "image": lang.image,
+                "image": (
+                    f"{registry}/{lang.image.rsplit(':', 1)[0]}:{tag}"
+                    if registry
+                    else f"{lang.image.rsplit(':', 1)[0]}:{tag}"
+                ),
                 "timeout_multiplier": lang.timeout_multiplier,
                 "memory_multiplier": lang.memory_multiplier,
             }
             for code, lang in LANGUAGES.items()
         }
-    )
 
     # Logging Configuration
     log_level: str = Field(default="INFO")
@@ -579,6 +599,19 @@ class Settings(BaseSettings):
     def get_language_config(self, language: str) -> Dict[str, Any]:
         """Get configuration for a specific language."""
         return self.supported_languages.get(language, {})
+
+    def get_image_for_language(self, code: str) -> str:
+        """Get Docker image for a language."""
+        config = self.get_language_config(code)
+        if config and "image" in config:
+            return config["image"]
+
+        # Fallback to languages.py logic if not in settings
+        from .languages import get_image_for_language as get_img
+
+        return get_img(
+            code, registry=self.docker_image_registry, tag=self.docker_image_tag
+        )
 
     def get_execution_timeout(self, language: str) -> int:
         """Get execution timeout for a specific language."""

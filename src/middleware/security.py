@@ -2,7 +2,7 @@
 
 # Standard library imports
 import time
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Optional
 
 # Third-party imports
 import structlog
@@ -152,8 +152,6 @@ class SecurityMiddleware:
 
     async def _authenticate_request(self, request: Request, scope: dict):
         """Handle API key authentication with rate limiting."""
-        import hashlib
-
         # Extract API key
         api_key = self._extract_api_key(request)
 

@@ -43,16 +43,29 @@ Controls the basic API server settings.
 
 Configures SSL/TLS support for secure HTTPS connections.
 
-| Variable        | Default | Description                                 |
-| --------------- | ------- | ------------------------------------------- |
-| `ENABLE_HTTPS`  | `false` | Enable HTTPS/SSL support                    |
-| `HTTPS_PORT`    | `443`   | HTTPS server port                           |
-| `SSL_CERT_FILE` | -       | Path to SSL certificate file (.crt or .pem) |
-| `SSL_KEY_FILE`  | -       | Path to SSL private key file (.key)         |
-| `SSL_REDIRECT`  | `false` | Redirect HTTP traffic to HTTPS              |
-| `SSL_CA_CERTS`  | -       | Path to CA certificates file (optional)     |
+#### Docker Deployments
 
-**HTTPS Setup:**
+| Variable         | Default  | Description                                              |
+| ---------------- | -------- | -------------------------------------------------------- |
+| `ENABLE_HTTPS`   | `false`  | Enable HTTPS/SSL support                                 |
+| `HTTPS_PORT`     | `443`    | HTTPS server port                                        |
+| `SSL_CERTS_PATH` | `./ssl`  | Host path to directory containing `cert.pem` and `key.pem` |
+| `SSL_REDIRECT`   | `false`  | Redirect HTTP traffic to HTTPS                           |
+
+> **Note:** When using Docker, the certificate files are automatically mapped to `/app/ssl/` inside the container. You only need to set `SSL_CERTS_PATH` to point to your certificates directory on the host.
+
+#### Non-Docker Deployments
+
+| Variable         | Default  | Description                                              |
+| ---------------- | -------- | -------------------------------------------------------- |
+| `ENABLE_HTTPS`   | `false`  | Enable HTTPS/SSL support                                 |
+| `HTTPS_PORT`     | `443`    | HTTPS server port                                        |
+| `SSL_CERT_FILE`  | -        | Absolute path to SSL certificate file (.pem)             |
+| `SSL_KEY_FILE`   | -        | Absolute path to SSL private key file (.pem)             |
+| `SSL_CA_CERTS`   | -        | Path to CA certificates file (optional)                  |
+| `SSL_REDIRECT`   | `false`  | Redirect HTTP traffic to HTTPS                           |
+
+**HTTPS Setup (Docker):**
 
 1. **Generate or obtain SSL certificates**:
 
@@ -69,16 +82,29 @@ Configures SSL/TLS support for secure HTTPS connections.
    ```bash
    ENABLE_HTTPS=true
    HTTPS_PORT=443
-   SSL_CERT_FILE=/app/ssl/cert.pem
-   SSL_KEY_FILE=/app/ssl/key.pem
    SSL_REDIRECT=true  # Optional: redirect HTTP to HTTPS
+   
+   # If using the default ./ssl directory, no additional config needed.
+   # If your certs are elsewhere, set the path:
+   # SSL_CERTS_PATH=/path/to/your/ssl/certs
    ```
+
+   The directory must contain files named `cert.pem` and `key.pem`.
 
 3. **Deploy with Docker Compose**:
    ```bash
-   # Make sure SSL certificates are in ./ssl/ directory
    docker-compose up -d
    ```
+
+**HTTPS Setup (Non-Docker):**
+
+```bash
+ENABLE_HTTPS=true
+HTTPS_PORT=443
+SSL_CERT_FILE=/absolute/path/to/cert.pem
+SSL_KEY_FILE=/absolute/path/to/key.pem
+SSL_REDIRECT=true
+```
 
 **Security Notes:**
 

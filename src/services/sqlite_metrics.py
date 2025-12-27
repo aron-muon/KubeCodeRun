@@ -5,7 +5,6 @@ enabling historical analytics, time-series charts, and dashboard visualizations.
 """
 
 import asyncio
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -230,9 +229,11 @@ class SQLiteMetricsService:
                         m.files_generated,
                         m.output_size_bytes,
                         m.state_size_bytes,
-                        m.timestamp.isoformat()
-                        if m.timestamp
-                        else datetime.now(timezone.utc).isoformat(),
+                        (
+                            m.timestamp.isoformat()
+                            if m.timestamp
+                            else datetime.now(timezone.utc).isoformat()
+                        ),
                     )
                     for m in batch
                 ],

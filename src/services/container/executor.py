@@ -3,7 +3,6 @@
 import asyncio
 import re
 import shlex
-from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 import structlog

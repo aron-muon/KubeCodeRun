@@ -13,7 +13,6 @@ from docker.models.containers import Container
 
 from ...config import settings
 from ...config.languages import (
-    get_image_for_language,
     get_user_id_for_language,
 )
 from .client import DockerClientFactory
@@ -57,7 +56,7 @@ class ContainerManager:
 
     def get_image_for_language(self, language: str) -> str:
         """Get Docker image for a programming language."""
-        return get_image_for_language(language.lower().strip())
+        return settings.get_image_for_language(language.lower().strip())
 
     def get_user_id_for_language(self, language: str) -> int:
         """Get the user ID for a language container."""

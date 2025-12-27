@@ -19,7 +19,6 @@ States are archived to MinIO when:
 
 import asyncio
 import io
-import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 

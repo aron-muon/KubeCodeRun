@@ -2,10 +2,8 @@
 
 # Standard library imports
 import asyncio
-import json
 from datetime import datetime, timedelta
 from typing import List, Optional, Tuple, Dict, Any
-from urllib.parse import urljoin
 
 # Third-party imports
 import redis.asyncio as redis

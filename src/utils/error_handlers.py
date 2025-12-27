@@ -2,7 +2,6 @@
 
 # Standard library imports
 import traceback
-import uuid
 from typing import Union
 
 # Third-party imports
@@ -50,9 +49,9 @@ async def code_interpreter_exception_handler(
         "request_id": exc.request_id,
         "path": request.url.path,
         "method": request.method,
-        "client_ip": getattr(request.client, "host", "unknown")
-        if request.client
-        else "unknown",
+        "client_ip": (
+            getattr(request.client, "host", "unknown") if request.client else "unknown"
+        ),
     }
 
     # Add details if present
@@ -109,9 +108,9 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         request_id=request_id,
         path=request.url.path,
         method=request.method,
-        client_ip=getattr(request.client, "host", "unknown")
-        if request.client
-        else "unknown",
+        client_ip=(
+            getattr(request.client, "host", "unknown") if request.client else "unknown"
+        ),
     )
 
     # Create standardized error response
@@ -148,9 +147,9 @@ async def validation_exception_handler(
         validation_errors=[
             {"field": d.field, "message": d.message, "code": d.code} for d in details
         ],
-        client_ip=getattr(request.client, "host", "unknown")
-        if request.client
-        else "unknown",
+        client_ip=(
+            getattr(request.client, "host", "unknown") if request.client else "unknown"
+        ),
     )
 
     # Create standardized error response
@@ -178,9 +177,9 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         exception_type=type(exc).__name__,
         exception_message=str(exc),
         traceback=traceback.format_exc(),
-        client_ip=getattr(request.client, "host", "unknown")
-        if request.client
-        else "unknown",
+        client_ip=(
+            getattr(request.client, "host", "unknown") if request.client else "unknown"
+        ),
     )
 
     # Create generic error response (don't expose internal details)

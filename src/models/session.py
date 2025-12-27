@@ -3,7 +3,7 @@
 # Standard library imports
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 
 # Third-party imports
 from pydantic import BaseModel, Field
@@ -77,7 +77,7 @@ class Session(BaseModel):
 class SessionCreate(BaseModel):
     """Request model for creating a new session."""
 
-    metadata: Optional[Dict[str, Any]] = Field(
+    metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Optional session metadata"
     )
 

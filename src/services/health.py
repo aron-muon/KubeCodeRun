@@ -5,7 +5,7 @@ import asyncio
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 
 # Third-party imports
 import docker
@@ -404,9 +404,7 @@ class HealthCheckService:
                 "running_containers": running_containers,
                 "registry_accessible": registry_accessible,
                 "server_version": system_info.get("ServerVersion", "unknown"),
-                "memory_total_gb": round(
-                    system_info.get("MemTotal", 0) / (1024**3), 2
-                ),
+                "memory_total_gb": round(system_info.get("MemTotal", 0) / (1024**3), 2),
                 "cpu_count": system_info.get("NCPU", 0),
             }
 
