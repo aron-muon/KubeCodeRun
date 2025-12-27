@@ -62,9 +62,9 @@ class ExecutionContext:
     generated_files: Optional[List[FileRef]] = None
     stdout: str = ""
     stderr: str = ""
-    container: Optional[
-        Any
-    ] = None  # Container used for execution (avoids session lookup)
+    container: Optional[Any] = (
+        None  # Container used for execution (avoids session lookup)
+    )
     # State persistence fields
     initial_state: Optional[str] = None
     new_state: Optional[str] = None

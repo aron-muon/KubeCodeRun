@@ -404,9 +404,11 @@ class Settings(BaseSettings):
         tag = values.get("docker_image_tag", "latest")
         return {
             code: {
-                "image": f"{registry}/{lang.image.rsplit(':', 1)[0]}:{tag}"
-                if registry
-                else f"{lang.image.rsplit(':', 1)[0]}:{tag}",
+                "image": (
+                    f"{registry}/{lang.image.rsplit(':', 1)[0]}:{tag}"
+                    if registry
+                    else f"{lang.image.rsplit(':', 1)[0]}:{tag}"
+                ),
                 "timeout_multiplier": lang.timeout_multiplier,
                 "memory_multiplier": lang.memory_multiplier,
             }
