@@ -29,6 +29,9 @@ jobs:
         id: changes
         with:
           filters: |
+            rebuild_all:
+              - '.github/workflows/execution-env-publish.yml'
+              - 'docker/entrypoint.sh'
             python:
               - 'docker/python.Dockerfile'
               - 'docker/repl_server.py'
@@ -57,11 +60,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.build_all }}" == "true" ]; then
             echo 'languages=${{ env.ALL_LANGUAGES }}' >> $GITHUB_OUTPUT
-          elif [ "${{ github.event_name }}" == "push" ] && [ "${{ contains(github.event.head_commit.modified, '.github/workflows/execution-env-publish.yml') }}" == "true" ]; then
-            # If workflow itself changed, build everything
+          elif [ "${{ steps.changes.outputs.rebuild_all }}" == "true" ]; then
+            # If workflow or shared files changed, build everything
             echo 'languages=${{ env.ALL_LANGUAGES }}' >> $GITHUB_OUTPUT
           else
-            echo "languages=${{ steps.changes.outputs.changes }}" >> $GITHUB_OUTPUT
+            # Filter out rebuild_all from the changes list
+            CHANGES='${{ steps.changes.outputs.changes }}'
+            FILTERED=$(echo "$CHANGES" | jq -c '[.[] | select(. != "rebuild_all")]')
+            echo "languages=$FILTERED" >> $GITHUB_OUTPUT
           fi
 
   build-images:
