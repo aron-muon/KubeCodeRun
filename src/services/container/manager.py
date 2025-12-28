@@ -251,8 +251,8 @@ class ContainerManager:
             "security_opt": ["no-new-privileges:true"],
             "cap_drop": ["ALL"],
             "cap_add": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
-            "read_only": False,
-            "tmpfs": {"/tmp": "noexec,nosuid,size=100m"},
+            "read_only": settings.docker_read_only,
+            "tmpfs": settings.docker_tmpfs,
             # pids_limit: cgroup-based per-container process limit (prevents fork bombs)
             "pids_limit": settings.max_pids,
             "ulimits": [
