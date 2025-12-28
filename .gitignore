@@ -58,7 +58,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+baseline_complexity.json
 # Translations
 *.mo
 *.pot
