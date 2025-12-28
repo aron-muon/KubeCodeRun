@@ -4,6 +4,12 @@ on:
   push:
     branches: ["main", "dev"]
     tags: ["v*.*.*"]
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+      - '.github/workflows/docker-publish.yml'
   workflow_dispatch:
 
 env:
