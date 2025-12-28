@@ -17,7 +17,48 @@ class SecurityConfig(BaseSettings):
     # File Security
     allowed_file_extensions: List[str] = Field(
         default_factory=lambda: [
+            # Text and documentation
             ".txt",
+            ".md",
+            ".rtf",
+            ".pdf",
+            # Microsoft Office
+            ".doc",
+            ".docx",
+            ".dotx",
+            ".xls",
+            ".xlsx",
+            ".xltx",
+            ".ppt",
+            ".pptx",
+            ".potx",
+            ".ppsx",
+            # OpenDocument formats
+            ".odt",
+            ".ods",
+            ".odp",
+            ".odg",
+            # Data formats
+            ".json",
+            ".csv",
+            ".xml",
+            ".yaml",
+            ".yml",
+            ".sql",
+            # Images
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".gif",
+            ".svg",
+            ".bmp",
+            ".webp",
+            ".ico",
+            # Web
+            ".html",
+            ".htm",
+            ".css",
+            # Code files
             ".py",
             ".js",
             ".ts",
@@ -32,18 +73,24 @@ class SecurityConfig(BaseSettings):
             ".r",
             ".f90",
             ".d",
-            ".json",
-            ".csv",
-            ".xml",
-            ".yaml",
-            ".yml",
-            ".md",
-            ".sql",
+            # Scripts and config
             ".sh",
             ".bat",
             ".ps1",
             ".dockerfile",
             ".makefile",
+            ".ini",
+            ".cfg",
+            ".conf",
+            ".log",
+            # Archives
+            ".zip",
+            # Email and calendar
+            ".eml",
+            ".msg",
+            ".mbox",
+            ".ics",
+            ".vcf",
         ]
     )
     blocked_file_patterns: List[str] = Field(
