@@ -1,32 +1,45 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: Bug Report
+about: Report a bug or unexpected behavior
 title: ""
-labels: bug, needs-triage
+labels: bug
 assignees: ""
 ---
 
-**Describe the bug**
+## Description
+
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
+## Steps to Reproduce
 
 1. Go to '...'
 2. Click on '...'
-3. Scroll down to '...'
+3. Execute '...'
 4. See error
 
-**Expected behavior**
+## Expected Behavior
+
 A clear and concise description of what you expected to happen.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Actual Behavior
 
-**Environment (please complete the following information):**
+A clear and concise description of what actually happened.
 
-- OS: [e.g. Ubuntu 22.04]
-- Version [e.g. 1.0.0]
+## Environment
 
-**Additional context**
+- OS: [e.g., Ubuntu 22.04, Windows 11, macOS 14]
+- Python Version: [e.g., 3.11.5]
+- Docker Version: [e.g., 24.0.7]
+- Browser (if applicable): [e.g., Chrome 120, Firefox 121]
+
+## Logs/Screenshots
+
+If applicable, add logs or screenshots to help explain your problem.
+
+```
+Paste relevant logs here
+```
+
+## Additional Context
+
 Add any other context about the problem here.
