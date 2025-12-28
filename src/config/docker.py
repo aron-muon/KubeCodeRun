@@ -1,6 +1,6 @@
 """Docker configuration."""
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -21,6 +21,11 @@ class DockerConfig(BaseSettings):
     tmpfs: Dict[str, str] = Field(
         default_factory=lambda: {"/tmp": "rw,noexec,nosuid,size=100m"},
         alias="docker_tmpfs",
+    )
+    seccomp_profile: Optional[str] = Field(
+        default="docker/seccomp-sandbox.json",
+        alias="docker_seccomp_profile",
+        description="Path to seccomp profile JSON file (None to disable)",
     )
 
     # Container lifecycle

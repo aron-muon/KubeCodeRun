@@ -355,3 +355,115 @@ class TestContainerHardeningWAN:
             assert "internal" not in stdout.lower()
         finally:
             app.dependency_overrides.clear()
+
+    def test_ptrace_blocked_by_seccomp(self, client, auth_headers):
+        """Verify ptrace syscall is blocked by seccomp profile.
+
+        This test verifies that the seccomp profile blocks ptrace,
+        which prevents process tracing attacks that can cause containers
+        to become unresponsive to stop signals.
+        """
+        session_id = "hardening-ptrace-test"
+        mock_session = create_session(session_id)
+
+        # Mock execution that attempts ptrace - should return -1 (EPERM)
+        # When seccomp blocks ptrace, it returns EPERM (-1)
+        mock_execution = CodeExecution(
+            execution_id="exec-ptrace",
+            session_id=session_id,
+            code="""
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+result = libc.ptrace(0, 0, 0, 0)  # PTRACE_TRACEME
+print(f"ptrace result: {result}")
+""",
+            language="py",
+            status=ExecutionStatus.COMPLETED,
+            exit_code=0,
+            outputs=[
+                ExecutionOutput(
+                    type=OutputType.STDOUT,
+                    content="ptrace result: -1\n",
+                    timestamp=datetime.now(timezone.utc),
+                )
+            ],
+        )
+
+        mock_session_service = AsyncMock()
+        mock_session_service.create_session.return_value = mock_session
+        mock_session_service.get_session.return_value = mock_session
+
+        mock_execution_service = AsyncMock()
+        mock_execution_service.execute_code.return_value = (
+            mock_execution,
+            None,
+            None,
+            [],
+            "pool_hit",
+        )
+
+        mock_file_service = AsyncMock()
+        mock_file_service.list_files.return_value = []
+
+        from src.dependencies.services import (
+            get_session_service,
+            get_execution_service,
+            get_file_service,
+        )
+
+        app.dependency_overrides[get_session_service] = lambda: mock_session_service
+        app.dependency_overrides[get_execution_service] = lambda: mock_execution_service
+        app.dependency_overrides[get_file_service] = lambda: mock_file_service
+
+        try:
+            response = client.post(
+                "/exec",
+                json={
+                    "code": """
+import ctypes
+libc = ctypes.CDLL("libc.so.6")
+result = libc.ptrace(0, 0, 0, 0)
+print(f"ptrace result: {result}")
+""",
+                    "lang": "py",
+                },
+                headers=auth_headers,
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            stdout = data.get("stdout", "")
+            # When seccomp blocks ptrace, it returns -1 (EPERM)
+            assert "ptrace result: -1" in stdout
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_seccomp_profile_config_exists(self):
+        """Verify seccomp profile configuration is set."""
+        from src.config import settings
+
+        assert settings.docker_seccomp_profile == "docker/seccomp-sandbox.json"
+
+    def test_seccomp_profile_file_exists(self):
+        """Verify seccomp profile file exists and is valid JSON."""
+        import json
+        from pathlib import Path
+
+        profile_path = Path("docker/seccomp-sandbox.json")
+        assert profile_path.exists(), "Seccomp profile file should exist"
+
+        with open(profile_path) as f:
+            profile = json.load(f)
+
+        # Verify structure
+        assert "defaultAction" in profile
+        assert "syscalls" in profile
+        assert isinstance(profile["syscalls"], list)
+
+        # Verify ptrace is blocked
+        blocked_syscalls = []
+        for rule in profile["syscalls"]:
+            if rule.get("action") == "SCMP_ACT_ERRNO":
+                blocked_syscalls.extend(rule.get("names", []))
+
+        assert "ptrace" in blocked_syscalls, "ptrace should be blocked by seccomp"

@@ -40,6 +40,7 @@ services:
       - ${SSL_CERTS_PATH:-./ssl}:/app/ssl
       - ./dashboard:/app/dashboard
       - ./src:/app/src
+      - ./docker:/app/docker:ro  # Seccomp profile for container security
     depends_on:
       - redis
       - minio

@@ -129,6 +129,10 @@ class Settings(BaseSettings):
     docker_tmpfs: Dict[str, str] = Field(
         default_factory=lambda: {"/tmp": "rw,noexec,nosuid,size=100m"}
     )
+    docker_seccomp_profile: Optional[str] = Field(
+        default="docker/seccomp-sandbox.json",
+        description="Path to seccomp profile JSON file (None to disable)",
+    )
 
     # Resource Limits - Execution
     max_execution_time: int = Field(default=30, ge=1, le=300)

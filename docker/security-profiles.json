@@ -30,7 +30,7 @@
   "restrictedProfile": {
     "name": "code-interpreter-restricted",
     "description": "Highly restricted security profile for untrusted code",
-    "securityOpt": ["no-new-privileges:true", "seccomp:unconfined"],
+    "securityOpt": ["no-new-privileges:true"],
     "capDrop": ["ALL"],
     "capAdd": [],
     "readOnly": true,

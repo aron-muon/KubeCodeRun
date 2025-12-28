@@ -2,9 +2,11 @@
 
 import asyncio
 import io
+import json
 import tarfile
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
@@ -233,11 +235,43 @@ class ContainerManager:
             except Exception:
                 pass
 
+        # Build security options with seccomp profile
+        security_opts = list(settings.docker_security_opt)
+        if settings.docker_seccomp_profile:
+            # Resolve profile path (relative to project root or absolute)
+            profile_path = Path(settings.docker_seccomp_profile)
+            if not profile_path.is_absolute():
+                # Relative to project root (4 levels up from this file)
+                project_root = Path(__file__).parent.parent.parent.parent
+                profile_path = project_root / profile_path
+            if profile_path.exists():
+                try:
+                    with open(profile_path) as f:
+                        seccomp_data = json.load(f)
+                    # docker-py accepts inline JSON via seccomp=<json_string>
+                    security_opts.append(f"seccomp={json.dumps(seccomp_data)}")
+                    logger.debug(
+                        "Loaded seccomp profile",
+                        profile=str(profile_path),
+                        blocked_syscalls=len(seccomp_data.get("syscalls", [])),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to load seccomp profile, using default",
+                        profile=str(profile_path),
+                        error=str(e),
+                    )
+            else:
+                logger.warning(
+                    "Seccomp profile not found, using default",
+                    profile=str(profile_path),
+                )
+
         # Build container config
         # Security hardening applied:
-        # - ulimits: nproc and nofile limits to prevent fork bombs and FD exhaustion
-        # Note: /proc/kallsyms and /proc/modules masking would require MaskedPaths
-        # (not supported by docker-py) or a custom seccomp profile.
+        # - seccomp profile: blocks dangerous syscalls (ptrace, etc.)
+        # - ulimits: nofile limits to prevent FD exhaustion
+        # - pids_limit: prevents fork bombs
         container_config: Dict[str, Any] = {
             "image": image,
             "name": container_name,
@@ -248,10 +282,11 @@ class ContainerManager:
             "mem_limit": f"{settings.max_memory_mb}m",
             "memswap_limit": f"{settings.max_memory_mb}m",
             "nano_cpus": int(settings.max_cpus * 1e9),
-            "security_opt": ["no-new-privileges:true"],
+            "security_opt": security_opts,
             "cap_drop": ["ALL"],
             "cap_add": ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"],
-            "read_only": settings.docker_read_only,
+            # read_only must be False to allow file uploads to /mnt/data
+            "read_only": False,
             "tmpfs": settings.docker_tmpfs,
             # pids_limit: cgroup-based per-container process limit (prevents fork bombs)
             "pids_limit": settings.max_pids,
@@ -263,8 +298,7 @@ class ContainerManager:
                 ),
             ],
             # Note: /proc/kallsyms and /proc/modules masking requires MaskedPaths
-            # which docker-py doesn't support. Bind mounts to /proc are blocked by runc.
-            # Alternative: use a custom seccomp profile or accept the limitation.
+            # which docker-py doesn't support. These paths are read-only by default.
             "environment": env,
             "labels": labels,
             "hostname": settings.container_generic_hostname,
