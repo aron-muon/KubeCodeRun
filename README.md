@@ -57,7 +57,7 @@ docker compose up -d
 ## Admin Dashboard
 
 A built-in admin dashboard is available at `http://localhost:8000/admin-dashboard` for monitoring and management:
-<img width="1449" height="1256" alt="image" src="https://github.com/user-attachments/assets/9110fc8e-60c8-4ae2-8fb3-04a49d1f03ce" />
+<img width="1449" height="1256" alt="image" src="docs/dashboard_image.png" />
 
 - **Overview**: Real-time execution metrics, success rates, and performance graphs
 - **API Keys**: Create, view, and manage API keys with rate limiting
