@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# Fortran execution environment with BuildKit optimizations
+# Fortran execution environment with BuildKit optimizations.
 FROM ubuntu:22.04
 
 # Prevent interactive prompts during package installation

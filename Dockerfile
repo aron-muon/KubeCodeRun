@@ -1,4 +1,4 @@
-# Multi-stage build for Code Interpreter API
+# Multi-stage build for Code Interpreter API.
 FROM python:3.11-slim as builder
 
 # Set build arguments
