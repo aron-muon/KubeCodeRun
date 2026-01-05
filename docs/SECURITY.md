@@ -123,8 +123,12 @@ spec:
   containers:
   - name: sidecar
     securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+      allowPrivilegeEscalation: true  # Required for setns() syscall
       capabilities:
-        add: ["SYS_PTRACE"]      # Required for nsenter to enter namespaces
+        add: ["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"]
+        drop: ["ALL"]
 ```
 
 **Security Implications:**
@@ -132,7 +136,10 @@ spec:
 | Setting | Purpose | Risk Mitigation |
 |---------|---------|-----------------|
 | `shareProcessNamespace` | Allows sidecar to find main container's PID | Only affects containers within the same pod |
-| `SYS_PTRACE` capability | Enables nsenter to enter mount namespace | Scoped to pod only, not host |
+| `SYS_PTRACE` | Access `/proc/<pid>/ns/` of other processes | Scoped to pod only, not host |
+| `SYS_ADMIN` | Call `setns()` to enter namespaces | Required for namespace entry; scoped to pod |
+| `SYS_CHROOT` | Mount namespace operations | Required for `nsenter -m`; scoped to pod |
+| `allowPrivilegeEscalation` | Permits `setns()` syscall (blocked by `no_new_privs`) | Combined with non-root user and dropped capabilities |
 
 **Why This Is Secure:**
 
@@ -142,9 +149,11 @@ spec:
 
 3. **Code runs in main container's context**: User code executes using the main container's isolated filesystem, subject to all the same resource limits and network policies.
 
-4. **No host namespace access**: The `SYS_PTRACE` capability is limited to pod-level process visibility and cannot be used to access host processes.
+4. **No host namespace access**: The capabilities are limited to pod-level process visibility and cannot be used to access host processes or namespaces.
 
-5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`), preventing privilege escalation even with `SYS_PTRACE`.
+5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`). The sidecar requires specific capabilities but does not run as root.
+
+6. **Minimal capabilities**: All capabilities are dropped except the three required for `nsenter` to function.
 
 **Alternative Considered:**
 

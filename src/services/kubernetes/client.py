@@ -240,9 +240,9 @@ def create_pod_manifest(
     # - SYS_CHROOT: required for mount namespace operations
     # - allowPrivilegeEscalation: true (setns blocked by no_new_privs)
     sidecar_security_context = client.V1SecurityContext(
-        run_as_user=0,
-        run_as_group=0,
-        run_as_non_root=False,
+        run_as_user=run_as_user,
+        run_as_group=run_as_user,
+        run_as_non_root=True,
         allow_privilege_escalation=True,
         capabilities=client.V1Capabilities(
             add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],

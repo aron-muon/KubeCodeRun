@@ -247,8 +247,9 @@ Each execution pod is isolated via:
    - `runAsNonRoot: true`
    - `runAsUser: 1000`
    - Resource limits enforced
+   - Sidecar has limited capabilities for `nsenter` (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT)
 3. **Ephemeral Storage**: Pods destroyed after execution
-4. **No Privileged Access**: Standard user containers
+4. **Non-root Execution**: Both containers run as UID 1000
 
 ### RBAC Requirements
 

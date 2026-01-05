@@ -180,7 +180,8 @@ Kubernetes is used for secure code execution in isolated pods.
 
 **Security Notes:**
 
-- Pods run with `runAsNonRoot: true` and `runAsUser: 1000`
+- Both containers run with `runAsNonRoot: true` and `runAsUser: 1000`
+- Sidecar requires capabilities for `nsenter`: SYS_PTRACE, SYS_ADMIN, SYS_CHROOT
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
 

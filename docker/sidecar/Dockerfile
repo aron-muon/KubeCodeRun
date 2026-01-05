@@ -22,8 +22,8 @@ COPY main.py .
 # Create working directory
 RUN mkdir -p /mnt/data && chown -R appuser:appuser /mnt/data /app
 
-# Note: We run as root by default because nsenter requires elevated privileges
-# to enter another container's namespace. Security is controlled via:
+# Note: We run as non-root (UID 1000) with specific capabilities for nsenter.
+# nsenter requires elevated privileges to enter another container's namespace:
 # - shareProcessNamespace: true (required for nsenter)
 # - securityContext.capabilities.add: ["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"]
 # - allowPrivilegeEscalation: true
