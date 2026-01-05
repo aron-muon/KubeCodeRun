@@ -31,7 +31,7 @@ Get up and running in minutes with Kubernetes deployment.
    helm install librecodeinterpreter ./helm-deployments/librecodeinterpreter \
      --namespace librecodeinterpreter \
      --create-namespace \
-     --set api.replicas=2 \
+     --set replicaCount=2 \
      --set execution.languages.python.poolSize=5
    ```
 
@@ -45,14 +45,16 @@ Get up and running in minutes with Kubernetes deployment.
 The API will be available at `http://localhost:8000`.
 Visit `http://localhost:8000/docs` for the interactive API documentation.
 
-### Local Development (Docker Compose)
+### Local Development Infrastructure (Docker Compose)
 
-For local development without Kubernetes:
+For local development, use Docker Compose to run Redis and MinIO:
 
 ```bash
 cp .env.example .env
 docker compose up -d
 ```
+
+> **Note:** This only starts Redis and MinIO. The API requires Kubernetes for code execution. After starting infrastructure, deploy to a local Kubernetes cluster (minikube, kind, etc.) or run the API locally with `KUBECONFIG` configured.
 
 ## Admin Dashboard
 
@@ -146,7 +148,8 @@ For comprehensive testing details, see [TESTING.md](docs/TESTING.md).
 
 - All code execution happens in isolated Kubernetes pods
 - Network policies deny all egress by default
-- Pods run with non-root user (`runAsNonRoot: true`, `runAsUser: 1000`)
+- Both containers run as non-root (`runAsNonRoot: true`, `runAsUser: 1000`)
+- Sidecar has limited capabilities for nsenter (`SYS_PTRACE`, `SYS_ADMIN`, `SYS_CHROOT`)
 - Resource limits enforced via Kubernetes (CPU, memory, ephemeral storage)
 - Pods destroyed immediately after execution (ephemeral)
 - RBAC restricts API pod permissions to pod/job management only

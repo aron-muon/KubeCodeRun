@@ -117,18 +117,21 @@ SSL_REDIRECT=true
 
 Manages API key authentication and security.
 
-| Variable            | Default        | Description                            |
-| ------------------- | -------------- | -------------------------------------- |
-| `API_KEY`           | `test-api-key` | Primary API key (CHANGE IN PRODUCTION) |
-| `API_KEYS`          | -              | Additional API keys (comma-separated)  |
-| `API_KEY_HEADER`    | `x-api-key`    | HTTP header name for API key           |
-| `API_KEY_CACHE_TTL` | `300`          | API key validation cache TTL (seconds) |
+| Variable             | Default        | Description                                      |
+| -------------------- | -------------- | ------------------------------------------------ |
+| `API_KEY`            | `test-api-key` | Primary API key (CHANGE IN PRODUCTION)           |
+| `API_KEYS`           | -              | Additional API keys (comma-separated)            |
+| `API_KEY_HEADER`     | `x-api-key`    | HTTP header name for API key                     |
+| `API_KEY_CACHE_TTL`  | `300`          | API key validation cache TTL (seconds)           |
+| `MASTER_API_KEY`     | -              | Master API key for admin operations (CLI, admin) |
+| `RATE_LIMIT_ENABLED` | `true`         | Enable per-key rate limiting for Redis keys      |
 
 **Security Notes:**
 
 - API keys should be at least 16 characters long
 - Use cryptographically secure random keys in production
 - Consider rotating API keys regularly
+- The `MASTER_API_KEY` is required for admin dashboard and CLI key management
 
 ### Redis Configuration
 
@@ -155,32 +158,35 @@ REDIS_URL=redis://password@localhost:6379/0
 
 MinIO provides S3-compatible object storage for files.
 
-| Variable           | Default                  | Description                         |
-| ------------------ | ------------------------ | ----------------------------------- |
-| `MINIO_ENDPOINT`   | `localhost:9000`         | MinIO server endpoint (no protocol) |
-| `MINIO_ACCESS_KEY` | `minioadmin`             | MinIO access key                    |
-| `MINIO_SECRET_KEY` | `minioadmin`             | MinIO secret key                    |
-| `MINIO_SECURE`     | `false`                  | Use HTTPS for MinIO connections     |
-| `MINIO_BUCKET`     | `code-interpreter-files` | Bucket name for file storage        |
-| `MINIO_REGION`     | `us-east-1`              | MinIO region                        |
+| Variable           | Default                  | Description                                 |
+| ------------------ | ------------------------ | ------------------------------------------- |
+| `MINIO_ENDPOINT`   | `localhost:9000`         | MinIO server endpoint (no protocol)         |
+| `MINIO_ACCESS_KEY` | (required)               | MinIO access key (required when not using IAM) |
+| `MINIO_SECRET_KEY` | (required)               | MinIO secret key (required when not using IAM) |
+| `MINIO_SECURE`     | `false`                  | Use HTTPS for MinIO connections             |
+| `MINIO_BUCKET`     | `code-interpreter-files` | Bucket name for file storage                |
+| `MINIO_REGION`     | `us-east-1`              | MinIO region                                |
+| `MINIO_USE_IAM`    | `false`                  | Use IAM credentials instead of keys         |
 
 ### Kubernetes Configuration
 
 Kubernetes is used for secure code execution in isolated pods.
 
-| Variable               | Default                  | Description                                       |
-| ---------------------- | ------------------------ | ------------------------------------------------- |
-| `K8S_NAMESPACE`        | (auto-detected)          | Namespace for execution pods                      |
-| `K8S_SIDECAR_IMAGE`    | -                        | HTTP sidecar image for pod communication          |
-| `K8S_IMAGE_REGISTRY`   | -                        | Registry for language execution images            |
-| `K8S_CPU_LIMIT`        | `1`                      | CPU limit per execution pod                       |
-| `K8S_MEMORY_LIMIT`     | `512Mi`                  | Memory limit per execution pod                    |
-| `K8S_CPU_REQUEST`      | `100m`                   | CPU request per execution pod                     |
-| `K8S_MEMORY_REQUEST`   | `128Mi`                  | Memory request per execution pod                  |
+| Variable               | Default                                      | Description                              |
+| ---------------------- | -------------------------------------------- | ---------------------------------------- |
+| `K8S_NAMESPACE`        | `""` (uses API's namespace)                  | Namespace for execution pods             |
+| `K8S_SIDECAR_IMAGE`    | `aronmuon/librecodeinterpreter-sidecar:latest` | HTTP sidecar image for pod communication |
+| `K8S_IMAGE_REGISTRY`   | `aronmuon/librecodeinterpreter`              | Registry prefix for language images      |
+| `K8S_IMAGE_TAG`        | `latest`                                     | Image tag for language images            |
+| `K8S_CPU_LIMIT`        | `1`                                          | CPU limit per execution pod              |
+| `K8S_MEMORY_LIMIT`     | `512Mi`                                      | Memory limit per execution pod           |
+| `K8S_CPU_REQUEST`      | `100m`                                       | CPU request per execution pod            |
+| `K8S_MEMORY_REQUEST`   | `128Mi`                                      | Memory request per execution pod         |
 
 **Security Notes:**
 
-- Pods run with `runAsNonRoot: true` and `runAsUser: 1000`
+- Both containers run with `runAsNonRoot: true` and `runAsUser: 1000`
+- Sidecar requires capabilities for `nsenter`: SYS_PTRACE, SYS_ADMIN, SYS_CHROOT
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
 
@@ -218,7 +224,7 @@ Kubernetes is used for secure code execution in isolated pods.
 | Variable                           | Default | Description                  |
 | ---------------------------------- | ------- | ---------------------------- |
 | `SESSION_TTL_HOURS`                | `24`    | Session time-to-live (hours) |
-| `SESSION_CLEANUP_INTERVAL_MINUTES` | `60`    | Cleanup interval (minutes)   |
+| `SESSION_CLEANUP_INTERVAL_MINUTES` | `10`    | Cleanup interval (minutes)   |
 | `SESSION_ID_LENGTH`                | `32`    | Session ID length            |
 
 ### Pod Pool Configuration
@@ -235,8 +241,24 @@ Pre-warmed Kubernetes pods significantly reduce execution latency by eliminating
 | `POD_POOL_GO`                | `0`     | Go pool size (0 = use Jobs)                |
 | `POD_POOL_JAVA`              | `0`     | Java pool size (0 = use Jobs)              |
 | `POD_POOL_RS`                | `0`     | Rust pool size (0 = use Jobs)              |
+| `POD_POOL_C`                 | `0`     | C pool size (0 = use Jobs)                 |
+| `POD_POOL_CPP`               | `0`     | C++ pool size (0 = use Jobs)               |
+| `POD_POOL_PHP`               | `0`     | PHP pool size (0 = use Jobs)               |
+| `POD_POOL_R`                 | `0`     | R pool size (0 = use Jobs)                 |
+| `POD_POOL_F90`               | `0`     | Fortran pool size (0 = use Jobs)           |
+| `POD_POOL_D`                 | `0`     | D pool size (0 = use Jobs)                 |
 
 **Note:** Languages with `poolSize = 0` use Kubernetes Jobs for execution (3-10s cold start). Pods are destroyed immediately after execution and the pool is automatically replenished in the background.
+
+### Pod Pool Optimization
+
+Fine-tune the pod pool replenishment behavior for optimal performance.
+
+| Variable                        | Default | Description                                    |
+| ------------------------------- | ------- | ---------------------------------------------- |
+| `POD_POOL_PARALLEL_BATCH`       | `5`     | Pods to start in parallel during warmup        |
+| `POD_POOL_REPLENISH_INTERVAL`   | `2`     | Seconds between pool replenishment checks      |
+| `POD_POOL_EXHAUSTION_TRIGGER`   | `true`  | Trigger immediate replenishment when exhausted |
 
 ### State Persistence Configuration (Python)
 
@@ -315,12 +337,12 @@ Each supported programming language has its own configuration for container imag
 
 ### Custom Language Images
 
-You can override default images using environment variables:
+You can override default images using environment variables. The format is `LANG_IMAGE_<CODE>` where `<CODE>` is the language code (py, js, ts, go, java, c, cpp, php, rs, r, f90, d):
 
 ```bash
-LANG_PYTHON_IMAGE=python:3.12-slim
-LANG_NODEJS_IMAGE=node:20-alpine
-LANG_JAVA_IMAGE=openjdk:17-jre-slim
+LANG_IMAGE_PY=python:3.12-slim
+LANG_IMAGE_JS=node:20-alpine
+LANG_IMAGE_JAVA=openjdk:17-jre-slim
 ```
 
 ## Configuration Management Tools

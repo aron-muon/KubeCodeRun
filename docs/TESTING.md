@@ -10,17 +10,22 @@ Tests are organized into two main categories:
 tests/
 ├── conftest.py              # Shared fixtures for all tests
 ├── unit/                    # Unit tests (no external dependencies)
-│   ├── test_execution_service.py
+│   ├── test_id_generator.py
+│   ├── test_minio_config.py
+│   ├── test_output_processor.py
 │   ├── test_session_service.py
-│   └── ...
+│   └── test_state_service.py
 ├── integration/             # Integration tests (require Docker, Redis, MinIO)
 │   ├── test_api_contracts.py
-│   ├── test_librechat_compat.py
+│   ├── test_auth_integration.py
 │   ├── test_container_behavior.py
+│   ├── test_exec_api.py
+│   ├── test_file_api.py
+│   ├── test_file_handling.py
+│   ├── test_librechat_compat.py
+│   ├── test_security_integration.py
 │   ├── test_session_behavior.py
-│   ├── test_session_isolation.py
-│   ├── test_session_state.py
-│   └── test_file_handling.py
+│   └── test_state_api.py
 └── snapshots/               # Snapshot data for tests
 ```
 

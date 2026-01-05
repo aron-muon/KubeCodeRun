@@ -240,9 +240,9 @@ def create_pod_manifest(
     # - SYS_CHROOT: required for mount namespace operations
     # - allowPrivilegeEscalation: true (setns blocked by no_new_privs)
     sidecar_security_context = client.V1SecurityContext(
-        run_as_user=0,
-        run_as_group=0,
-        run_as_non_root=False,
+        run_as_user=run_as_user,
+        run_as_group=run_as_user,
+        run_as_non_root=True,
         allow_privilege_escalation=True,
         capabilities=client.V1Capabilities(
             add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],
@@ -316,8 +316,9 @@ def create_pod_manifest(
         # Share process namespace so sidecar can use nsenter to execute in main container
         share_process_namespace=True,
         security_context=client.V1PodSecurityContext(
-            # Note: We don't set run_as_user at pod level because sidecar needs root
-            # Individual containers set their own security contexts
+            # Note: We don't set run_as_user at pod level; each container
+            # sets its own security context (both run as non-root UID 1000,
+            # sidecar has elevated capabilities for nsenter, not root)
             fs_group=run_as_user,
         ),
         # Prevent scheduling on same node as other execution pods

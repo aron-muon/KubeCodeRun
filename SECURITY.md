@@ -2,12 +2,10 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are currently being supported with security updates.
-
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| 1.1.x   | :white_check_mark: |
+| < 1.1   | :x:                |
 
 ## Reporting a Vulnerability
 
@@ -19,7 +17,7 @@ In the interest of protecting our users, we ask that you do not share informatio
 
 ### How to Report
 
-To report a vulnerability, please email us or open a **Security Advisory** in the GitHub repository if enabled.
+To report a vulnerability, please email aron@muonspace.com or open a **Security Advisory** at https://github.com/usnavy13/LibreCodeInterpreter/security/advisories/new.
 
 Please include:
 

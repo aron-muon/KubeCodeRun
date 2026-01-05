@@ -89,7 +89,7 @@ CleanupService (every 5 min)
             │
             └── If inactive > 1 hour:
                     │
-                    ├── Upload to MinIO (state-archive/{session_id})
+                    ├── Upload to MinIO (states/{session_id}/state.dat)
                     │
                     └── Keep in Redis (will expire at 2 hours)
 ```
@@ -315,10 +315,12 @@ If state exceeds this limit:
 
 ### Storage Keys
 
-| Storage | Key Pattern                  | Content                     |
-| ------- | ---------------------------- | --------------------------- |
-| Redis   | `state:{session_id}`         | Compressed state + metadata |
-| MinIO   | `state-archive/{session_id}` | Compressed state (archived) |
+| Storage | Key Pattern                         | Content                     |
+| ------- | ----------------------------------- | --------------------------- |
+| Redis   | `session:state:{session_id}`        | Compressed state + metadata |
+| Redis   | `session:state:hash:{session_id}`   | State SHA256 hash           |
+| Redis   | `session:state:meta:{session_id}`   | State metadata (size, created_at) |
+| MinIO   | `states/{session_id}/state.dat`     | Compressed state (archived) |
 
 ---
 

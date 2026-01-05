@@ -4,6 +4,8 @@
 > **Last Updated**: December 2024
 > **Source**: LibreChat `@librechat/agents` package (v3.0.40+)
 
+> **IMPORTANT: This is a design specification only.** The endpoints, models, and services described in this document do not currently exist in the codebase. This document serves as a blueprint for future implementation. For current execution capabilities, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Overview
 
 Programmatic Tool Calling enables Python code to orchestrate multiple agent tools within a single execution. Instead of the LLM making individual tool calls one at a time, it writes Python code that calls multiple tools, processes results, uses loops/conditionals, and runs tools in parallel.

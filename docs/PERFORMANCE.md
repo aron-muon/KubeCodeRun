@@ -53,6 +53,11 @@ POD_POOL_WARMUP_ON_STARTUP=true
 POD_POOL_PY=5                       # Python pool size
 POD_POOL_JS=2                       # JavaScript pool size
 # Languages with poolSize=0 use Kubernetes Jobs
+
+# Pool optimization settings
+POD_POOL_PARALLEL_BATCH=5           # Pods to start in parallel during warmup
+POD_POOL_REPLENISH_INTERVAL=2       # Seconds between replenishment checks
+POD_POOL_EXHAUSTION_TRIGGER=true    # Immediate replenish when pool exhausted
 ```
 
 ### 2. HTTP Sidecar Communication

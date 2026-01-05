@@ -59,8 +59,9 @@ All responses include security headers:
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
 - `Strict-Transport-Security: max-age=31536000; includeSubDomains`
-- `Content-Security-Policy: default-src 'self'`
+- `Content-Security-Policy: default-src 'self'` (varies by endpoint)
 - `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
 
 ### Request Validation
 
@@ -123,8 +124,12 @@ spec:
   containers:
   - name: sidecar
     securityContext:
+      runAsUser: 1000
+      runAsNonRoot: true
+      allowPrivilegeEscalation: true  # Required for setns() syscall
       capabilities:
-        add: ["SYS_PTRACE"]      # Required for nsenter to enter namespaces
+        add: ["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"]
+        drop: ["ALL"]
 ```
 
 **Security Implications:**
@@ -132,7 +137,10 @@ spec:
 | Setting | Purpose | Risk Mitigation |
 |---------|---------|-----------------|
 | `shareProcessNamespace` | Allows sidecar to find main container's PID | Only affects containers within the same pod |
-| `SYS_PTRACE` capability | Enables nsenter to enter mount namespace | Scoped to pod only, not host |
+| `SYS_PTRACE` | Access `/proc/<pid>/ns/` of other processes | Scoped to pod only, not host |
+| `SYS_ADMIN` | Call `setns()` to enter namespaces | Required for namespace entry; scoped to pod |
+| `SYS_CHROOT` | Mount namespace operations | Required for `nsenter -m`; scoped to pod |
+| `allowPrivilegeEscalation` | Permits `setns()` syscall (blocked by `no_new_privs`) | Combined with non-root user and dropped capabilities |
 
 **Why This Is Secure:**
 
@@ -142,9 +150,11 @@ spec:
 
 3. **Code runs in main container's context**: User code executes using the main container's isolated filesystem, subject to all the same resource limits and network policies.
 
-4. **No host namespace access**: The `SYS_PTRACE` capability is limited to pod-level process visibility and cannot be used to access host processes.
+4. **No host namespace access**: The capabilities are limited to pod-level process visibility and cannot be used to access host processes or namespaces.
 
-5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`), preventing privilege escalation even with `SYS_PTRACE`.
+5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`). The sidecar requires specific capabilities but does not run as root.
+
+6. **Minimal capabilities**: All capabilities are dropped except the three required for `nsenter` to function.
 
 **Alternative Considered:**
 
@@ -172,75 +182,40 @@ Kubernetes cluster, or internal network configuration.
 remain accessible because many libraries depend on them. The pod security context and network
 policies address the primary concern of revealing cloud provider and internal network details.
 
-### WAN-Only Network Access
+### Network Isolation
 
-The Code Interpreter API supports an optional WAN-only network mode that allows
-execution pods to access the public internet while maintaining strict
-isolation from internal networks.
-
-#### Overview
-
-When enabled via `ENABLE_WAN_ACCESS=true`, execution pods are configured with
-a Kubernetes NetworkPolicy that:
-
-1. **Allows**: Outbound connections to public internet IPs (all ports)
-2. **Blocks**: Access to private IP ranges and other pods in the cluster
-
-#### Blocked IP Ranges
-
-The following ranges are blocked via NetworkPolicy:
-
-| Range | Description |
-|-------|-------------|
-| `10.0.0.0/8` | Class A private network (includes most K8s pod CIDRs) |
-| `172.16.0.0/12` | Class B private network |
-| `192.168.0.0/16` | Class C private network |
-| `169.254.0.0/16` | Link-local (includes cloud metadata services) |
+Execution pods are isolated via Kubernetes NetworkPolicy:
 
 #### Configuration
 
-```bash
-# Enable WAN access (default: false)
-ENABLE_WAN_ACCESS=true
-
-# Custom DNS servers (optional, defaults to Google and Cloudflare DNS)
-WAN_DNS_SERVERS=8.8.8.8,1.1.1.1,8.8.4.4
+```yaml
+# In helm values.yaml
+execution:
+  networkPolicy:
+    enabled: true      # Enable NetworkPolicy enforcement
+    denyEgress: true   # Block all egress (default: true)
 ```
+
+#### Network Modes
+
+1. **Full Isolation (default)**: `denyEgress: true`
+   - Blocks all outbound connections
+   - Pods cannot access internet or cluster services
+   - Maximum security for untrusted code
+
+2. **Selective Egress**: `denyEgress: false`
+   - Allows DNS (UDP 53) and HTTPS (TCP 443/80)
+   - Enables package downloads (pip, npm, etc.)
+   - Note: Does not block private IP ranges
 
 #### Security Considerations
 
 1. **NetworkPolicy Required**: Your Kubernetes cluster must have a CNI that
    supports NetworkPolicy (Calico, Cilium, etc.).
 
-2. **Public DNS Only**: Only public DNS servers are used to prevent DNS-based
-   attacks that could leak internal network information.
+2. **Default Deny**: All egress is blocked by default for maximum security.
 
-3. **No Inter-Pod Communication**: NetworkPolicy denies all ingress and limits
-   egress to public IPs only.
-
-4. **Cloud Metadata Blocked**: The link-local range (169.254.0.0/16) is blocked,
-   which includes cloud metadata endpoints (169.254.169.254) used by AWS, GCP,
-   and Azure.
-
-5. **Default Off**: WAN access is disabled by default for maximum security.
-
-#### When to Enable WAN Access
-
-Enable WAN access when:
-- Users need to download packages or dependencies (pip, npm, etc.)
-- Code needs to fetch data from public APIs
-- Web scraping or data collection is required
-
-Keep WAN access disabled (default) when:
-- Maximum security isolation is required
-- All dependencies are pre-installed in container images
-- Code should not have any network access
-
-#### Audit Logging
-
-WAN-enabled pods are tracked via labels:
-- `librecodeinterpreter.io/wan-access=true` on each pod
-- NetworkPolicy application is logged at pod creation
+3. **No Inter-Pod Communication**: NetworkPolicy denies all ingress from other pods.
 
 ### State Persistence Security
 

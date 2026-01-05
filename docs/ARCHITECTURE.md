@@ -126,6 +126,7 @@ Since `nsenter -m` only enters the mount namespace (not the environment), the si
 | `health.py` | Health and readiness checks |
 | `state.py` | Session state management |
 | `admin.py` | Admin dashboard API |
+| `dashboard_metrics.py` | Dashboard metrics endpoints |
 
 ### Services Layer (`src/services/`)
 
@@ -133,7 +134,8 @@ Since `nsenter -m` only enters the mount namespace (not the environment), the si
 |---------|--------|----------------|
 | **SessionService** | `session.py` | Session lifecycle (create, get, delete) |
 | **FileService** | `file.py` | File storage in MinIO |
-| **CodeExecutionService** | `execution/` | Orchestrates code execution |
+| **CodeExecutionRunner** | `execution/runner.py` | Primary code execution service |
+| **ExecutionOrchestrator** | `orchestrator.py` | Coordinates execution, state, and files |
 | **KubernetesManager** | `kubernetes/` | Pod lifecycle and execution |
 | **StateService** | `state.py` | Python state persistence in Redis |
 | **HealthService** | `health.py` | Service health monitoring |
@@ -223,13 +225,26 @@ POD_POOL_TS=0      # TypeScript: use Jobs
 POD_POOL_GO=0      # Go: use Jobs
 POD_POOL_JAVA=0    # Java: use Jobs
 POD_POOL_RS=0      # Rust: use Jobs
+POD_POOL_C=0       # C: use Jobs
+POD_POOL_CPP=0     # C++: use Jobs
+POD_POOL_PHP=0     # PHP: use Jobs
+POD_POOL_R=0       # R: use Jobs
+POD_POOL_F90=0     # Fortran: use Jobs
+POD_POOL_D=0       # D: use Jobs
+
+# Pool optimization settings
+POD_POOL_PARALLEL_BATCH=5          # Pods to start in parallel during warmup
+POD_POOL_REPLENISH_INTERVAL=2      # Seconds between pool replenishment checks
+POD_POOL_EXHAUSTION_TRIGGER=true   # Trigger immediate replenishment when exhausted
 ```
 
 ### Kubernetes Settings
 
 ```python
 K8S_NAMESPACE=librecodeinterpreter
-K8S_SIDECAR_IMAGE=ghcr.io/.../sidecar:latest
+K8S_SIDECAR_IMAGE=aronmuon/librecodeinterpreter-sidecar:latest
+K8S_IMAGE_REGISTRY=aronmuon/librecodeinterpreter
+K8S_IMAGE_TAG=latest
 K8S_CPU_LIMIT=1
 K8S_MEMORY_LIMIT=512Mi
 K8S_CPU_REQUEST=100m
@@ -247,8 +262,9 @@ Each execution pod is isolated via:
    - `runAsNonRoot: true`
    - `runAsUser: 1000`
    - Resource limits enforced
+   - Sidecar has limited capabilities for `nsenter` (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT)
 3. **Ephemeral Storage**: Pods destroyed after execution
-4. **No Privileged Access**: Standard user containers
+4. **Non-root Execution**: Both containers run as UID 1000
 
 ### RBAC Requirements
 
@@ -295,8 +311,14 @@ src/
 │   └── orchestrator.py    # ExecutionOrchestrator
 │
 ├── middleware/             # FastAPI middleware
-│   ├── security.py        # Auth, rate limiting
+│   ├── security.py        # Security middleware
+│   ├── auth.py            # Authentication
+│   ├── headers.py         # Security headers
 │   └── metrics.py         # Request metrics
+│
+├── core/                   # Core utilities
+│   ├── events.py          # Event handling
+│   └── pool.py            # Pool abstractions
 │
 └── main.py                 # Application entry point
 
@@ -324,9 +346,12 @@ helm-deployments/
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /health` | Basic liveness check |
-| `GET /health/ready` | Readiness (all services) |
+| `GET /ready` | Readiness check |
+| `GET /health/detailed` | Detailed health of all services |
+| `GET /health/redis` | Redis connectivity |
+| `GET /health/minio` | MinIO connectivity |
 | `GET /health/kubernetes` | Kubernetes connectivity |
-| `GET /health/pool` | Pod pool statistics |
+| `GET /metrics/pool` | Pod pool statistics |
 
 ### Metrics
 
@@ -344,7 +369,7 @@ The API exposes metrics for:
 helm install librecodeinterpreter ./helm-deployments/librecodeinterpreter \
   --namespace librecodeinterpreter \
   --create-namespace \
-  --set api.replicas=2 \
+  --set replicaCount=2 \
   --set execution.languages.python.poolSize=5
 ```
 
