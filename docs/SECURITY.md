@@ -117,16 +117,43 @@ Code is analyzed for potentially dangerous patterns:
 
 The sidecar container uses Linux `nsenter` to execute code in the main container's mount namespace. This requires specific pod and image configuration.
 
-**How It Works:**
+**The Problem:**
 
-Linux capabilities for non-root users only populate the *bounding set*, not the *effective/permitted sets*. To make capabilities usable by a non-root user, we use **file capabilities** via `setcap` on the `nsenter` binary in the Docker image:
+When the sidecar runs as non-root (UID 1000), `nsenter` fails with:
+```
+nsenter: reassociate to namespaces failed: Operation not permitted
+```
+
+This happens even with the correct Kubernetes `securityContext.capabilities.add` settings.
+
+**Root Cause:**
+
+Linux capabilities for non-root users only populate the *bounding set*, not the *effective/permitted sets*. The bounding set limits what capabilities a process *can* have, but doesn't actually grant them. From the [Linux capabilities(7) man page](https://man7.org/linux/man-pages/man7/capabilities.7.html):
+
+> During an execve(2), the kernel calculates the new capabilities of the process...
+
+For a non-root user, the permitted set after exec is essentially empty unless file capabilities are set on the binary.
+
+**Solution:**
+
+We use **file capabilities** via `setcap` on the `nsenter` binary in the Docker image:
 
 ```dockerfile
 # In sidecar Dockerfile
+RUN apt-get install -y libcap2-bin
 RUN setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
 ```
 
 This grants the nsenter binary the ability to gain these capabilities when executed, even by non-root users.
+
+**Why File Capabilities?**
+
+| Approach | Pros | Cons |
+|----------|------|------|
+| **File capabilities (setcap)** ✅ | Only nsenter gets caps, simple entrypoint, most secure | Requires image rebuild |
+| **Run as root (UID 0)** | Simple to implement | Broader attack surface |
+| **capsh wrapper entrypoint** | Works without rebuild | Complex entrypoint, all processes get caps |
+| **Ambient capabilities** | Clean solution | [Not yet in Kubernetes (KEP-2763)](https://github.com/kubernetes/enhancements/issues/2763) |
 
 **Required Pod Settings:**
 ```yaml
@@ -177,6 +204,14 @@ spec:
 2. **Ambient capabilities (Kubernetes KEP-2763)**: This would allow non-root containers to have effective capabilities without `setcap`, but it's not yet available in Kubernetes. When released, this could simplify the approach.
 
 3. **Running code directly in the sidecar**: Rejected because it would require installing all language runtimes in the sidecar (bloated image), lose the clean separation between executor and runtime, and make per-language resource limits harder to enforce.
+
+**References:**
+
+- [Linux capabilities(7) man page](https://man7.org/linux/man-pages/man7/capabilities.7.html) - Explains capability sets and inheritance rules
+- [setcap(8) man page](https://man7.org/linux/man-pages/man8/setcap.8.html) - File capabilities documentation
+- [Kubernetes KEP-2763: Ambient Capabilities](https://github.com/kubernetes/enhancements/issues/2763) - Future Kubernetes solution (not yet available)
+- [Beyond Container Capabilities: Understanding Linux Capability Sets](https://www.utam0k.jp/en/blog/2025/12/14/linux-capability-sets/) - Explains why K8s caps don't work for non-root
+- [Kubernetes SecurityContext Capabilities Explained](https://www.golinuxcloud.com/kubernetes-securitycontext-capabilities/) - Overview of capabilities in Kubernetes
 
 #### Pod Hardening (Host Info Protection)
 

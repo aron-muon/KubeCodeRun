@@ -186,9 +186,11 @@ Kubernetes is used for secure code execution in isolated pods.
 **Security Notes:**
 
 - Both containers run with `runAsNonRoot: true` and `runAsUser: 1000`
-- Sidecar requires capabilities for `nsenter`: SYS_PTRACE, SYS_ADMIN, SYS_CHROOT
+- The sidecar uses file capabilities (`setcap`) on the `nsenter` binary to allow non-root users to enter namespaces
+- Required pod capabilities (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT) must be in the bounding set with `allowPrivilegeEscalation: true`
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
+- See [SECURITY.md](SECURITY.md) for detailed explanation of the nsenter privilege model
 
 ### Resource Limits
 

@@ -100,6 +100,17 @@ The pod uses `shareProcessNamespace: true`, allowing containers to see each othe
 3. Executes shell commands using the main container's filesystem
 4. Captures stdout/stderr and returns via HTTP
 
+**nsenter Privilege Model:**
+
+The sidecar runs as non-root (UID 1000) but requires Linux capabilities to use `nsenter`. Since capabilities for non-root users only populate the *bounding set* (not effective/permitted), we use **file capabilities** via `setcap` on the nsenter binary:
+
+```dockerfile
+# In sidecar Dockerfile
+RUN setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
+```
+
+This allows the non-root user to gain the required capabilities when executing nsenter, without running as root. The pod spec still requires `allowPrivilegeEscalation: true` for file capabilities to be honored. See [SECURITY.md](SECURITY.md) for full details.
+
 **Per-Language Environment Setup:**
 
 Since `nsenter -m` only enters the mount namespace (not the environment), the sidecar explicitly sets up PATH and environment variables for each language:
@@ -262,9 +273,10 @@ Each execution pod is isolated via:
    - `runAsNonRoot: true`
    - `runAsUser: 1000`
    - Resource limits enforced
-   - Sidecar has limited capabilities for `nsenter` (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT)
+   - Sidecar uses file capabilities (`setcap`) on nsenter binary for required privileges
 3. **Ephemeral Storage**: Pods destroyed after execution
 4. **Non-root Execution**: Both containers run as UID 1000
+5. **Binary-specific Capabilities**: Only the `nsenter` binary has elevated capabilities; other processes cannot gain them
 
 ### RBAC Requirements
 

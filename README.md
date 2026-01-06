@@ -149,7 +149,7 @@ For comprehensive testing details, see [TESTING.md](docs/TESTING.md).
 - All code execution happens in isolated Kubernetes pods
 - Network policies deny all egress by default
 - Both containers run as non-root (`runAsNonRoot: true`, `runAsUser: 1000`)
-- Sidecar has limited capabilities for nsenter (`SYS_PTRACE`, `SYS_ADMIN`, `SYS_CHROOT`)
+- Sidecar uses file capabilities (`setcap`) to grant `nsenter` binary-specific privileges without running as root
 - Resource limits enforced via Kubernetes (CPU, memory, ephemeral storage)
 - Pods destroyed immediately after execution (ephemeral)
 - RBAC restricts API pod permissions to pod/job management only

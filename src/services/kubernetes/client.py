@@ -234,16 +234,28 @@ def create_pod_manifest(
     )
 
     # Security context for sidecar - needs elevated privileges for nsenter
-    # nsenter requires these capabilities to enter another container's mount namespace:
+    #
+    # The sidecar uses nsenter to execute code in the main container's mount namespace.
+    # nsenter requires these capabilities:
     # - SYS_PTRACE: access /proc/<pid>/ns/ of other processes
     # - SYS_ADMIN: call setns() to enter namespaces
     # - SYS_CHROOT: required for mount namespace operations
-    # - allowPrivilegeEscalation: true (setns blocked by no_new_privs)
+    #
+    # For non-root users, Linux capabilities only populate the bounding set, not
+    # effective/permitted sets. To make capabilities usable, the sidecar Docker image
+    # uses setcap on the nsenter binary:
+    #   setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
+    #
+    # The pod spec must still:
+    # - Add capabilities to the bounding set (capabilities.add)
+    # - Allow privilege escalation (for file capabilities to be honored)
+    #
+    # This approach allows running as non-root while still having nsenter work.
     sidecar_security_context = client.V1SecurityContext(
         run_as_user=run_as_user,
         run_as_group=run_as_user,
         run_as_non_root=True,
-        allow_privilege_escalation=True,
+        allow_privilege_escalation=True,  # Required for file capabilities
         capabilities=client.V1Capabilities(
             add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],
             drop=["ALL"],
@@ -317,8 +329,8 @@ def create_pod_manifest(
         share_process_namespace=True,
         security_context=client.V1PodSecurityContext(
             # Note: We don't set run_as_user at pod level; each container
-            # sets its own security context (both run as non-root UID 1000,
-            # sidecar has elevated capabilities for nsenter, not root)
+            # sets its own security context. Both run as non-root UID 1000.
+            # The sidecar uses file capabilities (setcap) on nsenter for privileges.
             fs_group=run_as_user,
         ),
         # Prevent scheduling on same node as other execution pods
