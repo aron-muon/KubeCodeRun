@@ -21,7 +21,7 @@ Get up and running in minutes with Kubernetes deployment.
 1. **Deploy with Helm**
 
    ```bash
-   helm install kubecoderun ghcr.io/aron-muon/charts/kubecoderun:latest \
+   helm install kubecoderun oci://ghcr.io/aron-muon/charts/kubecoderun:1.0.0 \
      --namespace kubecoderun \
      --create-namespace \
      --set replicaCount=2 \
