@@ -37,7 +37,7 @@ jobs:
       is_release: ${{ steps.tag.outputs.is_release }}
       previous_tag: ${{ steps.prev_tag.outputs.tag_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0  # Need full history for tag comparison
 
@@ -120,9 +120,6 @@ jobs:
       context: .
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   sidecar:
     needs: changes
@@ -134,9 +131,6 @@ jobs:
       context: docker/sidecar
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   python:
     needs: changes
@@ -148,9 +142,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   javascript:
     needs: changes
@@ -162,9 +153,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   typescript:
     needs: changes
@@ -176,9 +164,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   go:
     needs: changes
@@ -190,9 +175,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   java:
     needs: changes
@@ -204,9 +186,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   c-cpp:
     needs: changes
@@ -218,9 +197,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   php:
     needs: changes
@@ -232,9 +208,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   rust:
     needs: changes
@@ -246,9 +219,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   r:
     needs: changes
@@ -260,9 +230,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   fortran:
     needs: changes
@@ -274,9 +241,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   d:
     needs: changes
@@ -288,9 +252,6 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ==================== Retag Unchanged Images (for releases) ====================
   # These jobs run when an image didn't change but we still want it tagged with the new version
@@ -307,9 +268,6 @@ jobs:
       image_name: kubecoderun-api
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-sidecar:
     needs: changes
@@ -323,9 +281,6 @@ jobs:
       image_name: kubecoderun-sidecar
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-python:
     needs: changes
@@ -339,9 +294,6 @@ jobs:
       image_name: kubecoderun-python
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-javascript:
     needs: changes
@@ -355,9 +307,6 @@ jobs:
       image_name: kubecoderun-javascript
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-typescript:
     needs: changes
@@ -371,9 +320,6 @@ jobs:
       image_name: kubecoderun-typescript
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-go:
     needs: changes
@@ -387,9 +333,6 @@ jobs:
       image_name: kubecoderun-go
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-java:
     needs: changes
@@ -403,9 +346,6 @@ jobs:
       image_name: kubecoderun-java
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-c-cpp:
     needs: changes
@@ -419,9 +359,6 @@ jobs:
       image_name: kubecoderun-c-cpp
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-php:
     needs: changes
@@ -435,9 +372,6 @@ jobs:
       image_name: kubecoderun-php
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-rust:
     needs: changes
@@ -451,9 +385,6 @@ jobs:
       image_name: kubecoderun-rust
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-r:
     needs: changes
@@ -467,9 +398,6 @@ jobs:
       image_name: kubecoderun-r
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-fortran:
     needs: changes
@@ -483,9 +411,6 @@ jobs:
       image_name: kubecoderun-fortran
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   retag-d:
     needs: changes
@@ -499,6 +424,3 @@ jobs:
       image_name: kubecoderun-d
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

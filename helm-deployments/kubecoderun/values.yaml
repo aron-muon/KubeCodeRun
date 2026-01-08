@@ -4,9 +4,10 @@
 replicaCount: 1
 
 image:
-  repository: aronmuon/kubecoderun-api
+  repository: ghcr.io/aron-muon/kubecoderun-api
   pullPolicy: IfNotPresent
-  tag: "latest"
+  # tag defaults to Chart.AppVersion if not specified
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
@@ -145,12 +146,12 @@ execution:
 
   # Image registry configuration
   # Images are named: {imageRegistry}-{language}:{imageTag}
-  # e.g., aronmuon/kubecoderun-python:latest
-  imageRegistry: "aronmuon/kubecoderun"
-  imageTag: "latest"
+  # e.g., ghcr.io/aron-muon/kubecoderun-python:1.1.1
+  imageRegistry: "ghcr.io/aron-muon/kubecoderun"
+  # imageTag defaults to Chart.AppVersion if not specified
+  imageTag: ""
   # Image pull policy for execution pods (IfNotPresent, Always, Never)
-  # Use "Always" when using :latest tags to ensure fresh images
-  imagePullPolicy: "Always"
+  imagePullPolicy: "IfNotPresent"
 
   # Service account for execution pods (with pod/job create permissions)
   serviceAccount:
@@ -160,48 +161,44 @@ execution:
 
   # Sidecar container configuration
   sidecar:
-    image: aronmuon/kubecoderun-sidecar:latest
+    repository: ghcr.io/aron-muon/kubecoderun-sidecar
+    # tag defaults to Chart.AppVersion if not specified
+    tag: ""
     port: 8080
 
   # Per-language pool configuration
   # poolSize > 0: warm pods maintained
   # poolSize = 0: use Jobs (cold start)
+  # Images default to {imageRegistry}-{language}:{imageTag or appVersion}
+  # Set image: to override with a custom image for a specific language
   languages:
     python:
-      image: aronmuon/kubecoderun-python:latest
       poolSize: 5
     javascript:
-      image: aronmuon/kubecoderun-javascript:latest
       poolSize: 2
     typescript:
-      image: aronmuon/kubecoderun-typescript:latest
       poolSize: 0
     go:
-      image: aronmuon/kubecoderun-go:latest
       poolSize: 0
     java:
-      image: aronmuon/kubecoderun-java:latest
       poolSize: 0
     rust:
-      image: aronmuon/kubecoderun-rust:latest
       poolSize: 0
     c:
-      image: aronmuon/kubecoderun-c-cpp:latest
+      # Uses c-cpp image by default
+      imageSuffix: "c-cpp"
       poolSize: 0
     cpp:
-      image: aronmuon/kubecoderun-c-cpp:latest
+      # Uses c-cpp image by default
+      imageSuffix: "c-cpp"
       poolSize: 0
     php:
-      image: aronmuon/kubecoderun-php:latest
       poolSize: 0
     r:
-      image: aronmuon/kubecoderun-r:latest
       poolSize: 0
     fortran:
-      image: aronmuon/kubecoderun-fortran:latest
       poolSize: 0
     d:
-      image: aronmuon/kubecoderun-d:latest
       poolSize: 0
 
   # Job settings (for languages with poolSize=0)

@@ -9,14 +9,15 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
-        with:
-          version: 'v3.14.0'
 
       - name: Set chart version from tag
         id: version
@@ -31,6 +32,9 @@ jobs:
             VERSION="${TAG#v}"
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
           fi
+          # Set lowercase owner for GHCR
+          OWNER="${{ github.repository_owner }}"
+          echo "owner=${OWNER,,}" >> $GITHUB_OUTPUT
 
       - name: Update Chart.yaml version
         run: |
@@ -46,11 +50,11 @@ jobs:
           helm package helm-deployments/kubecoderun --destination ./helm-package
           ls -la ./helm-package
 
-      - name: Login to Artifactory OCI registry
+      - name: Login to GitHub Container Registry
         run: |
-          helm registry login -u ${{ secrets.ARTIFACTORY_USERNAME }} -p ${{ secrets.ARTIFACTORY_TOKEN }} ${{ secrets.ARTIFACTORY_HOST }}
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Push to Artifactory
+      - name: Push to GitHub Container Registry
         run: |
           CHART_PACKAGE=$(ls ./helm-package/*.tgz)
-          helm push "${CHART_PACKAGE}" oci://${{ secrets.ARTIFACTORY_HOST }}/${{ secrets.ARTIFACTORY_REPO }}
+          helm push "${CHART_PACKAGE}" oci://ghcr.io/${{ steps.version.outputs.owner }}/charts
