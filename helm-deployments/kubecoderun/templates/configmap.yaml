@@ -16,10 +16,12 @@ data:
   # Kubernetes Configuration
   K8S_NAMESPACE: {{ include "kubecoderun.executionNamespace" . | quote }}
   K8S_SERVICE_ACCOUNT: {{ include "kubecoderun.executorServiceAccountName" . | quote }}
-  K8S_SIDECAR_IMAGE: {{ .Values.execution.sidecar.image | quote }}
+  {{- $imageTag := .Values.execution.imageTag | default .Chart.AppVersion }}
+  {{- $sidecarTag := .Values.execution.sidecar.tag | default .Chart.AppVersion }}
+  K8S_SIDECAR_IMAGE: "{{ .Values.execution.sidecar.repository }}:{{ $sidecarTag }}"
   K8S_SIDECAR_PORT: {{ .Values.execution.sidecar.port | quote }}
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
-  K8S_IMAGE_TAG: {{ .Values.execution.imageTag | quote }}
+  K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
   K8S_CPU_LIMIT: {{ .Values.execution.resources.limits.cpu | quote }}
   K8S_MEMORY_LIMIT: {{ .Values.execution.resources.limits.memory | quote }}
@@ -44,43 +46,37 @@ data:
   POD_POOL_F90: {{ .Values.execution.languages.fortran.poolSize | quote }}
   POD_POOL_D: {{ .Values.execution.languages.d.poolSize | quote }}
 
-  # Per-language image overrides (optional - falls back to registry/tag pattern)
-  {{- if .Values.execution.languages.python.image }}
-  LANG_IMAGE_PY: {{ .Values.execution.languages.python.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.javascript.image }}
-  LANG_IMAGE_JS: {{ .Values.execution.languages.javascript.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.typescript.image }}
-  LANG_IMAGE_TS: {{ .Values.execution.languages.typescript.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.go.image }}
-  LANG_IMAGE_GO: {{ .Values.execution.languages.go.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.java.image }}
-  LANG_IMAGE_JAVA: {{ .Values.execution.languages.java.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.rust.image }}
-  LANG_IMAGE_RS: {{ .Values.execution.languages.rust.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.c.image }}
-  LANG_IMAGE_C: {{ .Values.execution.languages.c.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.cpp.image }}
-  LANG_IMAGE_CPP: {{ .Values.execution.languages.cpp.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.php.image }}
-  LANG_IMAGE_PHP: {{ .Values.execution.languages.php.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.r.image }}
-  LANG_IMAGE_R: {{ .Values.execution.languages.r.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.fortran.image }}
-  LANG_IMAGE_F90: {{ .Values.execution.languages.fortran.image | quote }}
-  {{- end }}
-  {{- if .Values.execution.languages.d.image }}
-  LANG_IMAGE_D: {{ .Values.execution.languages.d.image | quote }}
-  {{- end }}
+  # Per-language images
+  # Uses full image if specified, otherwise builds from registry-suffix:tag
+  # where suffix defaults to the language name
+  {{- $registry := .Values.execution.imageRegistry }}
+  {{- $defaultTag := .Values.execution.imageTag | default .Chart.AppVersion }}
+  {{- $defaultImage := printf "%s-%s:%s" $registry "python" $defaultTag }}
+  LANG_IMAGE_PY: {{ .Values.execution.languages.python.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "javascript" $defaultTag }}
+  LANG_IMAGE_JS: {{ .Values.execution.languages.javascript.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "typescript" $defaultTag }}
+  LANG_IMAGE_TS: {{ .Values.execution.languages.typescript.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "go" $defaultTag }}
+  LANG_IMAGE_GO: {{ .Values.execution.languages.go.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "java" $defaultTag }}
+  LANG_IMAGE_JAVA: {{ .Values.execution.languages.java.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "rust" $defaultTag }}
+  LANG_IMAGE_RS: {{ .Values.execution.languages.rust.image | default $defaultImage | quote }}
+  {{- $suffix := .Values.execution.languages.c.imageSuffix | default "c-cpp" }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry $suffix $defaultTag }}
+  LANG_IMAGE_C: {{ .Values.execution.languages.c.image | default $defaultImage | quote }}
+  {{- $suffix = .Values.execution.languages.cpp.imageSuffix | default "c-cpp" }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry $suffix $defaultTag }}
+  LANG_IMAGE_CPP: {{ .Values.execution.languages.cpp.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "php" $defaultTag }}
+  LANG_IMAGE_PHP: {{ .Values.execution.languages.php.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "r" $defaultTag }}
+  LANG_IMAGE_R: {{ .Values.execution.languages.r.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "fortran" $defaultTag }}
+  LANG_IMAGE_F90: {{ .Values.execution.languages.fortran.image | default $defaultImage | quote }}
+  {{- $defaultImage = printf "%s-%s:%s" $registry "d" $defaultTag }}
+  LANG_IMAGE_D: {{ .Values.execution.languages.d.image | default $defaultImage | quote }}
 
   # Execution Limits
   MAX_EXECUTION_TIME: {{ .Values.execution.maxExecutionTime | quote }}
