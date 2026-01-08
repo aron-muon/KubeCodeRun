@@ -146,7 +146,7 @@ execution:
 
   # Image registry configuration
   # Images are named: {imageRegistry}-{language}:{imageTag}
-  # e.g., ghcr.io/aron-muon/kubecoderun-python:1.1.1
+  # e.g., ghcr.io/aron-muon/kubecoderun-python:1.0.0
   imageRegistry: "ghcr.io/aron-muon/kubecoderun"
   # imageTag defaults to Chart.AppVersion if not specified
   imageTag: ""

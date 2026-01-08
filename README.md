@@ -18,24 +18,17 @@ Get up and running in minutes with Kubernetes deployment.
 
 ### Deployment
 
-1. **Clone the repository**
+1. **Deploy with Helm**
 
    ```bash
-   git clone https://github.com/aron-muon/KubeCodeRun.git
-   cd KubeCodeRun
-   ```
-
-2. **Deploy with Helm**
-
-   ```bash
-   helm install kubecoderun ./helm-deployments/kubecoderun \
+   helm install kubecoderun ghcr.io/aron-muon/charts/kubecoderun:latest \
      --namespace kubecoderun \
      --create-namespace \
      --set replicaCount=2 \
      --set execution.languages.python.poolSize=5
    ```
 
-3. **Access the API**
+2. **Access the API**
 
    ```bash
    # Port-forward for local access

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# Java execution environment with BuildKit optimizations
+# Java execution environment with BuildKit optimizations.
 FROM eclipse-temurin:25-jdk
 
 # Install common tools

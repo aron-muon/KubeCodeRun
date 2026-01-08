@@ -42,7 +42,7 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Code Interpreter API", version="1.1.1")
+    logger.info("Starting Code Interpreter API", version="1.0.0")
 
     # Setup graceful shutdown callbacks (uvicorn handles signals)
     setup_graceful_shutdown()
@@ -256,7 +256,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Code Interpreter API",
     description="A secure API for executing code in isolated Kubernetes pods",
-    version="1.1.1",
+    version="1.0.0",
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     debug=settings.api_debug,
@@ -296,7 +296,7 @@ async def health_check():
     """Health check endpoint for liveness probe."""
     return {
         "status": "healthy",
-        "version": "1.1.1",
+        "version": "1.0.0",
         "config": {
             "debug": settings.api_debug,
             "docs_enabled": settings.enable_docs,

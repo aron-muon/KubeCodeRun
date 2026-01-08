@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # C/C++ execution environment with BuildKit optimizations
-# Pin to specific version for reproducibility
+# Pin to specific version for reproducibility.
 FROM gcc:13-bookworm
 
 # Install essential development tools and libraries

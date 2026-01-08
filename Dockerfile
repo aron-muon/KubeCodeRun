@@ -1,9 +1,9 @@
-# Multi-stage build for Code Interpreter API.
+# Multi-stage build for Code Interpreter API
 FROM python:3.11-slim as builder
 
 # Set build arguments
 ARG BUILD_DATE
-ARG VERSION=1.1.1
+ARG VERSION=1.0.0
 ARG VCS_REF
 
 # Add metadata

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# Rust execution environment with BuildKit optimizations.
+# Rust execution environment with BuildKit optimizations
 FROM rust:1.92-slim
 
 # Install system dependencies

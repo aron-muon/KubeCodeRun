@@ -19,7 +19,7 @@ async def basic_health_check():
     """Basic health check endpoint that doesn't require authentication."""
     return {
         "status": "healthy",
-        "version": "1.1.1",
+        "version": "1.0.0",
         "timestamp": "2025-01-18T00:00:00Z",
         "service": "kubecoderun-api",
     }

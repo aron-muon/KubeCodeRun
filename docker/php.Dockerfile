@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.4
-# PHP execution environment with BuildKit optimizations
+# PHP execution environment with BuildKit optimizations.
 FROM php:8.2-cli
 
 # Install system dependencies and PHP extensions

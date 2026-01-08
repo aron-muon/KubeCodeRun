@@ -1,4 +1,4 @@
-# Sidecar container for Kubernetes pod execution
+# Sidecar container for Kubernetes pod execution.
 FROM python:3.11-slim
 
 # Install curl for health checks, util-linux for nsenter, and libcap2-bin for setcap
