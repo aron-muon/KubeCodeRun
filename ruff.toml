@@ -1,0 +1,6 @@
+line-length = 120
+fix = true
+
+[lint]
+select = ["E", "F", "I", "UP", "ASYNC"]
+ignore = ["E501"]
