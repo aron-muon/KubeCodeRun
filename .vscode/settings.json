@@ -1,0 +1,3 @@
+{
+    "python.languageServer": "None"  // Use ty for type checking instead of Pylance/mypy
+}
