@@ -80,6 +80,20 @@ data:
 
   # Execution Limits
   MAX_EXECUTION_TIME: {{ .Values.execution.maxExecutionTime | quote }}
+  MAX_MEMORY_MB: {{ .Values.resourceLimits.maxMemoryMb | quote }}
+  MAX_CPUS: {{ .Values.resourceLimits.maxCpus | quote }}
+  MAX_PIDS: {{ .Values.resourceLimits.maxPids | quote }}
+  MAX_OPEN_FILES: {{ .Values.resourceLimits.maxOpenFiles | quote }}
+
+  # File Limits
+  MAX_FILE_SIZE_MB: {{ .Values.resourceLimits.maxFileSizeMb | quote }}
+  MAX_TOTAL_FILE_SIZE_MB: {{ .Values.resourceLimits.maxTotalFileSizeMb | quote }}
+  MAX_FILES_PER_SESSION: {{ .Values.resourceLimits.maxFilesPerSession | quote }}
+  MAX_OUTPUT_FILES: {{ .Values.resourceLimits.maxOutputFiles | quote }}
+
+  # Session Limits
+  MAX_CONCURRENT_EXECUTIONS: {{ .Values.resourceLimits.maxConcurrentExecutions | quote }}
+  MAX_SESSIONS_PER_ENTITY: {{ .Values.resourceLimits.maxSessionsPerEntity | quote }}
 
   # State Persistence
   STATE_PERSISTENCE_ENABLED: {{ .Values.state.enabled | quote }}

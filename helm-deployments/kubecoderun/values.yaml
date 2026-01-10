@@ -231,6 +231,24 @@ execution:
     enabled: true
     denyEgress: true
 
+# Resource Limits Configuration
+resourceLimits:
+  # Execution limits
+  maxMemoryMb: 512
+  maxCpus: 4.0
+  maxPids: 512
+  maxOpenFiles: 1024
+
+  # File limits
+  maxFileSizeMb: 10
+  maxTotalFileSizeMb: 50
+  maxFilesPerSession: 50
+  maxOutputFiles: 10
+
+  # Session limits
+  maxConcurrentExecutions: 10
+  maxSessionsPerEntity: 100
+
 # State Persistence Configuration
 state:
   enabled: true
