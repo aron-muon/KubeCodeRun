@@ -330,6 +330,9 @@ def create_pod_manifest(
             # sets its own security context. Both run as non-root UID 1000.
             # The sidecar uses file capabilities (setcap) on nsenter for privileges.
             fs_group=run_as_user,
+            # Apply RuntimeDefault seccomp profile to block dangerous syscalls
+            # while preserving nsenter functionality for the sidecar
+            seccomp_profile=client.V1SeccompProfile(type="RuntimeDefault"),
         ),
         # Prevent scheduling on same node as other execution pods
         # (optional, can be configured via affinity)
