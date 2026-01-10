@@ -124,6 +124,17 @@ data:
   STATE_ARCHIVE_TTL_DAYS: {{ .Values.state.archive.ttlDays | quote }}
   STATE_ARCHIVE_CHECK_INTERVAL_SECONDS: {{ .Values.state.archive.checkIntervalSeconds | quote }}
 
+  # Metrics Configuration
+  DETAILED_METRICS_ENABLED: {{ .Values.metrics.detailed.enabled | quote }}
+  METRICS_BUFFER_SIZE: {{ .Values.metrics.detailed.bufferSize | quote }}
+  METRICS_ARCHIVE_ENABLED: {{ .Values.metrics.archive.enabled | quote }}
+  METRICS_ARCHIVE_RETENTION_DAYS: {{ .Values.metrics.archive.retentionDays | quote }}
+  SQLITE_METRICS_ENABLED: {{ .Values.metrics.sqlite.enabled | quote }}
+  SQLITE_METRICS_DB_PATH: {{ .Values.metrics.sqlite.dbPath | quote }}
+  METRICS_EXECUTION_RETENTION_DAYS: {{ .Values.metrics.sqlite.executionRetentionDays | quote }}
+  METRICS_DAILY_RETENTION_DAYS: {{ .Values.metrics.sqlite.dailyRetentionDays | quote }}
+  METRICS_AGGREGATION_INTERVAL_MINUTES: {{ .Values.metrics.sqlite.aggregationIntervalMinutes | quote }}
+
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}
   # When using secretsStore, these values come from AWS Secrets Manager

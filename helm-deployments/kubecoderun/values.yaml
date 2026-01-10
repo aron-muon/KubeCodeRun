@@ -289,6 +289,21 @@ state:
     ttlDays: 7
     checkIntervalSeconds: 300
 
+# Metrics Configuration
+metrics:
+  detailed:
+    enabled: true
+    bufferSize: 10000
+  archive:
+    enabled: true
+    retentionDays: 90
+  sqlite:
+    enabled: true
+    dbPath: "data/metrics.db"
+    executionRetentionDays: 90
+    dailyRetentionDays: 365
+    aggregationIntervalMinutes: 60
+
 # RBAC for execution pods
 rbac:
   create: true
