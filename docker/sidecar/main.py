@@ -10,6 +10,7 @@ Requires: shareProcessNamespace: true in the pod spec.
 
 import asyncio
 import os
+import shutil
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -64,6 +65,38 @@ class FileInfo(BaseModel):
     path: str
     size: int
     mime_type: Optional[str] = None
+
+
+def validate_path_within_working_dir(path: str) -> Path:
+    """Validate and resolve a path, ensuring it's within the working directory.
+
+    Uses Path.is_relative_to() for proper path containment validation,
+    which correctly handles prefix collision attacks (e.g., /mnt/data vs /mnt/data-evil).
+
+    Args:
+        path: The user-provided path to validate
+
+    Returns:
+        The resolved Path object if valid
+
+    Raises:
+        HTTPException: 403 if path escapes working directory
+        HTTPException: 400 if path is invalid
+    """
+    try:
+        file_path = (Path(WORKING_DIR) / path).resolve()
+        working_path = Path(WORKING_DIR).resolve()
+
+        # Use is_relative_to() for proper path containment check
+        # This correctly handles prefix collisions like /mnt/data vs /mnt/data-evil
+        if not file_path.is_relative_to(working_path):
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        return file_path
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid path")
 
 
 @asynccontextmanager
@@ -437,17 +470,8 @@ async def list_files():
 @app.get("/files/{path:path}")
 async def download_file(path: str):
     """Download a file from the working directory."""
-    # Resolve path relative to working dir
-    file_path = Path(WORKING_DIR) / path
-
-    # Security: ensure path is within working dir
-    try:
-        file_path = file_path.resolve()
-        working_path = Path(WORKING_DIR).resolve()
-        if not str(file_path).startswith(str(working_path)):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid path")
+    file_path = validate_path_within_working_dir(path)
+    working_path = Path(WORKING_DIR).resolve()
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
@@ -469,16 +493,12 @@ async def download_file(path: str):
 @app.delete("/files/{path:path}")
 async def delete_file(path: str):
     """Delete a file from the working directory."""
-    file_path = Path(WORKING_DIR) / path
+    file_path = validate_path_within_working_dir(path)
+    working_path = Path(WORKING_DIR).resolve()
 
-    # Security: ensure path is within working dir
-    try:
-        file_path = file_path.resolve()
-        working_path = Path(WORKING_DIR).resolve()
-        if not str(file_path).startswith(str(working_path)):
-            raise HTTPException(status_code=403, detail="Access denied")
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid path")
+    # Prevent deletion of the working directory itself
+    if file_path == working_path:
+        raise HTTPException(status_code=403, detail="Cannot delete working directory")
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
