@@ -106,6 +106,12 @@ class PodSpec:
     cpu_request: str = "100m"
     memory_request: str = "128Mi"
 
+    # Sidecar resource limits (CRITICAL: user code runs in sidecar's cgroup via nsenter)
+    sidecar_cpu_limit: str = "500m"
+    sidecar_memory_limit: str = "512Mi"
+    sidecar_cpu_request: str = "100m"
+    sidecar_memory_request: str = "256Mi"
+
     # Security context
     run_as_user: int = 1000
     run_as_group: int = 1000
@@ -128,6 +134,12 @@ class PoolConfig:
     # Resource limits (can override defaults)
     cpu_limit: str | None = None
     memory_limit: str | None = None
+
+    # Sidecar resource limits (CRITICAL: user code runs in sidecar's cgroup via nsenter)
+    sidecar_cpu_limit: str = "500m"
+    sidecar_memory_limit: str = "512Mi"
+    sidecar_cpu_request: str = "100m"
+    sidecar_memory_request: str = "256Mi"
 
     # Image pull policy (Always, IfNotPresent, Never)
     image_pull_policy: str = "Always"

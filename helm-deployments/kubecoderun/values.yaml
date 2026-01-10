@@ -160,11 +160,31 @@ execution:
     annotations: {}
 
   # Sidecar container configuration
+  # CRITICAL: User code runs in sidecar's cgroup via nsenter (Issue #32)
+  # These resource limits apply to user code execution, not the main container
   sidecar:
     repository: ghcr.io/aron-muon/kubecoderun-sidecar
     # tag defaults to Chart.AppVersion if not specified
     tag: ""
     port: 8080
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+
+  # Pod lifecycle configuration
+  podTtlMinutes: 5
+  podCleanupIntervalMinutes: 5
+
+  # Pool behavior configuration
+  pool:
+    warmupOnStartup: true
+    parallelBatch: 5
+    replenishInterval: 2
+    exhaustionTrigger: true
 
   # Per-language pool configuration
   # poolSize > 0: warm pods maintained

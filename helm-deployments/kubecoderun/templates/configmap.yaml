@@ -20,6 +20,10 @@ data:
   {{- $sidecarTag := .Values.execution.sidecar.tag | default .Chart.AppVersion }}
   K8S_SIDECAR_IMAGE: "{{ .Values.execution.sidecar.repository }}:{{ $sidecarTag }}"
   K8S_SIDECAR_PORT: {{ .Values.execution.sidecar.port | quote }}
+  K8S_SIDECAR_CPU_LIMIT: {{ .Values.execution.sidecar.resources.limits.cpu | quote }}
+  K8S_SIDECAR_MEMORY_LIMIT: {{ .Values.execution.sidecar.resources.limits.memory | quote }}
+  K8S_SIDECAR_CPU_REQUEST: {{ .Values.execution.sidecar.resources.requests.cpu | quote }}
+  K8S_SIDECAR_MEMORY_REQUEST: {{ .Values.execution.sidecar.resources.requests.memory | quote }}
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
   K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
@@ -31,8 +35,16 @@ data:
   K8S_JOB_TTL_SECONDS: {{ .Values.execution.jobs.ttlSecondsAfterFinished | quote }}
   K8S_JOB_DEADLINE_SECONDS: {{ .Values.execution.jobs.activeDeadlineSeconds | quote }}
 
+  # Pod Lifecycle
+  POD_TTL_MINUTES: {{ .Values.execution.podTtlMinutes | quote }}
+  POD_CLEANUP_INTERVAL_MINUTES: {{ .Values.execution.podCleanupIntervalMinutes | quote }}
+
   # Pool Configuration
   POD_POOL_ENABLED: "true"
+  POD_POOL_WARMUP_ON_STARTUP: {{ .Values.execution.pool.warmupOnStartup | quote }}
+  POD_POOL_PARALLEL_BATCH: {{ .Values.execution.pool.parallelBatch | quote }}
+  POD_POOL_REPLENISH_INTERVAL: {{ .Values.execution.pool.replenishInterval | quote }}
+  POD_POOL_EXHAUSTION_TRIGGER: {{ .Values.execution.pool.exhaustionTrigger | quote }}
   POD_POOL_PY: {{ .Values.execution.languages.python.poolSize | quote }}
   POD_POOL_JS: {{ .Values.execution.languages.javascript.poolSize | quote }}
   POD_POOL_TS: {{ .Values.execution.languages.typescript.poolSize | quote }}
