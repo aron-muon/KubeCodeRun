@@ -14,8 +14,8 @@ class ResourcesConfig(BaseSettings):
     )
 
     # Execution Limits
-    max_execution_time: int = Field(default=30, ge=1, le=300)
-    max_memory_mb: int = Field(default=512, ge=64, le=4096)
+    max_execution_time: int = Field(default=30, ge=1, le=600)
+    max_memory_mb: int = Field(default=512, ge=64, le=16384)
     max_cpus: float = Field(
         default=4.0,
         ge=0.5,
@@ -32,10 +32,10 @@ class ResourcesConfig(BaseSettings):
     max_open_files: int = Field(default=1024, ge=64, le=4096)
 
     # File Limits
-    max_file_size_mb: int = Field(default=10, ge=1, le=100)
-    max_total_file_size_mb: int = Field(default=50, ge=10, le=500)
-    max_files_per_session: int = Field(default=50, ge=1, le=200)
-    max_output_files: int = Field(default=10, ge=1, le=50)
+    max_file_size_mb: int = Field(default=10, ge=1, le=500)
+    max_total_file_size_mb: int = Field(default=50, ge=10, le=2000)
+    max_files_per_session: int = Field(default=50, ge=1, le=500)
+    max_output_files: int = Field(default=10, ge=1, le=100)
     max_filename_length: int = Field(default=255, ge=1, le=255)
 
     # Session Limits
