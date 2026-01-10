@@ -10,6 +10,7 @@ Requires: shareProcessNamespace: true in the pod spec.
 
 import asyncio
 import os
+import shlex
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -137,9 +138,11 @@ def get_language_command(language: str, code: str, working_dir: str) -> tuple[li
     """
     # Helper to wrap command with cd to working directory
     def wrap_cmd(cmd: str, env_setup: str = "") -> list[str]:
+        # Sanitize working_dir to prevent command injection
+        safe_working_dir = shlex.quote(working_dir)
         if env_setup:
-            return ["sh", "-c", f"{env_setup} cd {working_dir} && {cmd}"]
-        return ["sh", "-c", f"cd {working_dir} && {cmd}"]
+            return ["sh", "-c", f"{env_setup} cd {safe_working_dir} && {cmd}"]
+        return ["sh", "-c", f"cd {safe_working_dir} && {cmd}"]
 
     # Environment setup strings for each language runtime
     # These match the ENTRYPOINT environment in each language's Dockerfile
