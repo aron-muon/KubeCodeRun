@@ -514,7 +514,7 @@ class TestFileGeneration:
                 filename="output.txt",
                 size=100,
                 content_type="text/plain",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 path="/output.txt",
             )
         ]
@@ -577,7 +577,7 @@ class TestFileGeneration:
                 filename="file1.txt",
                 size=50,
                 content_type="text/plain",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 path="/file1.txt",
             ),
             FileInfo(
@@ -585,7 +585,7 @@ class TestFileGeneration:
                 filename="file2.csv",
                 size=100,
                 content_type="text/csv",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 path="/file2.csv",
             ),
         ]

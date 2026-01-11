@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class FileUploadRequest(BaseModel):
@@ -25,8 +25,9 @@ class FileUploadResponse(BaseModel):
     upload_url: str = Field(..., description="Pre-signed URL for file upload")
     expires_at: datetime = Field(..., description="URL expiration time")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("expires_at")
+    def serialize_expires_at(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class FileInfo(BaseModel):
@@ -39,8 +40,9 @@ class FileInfo(BaseModel):
     created_at: datetime
     path: str = Field(..., description="File path in the session")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("created_at")
+    def serialize_created_at(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class FileListResponse(BaseModel):
@@ -59,8 +61,9 @@ class FileDownloadResponse(BaseModel):
     download_url: str = Field(..., description="Pre-signed URL for file download")
     expires_at: datetime = Field(..., description="URL expiration time")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("expires_at")
+    def serialize_expires_at(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class FileDeleteResponse(BaseModel):

@@ -6,7 +6,7 @@ from enum import Enum
 from typing import List, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class ExecutionStatus(str, Enum):
@@ -39,6 +39,10 @@ class ExecutionOutput(BaseModel):
     size: int | None = Field(default=None, description="Size in bytes for file outputs")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        return value.isoformat()
+
 
 class CodeExecution(BaseModel):
     """Model for code execution request and response."""
@@ -63,8 +67,9 @@ class CodeExecution(BaseModel):
     execution_time_ms: int | None = Field(default=None)
     memory_peak_mb: float | None = Field(default=None)
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("created_at", "started_at", "completed_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class ExecuteCodeRequest(BaseModel):
@@ -84,6 +89,3 @@ class ExecuteCodeResponse(BaseModel):
     exit_code: int | None = None
     error_message: str | None = None
     execution_time_ms: int | None = None
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}

@@ -107,7 +107,7 @@ class TestSecurityIntegration:
             "content-type": "application/xml",  # Not allowed
         }
 
-        response = client.post("/sessions", data="<xml></xml>", headers=headers)
+        response = client.post("/sessions", content="<xml></xml>", headers=headers)
         assert response.status_code == 415  # Unsupported Media Type
 
     def test_multiple_auth_methods(self, client):

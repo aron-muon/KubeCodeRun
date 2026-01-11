@@ -141,6 +141,9 @@ async def test_delete_session(session_service, mock_redis):
     """Test deleting a session."""
     session_id = "test-session-id"
 
+    # Mock get_session to return None (session doesn't exist, skip cleanup)
+    mock_redis.hgetall.return_value = {}
+
     # The pipeline mock is already set up in the fixture
     pipeline_mock = mock_redis.pipeline.return_value
     pipeline_mock.execute.return_value = [1, 1]  # Both operations successful

@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class StateInfo(BaseModel):
@@ -20,8 +20,9 @@ class StateInfo(BaseModel):
     expires_at: datetime | None = Field(None, description="When state will expire")
     source: str | None = Field(None, description="Storage source: 'redis' or 'archive'")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat() if v else None}
+    @field_serializer("created_at", "expires_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class StateUploadResponse(BaseModel):

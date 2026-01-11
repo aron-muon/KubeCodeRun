@@ -1,7 +1,6 @@
 """Models for the /exec endpoint compatible with LibreChat API."""
 
 # Standard library imports
-from datetime import datetime
 from typing import Any, List, Optional
 
 # Third-party imports
@@ -62,6 +61,3 @@ class ExecResponse(BaseModel):
     )
     state_size: int | None = Field(default=None, description="Compressed state size in bytes")
     state_hash: str | None = Field(default=None, description="SHA256 hash for ETag/change detection")
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}

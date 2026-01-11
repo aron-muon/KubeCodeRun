@@ -4,7 +4,7 @@ import time
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ErrorType(str, Enum):
@@ -41,8 +41,7 @@ class ErrorResponse(BaseModel):
     request_id: str | None = Field(None, description="Request identifier for tracking")
     timestamp: float = Field(default_factory=time.time, description="Error timestamp")
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 # Custom Exception Classes

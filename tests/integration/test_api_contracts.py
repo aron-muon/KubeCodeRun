@@ -128,7 +128,7 @@ def mock_file_service():
         filename="test.txt",
         size=1024,
         content_type="text/plain",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
         path="/test.txt",
     )
     service.download_file.return_value = "https://minio.example.com/download-url"
@@ -317,7 +317,7 @@ class TestExecResponseFormat:
                 filename="output.txt",
                 size=100,
                 content_type="text/plain",
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(UTC),
                 path="/output.txt",
             )
         ]

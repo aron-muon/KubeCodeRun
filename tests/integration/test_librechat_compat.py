@@ -478,18 +478,21 @@ class TestLibreChatFileRetrieval:
         LibreChat downloads generated files using this endpoint.
         From crud.js: GET /download/{session_id}/{fileId}
         """
-        # Mock file service to return file content
-        self.mock_file_service.get_file.return_value = (
-            io.BytesIO(b"file content here"),
-            "output.txt",
-            "text/plain",
+        # Mock file service to return file info and content
+        self.mock_file_service.get_file_info.return_value = FileInfo(
+            file_id="file-abc",
+            filename="output.txt",
+            size=17,
+            content_type="text/plain",
+            created_at=datetime.now(UTC),
+            path="/output.txt",
         )
+        self.mock_file_service.get_file_content.return_value = b"file content here"
 
         response = client.get("/download/test-session-789/file-abc", headers=auth_headers)
 
-        # Should return file content or appropriate response
-        # Note: Actual status depends on whether file exists in mock
-        assert response.status_code in [200, 404]
+        # Should return file content
+        assert response.status_code == 200
 
 
 # =============================================================================

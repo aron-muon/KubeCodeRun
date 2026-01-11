@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class SessionStatus(str, Enum):
@@ -52,8 +52,9 @@ class Session(BaseModel):
     # Metadata
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional session metadata")
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("created_at", "last_activity", "expires_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class SessionCreate(BaseModel):
@@ -71,5 +72,6 @@ class SessionResponse(BaseModel):
     expires_at: datetime
     message: str | None = None
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("created_at", "expires_at")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat()

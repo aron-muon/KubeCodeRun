@@ -259,7 +259,12 @@ class TestGetFullStateInfo:
     @pytest.mark.asyncio
     async def test_get_full_state_info_returns_none_when_no_state(self, state_service, mock_redis_client):
         """Test that get_full_state_info returns None when no state."""
-        mock_pipe = AsyncMock()
+        mock_pipe = MagicMock()
+        # Pipeline methods are sync (they just queue commands)
+        mock_pipe.strlen = MagicMock()
+        mock_pipe.ttl = MagicMock()
+        mock_pipe.get = MagicMock()
+        # Only execute is async
         mock_pipe.execute = AsyncMock(return_value=[0, -1, None])
         mock_redis_client.pipeline.return_value = mock_pipe
 
