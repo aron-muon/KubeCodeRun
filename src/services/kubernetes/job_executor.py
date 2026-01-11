@@ -119,6 +119,10 @@ class JobExecutor:
             memory_request=spec.memory_request,
             run_as_user=spec.run_as_user,
             sidecar_port=spec.sidecar_port,
+            sidecar_cpu_limit=spec.sidecar_cpu_limit,
+            sidecar_memory_limit=spec.sidecar_memory_limit,
+            sidecar_cpu_request=spec.sidecar_cpu_request,
+            sidecar_memory_request=spec.sidecar_memory_request,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )

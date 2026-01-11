@@ -123,6 +123,10 @@ class Settings(BaseSettings):
         description="Sidecar container image for pod communication",
     )
     k8s_sidecar_port: int = Field(default=8080, ge=1, le=65535, description="Sidecar HTTP API port")
+    k8s_sidecar_cpu_limit: str = Field(default="500m", description="Sidecar CPU limit (user code inherits this)")
+    k8s_sidecar_memory_limit: str = Field(default="512Mi", description="Sidecar memory limit (user code inherits this)")
+    k8s_sidecar_cpu_request: str = Field(default="100m", description="Sidecar CPU request")
+    k8s_sidecar_memory_request: str = Field(default="256Mi", description="Sidecar memory request")
     k8s_cpu_limit: str = Field(default="1", description="CPU limit for execution pods")
     k8s_memory_limit: str = Field(default="512Mi", description="Memory limit for execution pods")
     k8s_cpu_request: str = Field(default="100m", description="CPU request for execution pods")
@@ -151,8 +155,8 @@ class Settings(BaseSettings):
     )
 
     # Resource Limits - Execution
-    max_execution_time: int = Field(default=30, ge=1, le=300)
-    max_memory_mb: int = Field(default=512, ge=64, le=4096)
+    max_execution_time: int = Field(default=30, ge=1, le=600)
+    max_memory_mb: int = Field(default=512, ge=64, le=16384)
     max_cpus: float = Field(
         default=4.0,
         ge=0.5,
@@ -169,10 +173,10 @@ class Settings(BaseSettings):
     max_open_files: int = Field(default=1024, ge=64, le=4096)
 
     # Resource Limits - Files
-    max_file_size_mb: int = Field(default=10, ge=1, le=100)
-    max_total_file_size_mb: int = Field(default=50, ge=10, le=500)
-    max_files_per_session: int = Field(default=50, ge=1, le=200)
-    max_output_files: int = Field(default=10, ge=1, le=50)
+    max_file_size_mb: int = Field(default=10, ge=1, le=500)
+    max_total_file_size_mb: int = Field(default=50, ge=10, le=2000)
+    max_files_per_session: int = Field(default=50, ge=1, le=500)
+    max_output_files: int = Field(default=10, ge=1, le=100)
     max_filename_length: int = Field(default=255, ge=1, le=255)
 
     # Resource Limits - Sessions
@@ -545,6 +549,10 @@ class Settings(BaseSettings):
             service_account=self.k8s_service_account,
             sidecar_image=self.k8s_sidecar_image,
             sidecar_port=self.k8s_sidecar_port,
+            sidecar_cpu_limit=self.k8s_sidecar_cpu_limit,
+            sidecar_memory_limit=self.k8s_sidecar_memory_limit,
+            sidecar_cpu_request=self.k8s_sidecar_cpu_request,
+            sidecar_memory_request=self.k8s_sidecar_memory_request,
             cpu_limit=self.k8s_cpu_limit,
             memory_limit=self.k8s_memory_limit,
             cpu_request=self.k8s_cpu_request,
@@ -609,6 +617,10 @@ class Settings(BaseSettings):
                     sidecar_image=self.k8s_sidecar_image,
                     cpu_limit=self.k8s_cpu_limit,
                     memory_limit=self.k8s_memory_limit,
+                    sidecar_cpu_limit=self.k8s_sidecar_cpu_limit,
+                    sidecar_memory_limit=self.k8s_sidecar_memory_limit,
+                    sidecar_cpu_request=self.k8s_sidecar_cpu_request,
+                    sidecar_memory_request=self.k8s_sidecar_memory_request,
                     image_pull_policy=self.k8s_image_pull_policy,
                 )
             )
