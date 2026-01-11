@@ -31,21 +31,21 @@ help:
 install:
     uv sync
 
-# Run all tests
+# Run all tests (parallel execution)
 test:
-    uv run pytest tests/ -v
+    uv run pytest tests/ -v -n auto
 
-# Run unit tests only
+# Run unit tests only (parallel execution)
 test-unit:
-    uv run pytest tests/unit/ -v
+    uv run pytest tests/unit/ -v -n auto
 
-# Run integration tests only
+# Run integration tests only (parallel execution)
 test-integration:
-    uv run pytest tests/integration/ -v
+    uv run pytest tests/integration/ -v -n auto
 
-# Run tests with coverage
+# Run tests with coverage (sequential for accurate coverage)
 test-cov:
-    uv run pytest --cov=src --cov-report=html --cov-report=term tests/
+    uv run pytest --cov=src --cov-report=html --cov-report=term tests/ -n auto
     @echo "Coverage report generated in htmlcov/"
 
 # Run a single test file (usage: just test-file tests/unit/test_session_service.py)

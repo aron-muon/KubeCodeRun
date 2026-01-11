@@ -31,15 +31,10 @@ from src.services.file import FileService
 from src.services.session import SessionService
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Note: event_loop fixture removed - asyncio_mode="auto" handles this
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_redis():
     """Mock Redis client for testing."""
     mock_client = AsyncMock(spec=redis.Redis)
@@ -63,7 +58,7 @@ def mock_redis():
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_minio():
     """Mock MinIO client for testing."""
     mock_client = MagicMock(spec=Minio)
@@ -81,7 +76,7 @@ def mock_minio():
     return mock_client
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def mock_docker():
     """Mock Docker client for testing."""
     mock_client = MagicMock(spec=DockerClient)
