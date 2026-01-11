@@ -17,7 +17,7 @@ data:
   ENABLE_DOCS: {{ .Values.api.enableDocs | quote }}
   ENABLE_CORS: {{ .Values.api.cors.enabled | quote }}
   {{- if .Values.api.cors.origins }}
-  CORS_ORIGINS: {{ .Values.api.cors.origins | join "," | quote }}
+  CORS_ORIGINS: {{ .Values.api.cors.origins | toJson | quote }}
   {{- end }}
   HEALTH_CHECK_INTERVAL: {{ .Values.api.healthCheck.interval | quote }}
   HEALTH_CHECK_TIMEOUT: {{ .Values.api.healthCheck.timeout | quote }}
@@ -151,16 +151,16 @@ data:
   POD_MASK_HOST_INFO: {{ .Values.security.maskHostInfo | quote }}
   POD_GENERIC_HOSTNAME: {{ .Values.security.genericHostname | quote }}
   {{- if .Values.security.allowedFileExtensions }}
-  ALLOWED_FILE_EXTENSIONS: {{ .Values.security.allowedFileExtensions | join "," | quote }}
+  ALLOWED_FILE_EXTENSIONS: {{ .Values.security.allowedFileExtensions | toJson | quote }}
   {{- end }}
   {{- if .Values.security.blockedFilePatterns }}
-  BLOCKED_FILE_PATTERNS: {{ .Values.security.blockedFilePatterns | join "," | quote }}
+  BLOCKED_FILE_PATTERNS: {{ .Values.security.blockedFilePatterns | toJson | quote }}
   {{- end }}
 
   # Network Configuration
   ENABLE_WAN_ACCESS: {{ .Values.network.wan.enabled | quote }}
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
-  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | join "," | quote }}
+  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | toJson | quote }}
 
   # Redis Advanced Configuration
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
