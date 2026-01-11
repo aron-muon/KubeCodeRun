@@ -12,6 +12,15 @@ data:
   API_DEBUG: {{ .Values.api.debug | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
   LOG_FORMAT: {{ .Values.api.logFormat | quote }}
+  ENABLE_ACCESS_LOGS: {{ .Values.api.enableAccessLogs | quote }}
+  ENABLE_SECURITY_LOGS: {{ .Values.api.enableSecurityLogs | quote }}
+  ENABLE_DOCS: {{ .Values.api.enableDocs | quote }}
+  ENABLE_CORS: {{ .Values.api.cors.enabled | quote }}
+  {{- if .Values.api.cors.origins }}
+  CORS_ORIGINS: {{ .Values.api.cors.origins | join "," | quote }}
+  {{- end }}
+  HEALTH_CHECK_INTERVAL: {{ .Values.api.healthCheck.interval | quote }}
+  HEALTH_CHECK_TIMEOUT: {{ .Values.api.healthCheck.timeout | quote }}
 
   # Kubernetes Configuration
   K8S_NAMESPACE: {{ include "kubecoderun.executionNamespace" . | quote }}
@@ -20,6 +29,10 @@ data:
   {{- $sidecarTag := .Values.execution.sidecar.tag | default .Chart.AppVersion }}
   K8S_SIDECAR_IMAGE: "{{ .Values.execution.sidecar.repository }}:{{ $sidecarTag }}"
   K8S_SIDECAR_PORT: {{ .Values.execution.sidecar.port | quote }}
+  K8S_SIDECAR_CPU_LIMIT: {{ .Values.execution.sidecar.resources.limits.cpu | quote }}
+  K8S_SIDECAR_MEMORY_LIMIT: {{ .Values.execution.sidecar.resources.limits.memory | quote }}
+  K8S_SIDECAR_CPU_REQUEST: {{ .Values.execution.sidecar.resources.requests.cpu | quote }}
+  K8S_SIDECAR_MEMORY_REQUEST: {{ .Values.execution.sidecar.resources.requests.memory | quote }}
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
   K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
@@ -31,8 +44,16 @@ data:
   K8S_JOB_TTL_SECONDS: {{ .Values.execution.jobs.ttlSecondsAfterFinished | quote }}
   K8S_JOB_DEADLINE_SECONDS: {{ .Values.execution.jobs.activeDeadlineSeconds | quote }}
 
+  # Pod Lifecycle
+  POD_TTL_MINUTES: {{ .Values.execution.podTtlMinutes | quote }}
+  POD_CLEANUP_INTERVAL_MINUTES: {{ .Values.execution.podCleanupIntervalMinutes | quote }}
+
   # Pool Configuration
   POD_POOL_ENABLED: "true"
+  POD_POOL_WARMUP_ON_STARTUP: {{ .Values.execution.pool.warmupOnStartup | quote }}
+  POD_POOL_PARALLEL_BATCH: {{ .Values.execution.pool.parallelBatch | quote }}
+  POD_POOL_REPLENISH_INTERVAL: {{ .Values.execution.pool.replenishInterval | quote }}
+  POD_POOL_EXHAUSTION_TRIGGER: {{ .Values.execution.pool.exhaustionTrigger | quote }}
   POD_POOL_PY: {{ .Values.execution.languages.python.poolSize | quote }}
   POD_POOL_JS: {{ .Values.execution.languages.javascript.poolSize | quote }}
   POD_POOL_TS: {{ .Values.execution.languages.typescript.poolSize | quote }}
@@ -80,11 +101,71 @@ data:
 
   # Execution Limits
   MAX_EXECUTION_TIME: {{ .Values.execution.maxExecutionTime | quote }}
+  MAX_MEMORY_MB: {{ .Values.resourceLimits.maxMemoryMb | quote }}
+  MAX_CPUS: {{ .Values.resourceLimits.maxCpus | quote }}
+  MAX_PIDS: {{ .Values.resourceLimits.maxPids | quote }}
+  MAX_OPEN_FILES: {{ .Values.resourceLimits.maxOpenFiles | quote }}
+
+  # File Limits
+  MAX_FILE_SIZE_MB: {{ .Values.resourceLimits.maxFileSizeMb | quote }}
+  MAX_TOTAL_FILE_SIZE_MB: {{ .Values.resourceLimits.maxTotalFileSizeMb | quote }}
+  MAX_FILES_PER_SESSION: {{ .Values.resourceLimits.maxFilesPerSession | quote }}
+  MAX_OUTPUT_FILES: {{ .Values.resourceLimits.maxOutputFiles | quote }}
+
+  # Session Limits
+  MAX_CONCURRENT_EXECUTIONS: {{ .Values.resourceLimits.maxConcurrentExecutions | quote }}
+  MAX_SESSIONS_PER_ENTITY: {{ .Values.resourceLimits.maxSessionsPerEntity | quote }}
+
+  # Session Lifecycle
+  SESSION_TTL_HOURS: {{ .Values.sessions.ttlHours | quote }}
+  SESSION_CLEANUP_INTERVAL_MINUTES: {{ .Values.sessions.cleanupIntervalMinutes | quote }}
+  ENABLE_ORPHAN_MINIO_CLEANUP: {{ .Values.sessions.enableOrphanMinioCleanup | quote }}
 
   # State Persistence
   STATE_PERSISTENCE_ENABLED: {{ .Values.state.enabled | quote }}
   STATE_TTL_SECONDS: {{ .Values.state.ttlSeconds | quote }}
   STATE_MAX_SIZE_MB: {{ .Values.state.maxSizeMb | quote }}
+  STATE_CAPTURE_ON_ERROR: {{ .Values.state.captureOnError | quote }}
+
+  # State Archival (Redis -> MinIO)
+  STATE_ARCHIVE_ENABLED: {{ .Values.state.archive.enabled | quote }}
+  STATE_ARCHIVE_AFTER_SECONDS: {{ .Values.state.archive.afterSeconds | quote }}
+  STATE_ARCHIVE_TTL_DAYS: {{ .Values.state.archive.ttlDays | quote }}
+  STATE_ARCHIVE_CHECK_INTERVAL_SECONDS: {{ .Values.state.archive.checkIntervalSeconds | quote }}
+
+  # Metrics Configuration
+  DETAILED_METRICS_ENABLED: {{ .Values.metrics.detailed.enabled | quote }}
+  METRICS_BUFFER_SIZE: {{ .Values.metrics.detailed.bufferSize | quote }}
+  METRICS_ARCHIVE_ENABLED: {{ .Values.metrics.archive.enabled | quote }}
+  METRICS_ARCHIVE_RETENTION_DAYS: {{ .Values.metrics.archive.retentionDays | quote }}
+  SQLITE_METRICS_ENABLED: {{ .Values.metrics.sqlite.enabled | quote }}
+  SQLITE_METRICS_DB_PATH: {{ .Values.metrics.sqlite.dbPath | quote }}
+  METRICS_EXECUTION_RETENTION_DAYS: {{ .Values.metrics.sqlite.executionRetentionDays | quote }}
+  METRICS_DAILY_RETENTION_DAYS: {{ .Values.metrics.sqlite.dailyRetentionDays | quote }}
+  METRICS_AGGREGATION_INTERVAL_MINUTES: {{ .Values.metrics.sqlite.aggregationIntervalMinutes | quote }}
+
+  # Security Configuration
+  RATE_LIMIT_ENABLED: {{ .Values.security.rateLimitEnabled | quote }}
+  ENABLE_NETWORK_ISOLATION: {{ .Values.security.networkIsolation | quote }}
+  ENABLE_FILESYSTEM_ISOLATION: {{ .Values.security.filesystemIsolation | quote }}
+  POD_MASK_HOST_INFO: {{ .Values.security.maskHostInfo | quote }}
+  POD_GENERIC_HOSTNAME: {{ .Values.security.genericHostname | quote }}
+  {{- if .Values.security.allowedFileExtensions }}
+  ALLOWED_FILE_EXTENSIONS: {{ .Values.security.allowedFileExtensions | join "," | quote }}
+  {{- end }}
+  {{- if .Values.security.blockedFilePatterns }}
+  BLOCKED_FILE_PATTERNS: {{ .Values.security.blockedFilePatterns | join "," | quote }}
+  {{- end }}
+
+  # Network Configuration
+  ENABLE_WAN_ACCESS: {{ .Values.network.wan.enabled | quote }}
+  WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
+  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | join "," | quote }}
+
+  # Redis Advanced Configuration
+  REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
+  REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
+  REDIS_SOCKET_CONNECT_TIMEOUT: {{ .Values.redis.socketConnectTimeout | quote }}
 
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}

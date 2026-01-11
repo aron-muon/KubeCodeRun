@@ -181,6 +181,10 @@ class PodPool:
             cpu_limit=self.config.cpu_limit or "1",
             memory_limit=self.config.memory_limit or "512Mi",
             image_pull_policy=self.config.image_pull_policy,
+            sidecar_cpu_limit=self.config.sidecar_cpu_limit,
+            sidecar_memory_limit=self.config.sidecar_memory_limit,
+            sidecar_cpu_request=self.config.sidecar_cpu_request,
+            sidecar_memory_request=self.config.sidecar_memory_request,
         )
 
         try:

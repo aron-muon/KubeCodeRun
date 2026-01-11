@@ -187,6 +187,10 @@ def create_pod_manifest(
     run_as_user: int = 1000,
     sidecar_port: int = 8080,
     image_pull_policy: str = "Always",
+    sidecar_cpu_limit: str = "500m",
+    sidecar_memory_limit: str = "512Mi",
+    sidecar_cpu_request: str = "100m",
+    sidecar_memory_request: str = "256Mi",
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
@@ -291,10 +295,10 @@ def create_pod_manifest(
         volume_mounts=[shared_mount],
         security_context=sidecar_security_context,
         resources=client.V1ResourceRequirements(
-            # Memory increased to handle memory-heavy executions like TypeScript compilation
-            # The spawned nsenter process runs in the sidecar's cgroup, not the main container's
-            limits={"cpu": "500m", "memory": "512Mi"},
-            requests={"cpu": "100m", "memory": "256Mi"},
+            # CRITICAL: User code runs in the sidecar's cgroup via nsenter (Issue #32)
+            # These limits apply to user code execution, not just the sidecar process
+            limits={"cpu": sidecar_cpu_limit, "memory": sidecar_memory_limit},
+            requests={"cpu": sidecar_cpu_request, "memory": sidecar_memory_request},
         ),
         env=[
             client.V1EnvVar(name="LANGUAGE", value=language),

@@ -27,11 +27,11 @@ class KubernetesConfig:
     cpu_request: str = "100m"
     memory_request: str = "128Mi"
 
-    # Sidecar resource limits (smaller than main container)
-    sidecar_cpu_limit: str = "200m"
-    sidecar_memory_limit: str = "128Mi"
-    sidecar_cpu_request: str = "50m"
-    sidecar_memory_request: str = "64Mi"
+    # Sidecar resource limits (CRITICAL: user code inherits these via nsenter)
+    sidecar_cpu_limit: str = "500m"
+    sidecar_memory_limit: str = "512Mi"
+    sidecar_cpu_request: str = "100m"
+    sidecar_memory_request: str = "256Mi"
 
     # Security context
     run_as_user: int = 1000
