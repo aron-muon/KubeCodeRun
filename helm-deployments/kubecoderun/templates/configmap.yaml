@@ -17,7 +17,7 @@ data:
   ENABLE_DOCS: {{ .Values.api.enableDocs | quote }}
   ENABLE_CORS: {{ .Values.api.cors.enabled | quote }}
   {{- if .Values.api.cors.origins }}
-  CORS_ORIGINS: {{ .Values.api.cors.origins | join "," | quote }}
+  CORS_ORIGINS: {{ .Values.api.cors.origins | toJson | quote }}
   {{- end }}
   HEALTH_CHECK_INTERVAL: {{ .Values.api.healthCheck.interval | quote }}
   HEALTH_CHECK_TIMEOUT: {{ .Values.api.healthCheck.timeout | quote }}
