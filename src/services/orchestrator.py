@@ -299,24 +299,41 @@ class ExecutionOrchestrator:
         mounted_ids = set()
 
         for file_ref in ctx.request.files:
-            # Get file info
+            # Get file info - try by ID first
             file_info = await self.file_service.get_file_info(file_ref.session_id, file_ref.id)
 
-            # Fallback: lookup by name
-            if not file_info and file_ref.name:
+            # Fallback: lookup by name or ID match
+            if not file_info:
                 session_files = await self.file_service.list_files(file_ref.session_id)
                 for f in session_files:
-                    if f.filename == file_ref.name:
+                    if f.filename == file_ref.name or f.filename == file_ref.id or f.file_id == file_ref.id:
                         file_info = f
                         break
 
             if not file_info:
-                logger.warning("File not found", file_id=file_ref.id, name=file_ref.name)
+                logger.warning(
+                    "File not found",
+                    session_id=file_ref.session_id,
+                    file_id=file_ref.id,
+                    name=file_ref.name,
+                )
                 continue
 
             # Skip duplicates
             key = (file_ref.session_id, file_info.file_id)
             if key in mounted_ids:
+                continue
+
+            # Fetch actual file content from MinIO storage
+            content = await self.file_service.get_file_content(file_ref.session_id, file_info.file_id)
+
+            if content is None:
+                logger.warning(
+                    "Failed to fetch file content from storage",
+                    session_id=file_ref.session_id,
+                    file_id=file_info.file_id,
+                    filename=file_info.filename,
+                )
                 continue
 
             mounted.append(
@@ -326,9 +343,18 @@ class ExecutionOrchestrator:
                     "path": file_info.path,
                     "size": file_info.size,
                     "session_id": file_ref.session_id,
+                    "content": content,
                 }
             )
             mounted_ids.add(key)
+
+            logger.debug(
+                "Mounted file for execution",
+                session_id=file_ref.session_id,
+                file_id=file_info.file_id,
+                filename=file_info.filename,
+                size=len(content),
+            )
 
         return mounted
 
