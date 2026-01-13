@@ -30,6 +30,16 @@ def mock_file_service():
 
 
 @pytest.fixture
+def mock_session_service():
+    """Create a mock session service."""
+    service = MagicMock()
+    mock_session = MagicMock()
+    mock_session.session_id = "session-123"
+    service.create_session = AsyncMock(return_value=mock_session)
+    return service
+
+
+@pytest.fixture
 def mock_upload_file():
     """Create a mock UploadFile."""
     file = MagicMock(spec=UploadFile)
@@ -106,36 +116,38 @@ class TestUploadFile:
     """Tests for upload_file endpoint."""
 
     @pytest.mark.asyncio
-    async def test_upload_single_file(self, mock_file_service, mock_upload_file):
+    async def test_upload_single_file(self, mock_file_service, mock_session_service, mock_upload_file):
         """Test uploading a single file."""
-        with patch("src.api.files.generate_session_id", return_value="session-123"):
-            result = await upload_file(
-                file=mock_upload_file,
-                files=None,
-                entity_id="entity-123",
-                file_service=mock_file_service,
-            )
+        result = await upload_file(
+            file=mock_upload_file,
+            files=None,
+            entity_id="entity-123",
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
 
         assert result["message"] == "success"
         assert result["session_id"] == "session-123"
         assert len(result["files"]) == 1
         mock_file_service.store_uploaded_file.assert_called_once()
+        mock_session_service.create_session.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_upload_multiple_files(self, mock_file_service, mock_upload_file):
+    async def test_upload_multiple_files(self, mock_file_service, mock_session_service, mock_upload_file):
         """Test uploading multiple files."""
         files = [mock_upload_file, mock_upload_file]
 
-        with patch("src.api.files.generate_session_id", return_value="session-123"):
-            result = await upload_file(
-                file=None,
-                files=files,
-                entity_id="entity-123",
-                file_service=mock_file_service,
-            )
+        result = await upload_file(
+            file=None,
+            files=files,
+            entity_id="entity-123",
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
 
         assert result["message"] == "success"
         assert len(result["files"]) == 2
+        mock_session_service.create_session.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_upload_no_files(self, mock_file_service):
@@ -188,7 +200,7 @@ class TestUploadFile:
             assert exc_info.value.status_code == 413
 
     @pytest.mark.asyncio
-    async def test_upload_file_service_error(self, mock_file_service, mock_upload_file):
+    async def test_upload_file_service_error(self, mock_file_service, mock_session_service, mock_upload_file):
         """Test upload file service error raises 500."""
         mock_file_service.store_uploaded_file.side_effect = Exception("Storage error")
 
@@ -196,14 +208,14 @@ class TestUploadFile:
             mock_settings.max_file_size_mb = 100
             mock_settings.max_files_per_session = 10
 
-            with patch("src.api.files.generate_session_id", return_value="session-123"):
-                with pytest.raises(HTTPException) as exc_info:
-                    await upload_file(
-                        file=mock_upload_file,
-                        files=None,
-                        entity_id="entity-123",
-                        file_service=mock_file_service,
-                    )
+            with pytest.raises(HTTPException) as exc_info:
+                await upload_file(
+                    file=mock_upload_file,
+                    files=None,
+                    entity_id="entity-123",
+                    file_service=mock_file_service,
+                    session_service=mock_session_service,
+                )
 
                 assert exc_info.value.status_code == 500
 

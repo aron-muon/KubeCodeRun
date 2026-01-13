@@ -35,6 +35,7 @@ def mock_file_service():
     service.get_file_info = AsyncMock(return_value=None)
     service.list_files = AsyncMock(return_value=[])
     service.upload_file = AsyncMock()
+    service.get_file_content = AsyncMock(return_value=b"test content")
     return service
 
 
@@ -495,6 +496,8 @@ class TestMountFilesExtended:
         assert len(result) == 1
         assert result[0]["file_id"] == "file-123"
         assert result[0]["filename"] == "test.txt"
+        assert result[0]["content"] == b"test content"
+        mock_file_service.get_file_content.assert_called_once_with("session-123", "file-123")
 
     @pytest.mark.asyncio
     async def test_mount_files_file_not_found(self, orchestrator, mock_file_service):
@@ -539,6 +542,7 @@ class TestMountFilesExtended:
 
         assert len(result) == 1
         assert result[0]["file_id"] == "file-456"
+        assert result[0]["content"] == b"test content"
 
     @pytest.mark.asyncio
     async def test_mount_files_skip_duplicates(self, orchestrator, mock_file_service):
