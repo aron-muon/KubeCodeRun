@@ -31,6 +31,8 @@ MAX_EXECUTION_TIME = int(os.getenv("MAX_EXECUTION_TIME", "120"))
 MAX_OUTPUT_SIZE = int(os.getenv("MAX_OUTPUT_SIZE", "1048576"))  # 1MB
 # Process name to identify main container (set via env, defaults based on language)
 MAIN_PROCESS_NAME = os.getenv("MAIN_PROCESS_NAME", "")
+# Version from build arg (set via Dockerfile ARG -> ENV)
+VERSION = os.getenv("VERSION", "0.0.0-dev")
 
 
 class ExecuteRequest(BaseModel):
@@ -112,7 +114,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="KubeCodeRun Sidecar",
     description="HTTP API for code execution in Kubernetes pods",
-    version="1.0.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 

@@ -79,6 +79,10 @@ EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
+# Version passed as build arg
+ARG VERSION=0.0.0-dev
+ENV VERSION=${VERSION}
+
 # Run as non-root user - file capabilities on nsenter allow this user
 # to use nsenter with the required privileges
 USER appuser

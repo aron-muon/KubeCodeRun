@@ -139,6 +139,7 @@ jobs:
       context: docker/sidecar
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   python:
     needs: changes

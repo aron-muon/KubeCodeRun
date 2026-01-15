@@ -320,12 +320,27 @@ class TestLibreChatFileUpload:
     @pytest.fixture(autouse=True)
     def setup_mocks(self):
         """Set up mocks."""
+        from datetime import datetime
+
+        from src.dependencies.services import get_file_service, get_session_service
+        from src.models.session import Session, SessionStatus
+
         mock_file_service = AsyncMock()
         mock_file_service.store_uploaded_file.return_value = "lc-file-123"
 
-        from src.dependencies.services import get_file_service
+        mock_session_service = AsyncMock()
+        mock_session = Session(
+            session_id="test-session-lc-123",
+            status=SessionStatus.ACTIVE,
+            created_at=datetime.now(UTC),
+            last_activity=datetime.now(UTC),
+            expires_at=datetime.now(UTC),
+            metadata={},
+        )
+        mock_session_service.create_session.return_value = mock_session
 
         app.dependency_overrides[get_file_service] = lambda: mock_file_service
+        app.dependency_overrides[get_session_service] = lambda: mock_session_service
 
         yield
 

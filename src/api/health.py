@@ -1,9 +1,12 @@
 """Health check and monitoring endpoints."""
 
+from datetime import UTC
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
+from .._version import __version__
 from ..config import settings
 from ..dependencies.auth import verify_api_key
 from ..services.health import HealthStatus, health_service
@@ -16,10 +19,12 @@ router = APIRouter()
 @router.get("/health", summary="Basic health check")
 async def basic_health_check():
     """Basic health check endpoint that doesn't require authentication."""
+    from datetime import datetime, timezone
+
     return {
         "status": "healthy",
-        "version": "1.0.0",
-        "timestamp": "2025-01-18T00:00:00Z",
+        "version": __version__,
+        "timestamp": datetime.now(UTC).isoformat(),
         "service": "kubecoderun-api",
     }
 

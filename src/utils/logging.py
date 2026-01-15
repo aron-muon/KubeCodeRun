@@ -11,6 +11,7 @@ from typing import Any, Dict
 import structlog
 
 # Local application imports
+from .._version import __version__
 from ..config import settings
 
 
@@ -109,7 +110,7 @@ def configure_third_party_loggers() -> None:
 def add_service_context(logger, method_name, event_dict):
     """Add service context information to log entries."""
     event_dict["service"] = "kubecoderun-api"
-    event_dict["version"] = "1.0.0"
+    event_dict["version"] = __version__
     return event_dict
 
 

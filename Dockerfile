@@ -12,7 +12,7 @@ ENV UV_PYTHON_DOWNLOADS=0
 
 # Set build arguments
 ARG BUILD_DATE
-ARG VERSION=0.0.0.dev0
+ARG VERSION=0.0.0-dev
 ARG VCS_REF
 
 # Version for hatch-vcs
@@ -40,7 +40,7 @@ FROM python:3.13-slim-trixie AS production
 
 # Add metadata
 ARG BUILD_DATE
-ARG VERSION=0.0.0.dev0
+ARG VERSION=0.0.0-dev
 ARG VCS_REF
 
 LABEL maintainer="KubeCodeRun Contributors" \

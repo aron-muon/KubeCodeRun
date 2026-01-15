@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 # Local application imports
+from ._version import __version__
 from .api import admin, dashboard_metrics, exec, files, health, state
 from .config import settings
 from .middleware.metrics import MetricsMiddleware
@@ -41,7 +42,7 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Code Interpreter API", version="1.0.0")
+    logger.info("Starting Code Interpreter API", version=__version__)
 
     # Setup graceful shutdown callbacks (uvicorn handles signals)
     setup_graceful_shutdown()
@@ -247,7 +248,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Code Interpreter API",
     description="A secure API for executing code in isolated Kubernetes pods",
-    version="1.0.0",
+    version=__version__,
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     debug=settings.api_debug,
@@ -285,7 +286,7 @@ async def health_check():
     """Health check endpoint for liveness probe."""
     return {
         "status": "healthy",
-        "version": "1.0.0",
+        "version": __version__,
         "config": {
             "debug": settings.api_debug,
             "docs_enabled": settings.enable_docs,

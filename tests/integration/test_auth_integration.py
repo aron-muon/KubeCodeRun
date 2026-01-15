@@ -185,30 +185,29 @@ class TestAPIKeyAuthentication:
 
         assert response.status_code == 401
 
-    @patch("src.services.auth.settings")
-    def test_file_upload_flow_with_auth(self, mock_settings, client, mock_services):
+    def test_file_upload_flow_with_auth(self, client, mock_services):
         """Test file upload flow with authentication."""
-        mock_settings.api_key = "test-api-key-for-testing-12345"
+        import io
+        from datetime import datetime, timezone
+
+        from src.models.files import FileInfo
+        from src.models.session import Session, SessionStatus
+
         headers = {"x-api-key": "test-api-key-for-testing-12345"}
 
         # Mock file upload
         mock_services["file"].store_uploaded_file.return_value = "file-123"
-        # Mock get_file_info needed for upload response
-        from datetime import datetime, timezone
 
-        from src.models.files import FileInfo
-
-        mock_services["file"].get_file_info.return_value = FileInfo(
-            file_id="file-123",
-            filename="test.txt",
-            path="/tmp/test.txt",
-            size=12,
+        # Mock session creation (needed by upload endpoint)
+        mock_session = Session(
+            session_id="test-session-upload",
+            status=SessionStatus.ACTIVE,
             created_at=datetime.now(UTC),
-            modified_at=datetime.now(UTC),
-            content_type="text/plain",
+            last_activity=datetime.now(UTC),
+            expires_at=datetime.now(UTC),
+            metadata={},
         )
-
-        import io
+        mock_services["session"].create_session.return_value = mock_session
 
         files = {"files": ("test.txt", io.BytesIO(b"test content"), "text/plain")}
 
