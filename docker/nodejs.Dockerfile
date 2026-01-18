@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Node.js execution environment with BuildKit optimizations.
 FROM node:25-alpine
 

@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # R execution environment with BuildKit optimizations.
 FROM r-base:4.3.0
 

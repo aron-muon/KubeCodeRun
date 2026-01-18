@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Fortran execution environment
 FROM debian:trixie-slim
 

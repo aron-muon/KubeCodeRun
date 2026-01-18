@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # PHP execution environment with BuildKit optimizations.
 FROM php:8.2-cli
 

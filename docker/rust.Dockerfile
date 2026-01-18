@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Rust execution environment with BuildKit optimizations
 FROM rust:1.92.0-slim-trixie
 

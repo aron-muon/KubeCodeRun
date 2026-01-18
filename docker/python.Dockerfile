@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Python execution environment with BuildKit optimizations.
 FROM python:3.13-slim
 
