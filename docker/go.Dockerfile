@@ -27,7 +27,7 @@ COPY requirements/go.mod /tmp/gosetup/go.mod
 RUN --mount=type=cache,target=/go/pkg/mod \
     cd /tmp/gosetup && \
     go mod download && \
-    cd / && rm -rf /tmp/gosetup
+    rm -rf /tmp/gosetup
 
 # Create non-root user with UID/GID 1001
 RUN addgroup -g 1001 codeuser && \
@@ -39,11 +39,13 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV GO111MODULE=on \
-    GOPROXY=https://proxy.golang.org,direct \
-    GOSUMDB=sum.golang.org
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","GO111MODULE=on","GOPROXY=https://proxy.golang.org,direct","GOSUMDB=sum.golang.org","GOCACHE=/mnt/data/go-build"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "GO111MODULE=on", \
+    "GOPROXY=https://proxy.golang.org,direct", \
+    "GOSUMDB=sum.golang.org", \
+    "GOCACHE=/mnt/data/go-build"]
 CMD ["go"]

@@ -29,6 +29,8 @@ RUN apt-get update && \
     libcairo2-dev \
     libxt-dev \
     libx11-dev \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Install all R packages using Posit Package Manager
@@ -42,7 +44,6 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
         'MASS', 'survival', 'lubridate', 'stringr', 'glue' \
     ))"
 
-# Create non-root user
 ################################
 # Final stage - minimal runtime image
 ################################
@@ -86,18 +87,18 @@ COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
 
 # Create non-root user with UID/GID 1001
 RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
-# Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV R_LIBS_USER=/usr/local/lib/R/site-library
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","R_LIBS_USER=/usr/local/lib/R/site-library"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "R_LIBS_USER=/usr/local/lib/R/site-library"]
 CMD ["R", "--version"]

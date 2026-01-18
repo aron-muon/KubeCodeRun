@@ -19,8 +19,7 @@ RUN apk add --no-cache \
 # Copy package list
 COPY requirements/nodejs.txt /tmp/nodejs.txt
 
-# Install packages with cache mount
-# Read packages from file and install globally
+# Install packages globally with cache mount
 # hadolint ignore=SC2086
 RUN --mount=type=cache,target=/root/.npm \
     packages="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' /tmp/nodejs.txt)" && \
@@ -58,10 +57,11 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV NODE_ENV=sandbox \
-    NODE_PATH=/usr/local/lib/node_modules
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","NODE_PATH=/usr/local/lib/node_modules"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "NODE_ENV=sandbox", \
+    "NODE_PATH=/usr/local/lib/node_modules"]
 CMD ["node"]

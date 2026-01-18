@@ -11,6 +11,10 @@ LABEL org.opencontainers.image.title="KubeCodeRun Fortran Environment" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install Fortran compiler and scientific libraries
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -21,6 +25,7 @@ RUN apt-get update && \
     liblapack-dev \
     libnetcdf-dev \
     libhdf5-dev \
+    && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,13 +39,14 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV FORTRAN_COMPILER=gfortran \
-    FC=gfortran \
-    F77=gfortran \
-    F90=gfortran \
-    F95=gfortran
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","FORTRAN_COMPILER=gfortran","FC=gfortran","F77=gfortran","F90=gfortran","F95=gfortran"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "FORTRAN_COMPILER=gfortran", \
+    "FC=gfortran", \
+    "F77=gfortran", \
+    "F90=gfortran", \
+    "F95=gfortran"]
 CMD ["gfortran", "--version"]

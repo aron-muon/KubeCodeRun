@@ -12,8 +12,14 @@ LABEL org.opencontainers.image.title="KubeCodeRun C/C++ Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Install essential development tools and libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
     make \
     cmake \
     # Math and science libraries
@@ -29,6 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcsv-dev \
     # Additional utilities
     pkg-config \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with UID/GID 1001
@@ -41,11 +49,12 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables for C/C++ development
-ENV CC=gcc \
-    CXX=g++ \
-    PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","CC=gcc","CXX=g++","PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "CC=gcc", \
+    "CXX=g++", \
+    "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
 CMD ["/bin/bash"]

@@ -42,6 +42,8 @@ RUN apt-get update && \
     tk8.6-dev \
     portaudio19-dev \
     libpulse-dev \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pip and build tools
@@ -65,7 +67,6 @@ COPY requirements/python-analysis.txt /tmp/python-analysis.txt
 COPY requirements/python-visualization.txt /tmp/python-visualization.txt
 COPY requirements/python-documents.txt /tmp/python-documents.txt
 COPY requirements/python-utilities.txt /tmp/python-utilities.txt
-COPY requirements/python-new.txt /tmp/python-new.txt
 
 RUN --mount=type=cache,target=/root/.cache/pip \
      pip install \
@@ -133,22 +134,23 @@ RUN apt-get update && \
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Create non-root user
-RUN groupadd -r codeuser && useradd -r -g codeuser codeuser
+# Create non-root user with UID/GID 1001
+RUN groupadd -g 1001 codeuser && \
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
-# Set working directory
 WORKDIR /mnt/data
-
-# Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/mnt/data
-
-# Main container runs sleep infinity, sidecar uses nsenter to execute code
+# Default command with sanitized environment
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "PYTHONUNBUFFERED=1", \
+    "PYTHONDONTWRITEBYTECODE=1", \
+    "PYTHONPATH=/mnt/data", \
+    "MPLCONFIGDIR=/tmp/matplotlib"]
 CMD ["sleep", "infinity"]

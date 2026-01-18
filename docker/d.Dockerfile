@@ -12,11 +12,18 @@ LABEL org.opencontainers.image.title="KubeCodeRun D Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Install toolchain (ldc2) and basics; works on amd64 and arm64
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget xz-utils git \
-      build-essential make binutils \
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install toolchain (ldc2) and basics
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates \
+      git \
+      build-essential \
       ldc \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with UID/GID 1001
@@ -30,5 +37,8 @@ WORKDIR /mnt/data
 USER codeuser
 
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp"]
 CMD ["ldc2", "--version"]

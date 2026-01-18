@@ -24,11 +24,12 @@ RUN apt-get update && \
     libxml2-dev \
     unzip \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
+    && docker-php-ext-install -j"$(nproc)" \
         xml \
         zip \
         gd \
         mbstring \
+    && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -120,10 +121,11 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables
-ENV PATH="/opt/composer/global/vendor/bin:${PATH}" \
-    PHP_INI_SCAN_DIR="/usr/local/etc/php/conf.d"
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/opt/composer/global/vendor/bin:/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","COMPOSER_HOME=/opt/composer/global","PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/opt/composer/global/vendor/bin:/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "COMPOSER_HOME=/opt/composer/global", \
+    "PHP_INI_SCAN_DIR=/usr/local/etc/php/conf.d"]
 CMD ["php", "-a"]

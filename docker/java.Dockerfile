@@ -81,10 +81,11 @@ WORKDIR /mnt/data
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables with updated CLASSPATH
-ENV JAVA_OPTS="-Xmx512m -Xms128m" \
-    CLASSPATH="/mnt/data:/opt/java/lib/*"
-
-# Default command with sanitized environment (include Java bin path)
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","CLASSPATH=/mnt/data:/opt/java/lib/*","JAVA_OPTS=-Xmx512m -Xms128m"]
+# Default command with sanitized environment
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "CLASSPATH=/mnt/data:/opt/java/lib/*", \
+    "JAVA_OPTS=-Xmx512m -Xms128m"]
 CMD ["java", "--version"]
