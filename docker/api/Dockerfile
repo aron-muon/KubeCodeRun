@@ -57,8 +57,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      catatonit \
-      curl; \
+      catatonit; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
@@ -87,9 +86,9 @@ ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Health check - try HTTPS first, then common HTTP ports
+# Health check
 HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
-    CMD curl -f -k https://localhost:443/health 2>/dev/null || curl -f http://localhost:8000/health 2>/dev/null || curl -f http://localhost:80/health || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10).read()"]
 
 # Expose ports
 EXPOSE 8000 443

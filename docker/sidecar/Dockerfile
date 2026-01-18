@@ -30,7 +30,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      curl \
       util-linux \
       libcap2-bin; \
     apt-get autoremove -y; \
@@ -77,7 +76,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=4).read()"]
 
 # Version passed as build arg
 ARG VERSION=0.0.0-dev
