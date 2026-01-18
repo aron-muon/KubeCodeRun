@@ -25,7 +25,6 @@ sharp
 jimp
 typescript
 ts-node
-# NEW packages
 xlsx
 exceljs
 luxon

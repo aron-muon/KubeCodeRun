@@ -44,3 +44,27 @@ Whoosh>=2.7
 wordcloud>=1.9
 wrapt>=1.16
 regex>=2023.12
+
+# HTTP clients
+requests>=2.31
+httpx>=0.25
+
+# CLI and output formatting
+rich>=13.7
+click>=8.1
+typer>=0.9
+
+# Data generation and formatting
+faker>=22.0
+humanize>=4.9
+
+# Configuration
+python-dotenv>=1.0
+toml>=0.10
+pyyaml>=6.0
+
+# Audio
+SpeechRecognition>=3.10
+
+# Email
+IMAPClient>=3.0
