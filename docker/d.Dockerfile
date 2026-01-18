@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1.4
-# D execution environment with BuildKit optimizations.
+# D execution environment
 FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter D Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun D Environment" \
       org.opencontainers.image.description="Secure execution environment for D (ldc2) code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

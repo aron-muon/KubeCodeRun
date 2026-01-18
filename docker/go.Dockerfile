@@ -2,6 +2,16 @@
 # Go execution environment with BuildKit optimizations.
 FROM golang:1.23-alpine
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun Go Environment" \
+      org.opencontainers.image.description="Secure execution environment for Go code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install common tools
 RUN apk add --no-cache \
     git \

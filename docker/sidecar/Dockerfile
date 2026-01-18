@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1
-# Keep this syntax directive! It's used to enable Docker BuildKit
+# BuildKit syntax for cache mounts and other optimizations
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
 
 ################################
 # Builder STAGE
@@ -24,6 +28,17 @@ COPY main.py .
 # Production STAGE
 ################################
 FROM python:3.13-slim-trixie AS production
+
+# Add metadata
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun Sidecar" \
+      org.opencontainers.image.description="HTTP sidecar for executing code in Kubernetes pods via nsenter" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 # Install runtime dependencies
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
