@@ -1,0 +1,6 @@
+ignored:
+  # Don't worry about pinning specific package versions
+  - DL3008
+  - DL3013
+  - DL3016
+  - DL3018

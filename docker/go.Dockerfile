@@ -13,6 +13,7 @@ RUN apk add --no-cache \
 COPY requirements/go.mod /tmp/gosetup/go.mod
 
 # Pre-download common Go packages with cache mount
+# hadolint ignore=DL3003
 RUN --mount=type=cache,target=/go/pkg/mod \
     cd /tmp/gosetup && \
     go mod download && \

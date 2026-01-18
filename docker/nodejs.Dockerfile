@@ -14,6 +14,7 @@ COPY requirements/nodejs.txt /tmp/nodejs.txt
 
 # Install packages with cache mount
 # Read packages from file and install globally
+# hadolint ignore=SC2086
 RUN --mount=type=cache,target=/root/.npm \
     cat /tmp/nodejs.txt | grep -v '^#' | grep -v '^$' | xargs npm install -g
 
