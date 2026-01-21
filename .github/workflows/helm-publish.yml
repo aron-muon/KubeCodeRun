@@ -22,14 +22,14 @@ jobs:
       - name: Set chart version from tag
         id: version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            # Use version from Chart.yaml for manual runs
-            VERSION=$(grep '^version:' helm-deployments/kubecoderun/Chart.yaml | awk '{print $2}')
-            echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          else
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             # Use tag name (strip 'v' prefix if present)
             TAG="${{ github.ref_name }}"
             VERSION="${TAG#v}"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          else
+            # Use version from Chart.yaml for manual runs on branches
+            VERSION=$(grep '^version:' helm-deployments/kubecoderun/Chart.yaml | awk '{print $2}')
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
           fi
           # Set lowercase owner for GHCR
