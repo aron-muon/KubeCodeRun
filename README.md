@@ -142,7 +142,7 @@ For comprehensive testing details, see [TESTING.md](docs/TESTING.md).
 
 - All code execution happens in isolated Kubernetes pods
 - Network policies deny all egress by default
-- Both containers run as non-root (`runAsNonRoot: true`, `runAsUser: 1000`)
+- Both containers run as non-root (`runAsNonRoot: true`, `runAsUser: 65532`)
 - Sidecar uses file capabilities (`setcap`) to grant `nsenter` binary-specific privileges without running as root
 - Resource limits enforced via Kubernetes (CPU, memory, ephemeral storage)
 - Pods destroyed immediately after execution (ephemeral)

@@ -184,7 +184,7 @@ def create_pod_manifest(
     memory_limit: str = "512Mi",
     cpu_request: str = "100m",
     memory_request: str = "128Mi",
-    run_as_user: int = 1000,
+    run_as_user: int = 65532,
     sidecar_port: int = 8080,
     image_pull_policy: str = "Always",
     sidecar_cpu_limit: str = "500m",
@@ -331,7 +331,7 @@ def create_pod_manifest(
         share_process_namespace=True,
         security_context=client.V1PodSecurityContext(
             # Note: We don't set run_as_user at pod level; each container
-            # sets its own security context. Both run as non-root UID 1000.
+            # sets its own security context. Both run as non-root UID 65532.
             # The sidecar uses file capabilities (setcap) on nsenter for privileges.
             fs_group=run_as_user,
             # Apply seccomp profile to block dangerous syscalls

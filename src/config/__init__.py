@@ -131,7 +131,7 @@ class Settings(BaseSettings):
     k8s_memory_limit: str = Field(default="512Mi", description="Memory limit for execution pods")
     k8s_cpu_request: str = Field(default="100m", description="CPU request for execution pods")
     k8s_memory_request: str = Field(default="128Mi", description="Memory request for execution pods")
-    k8s_run_as_user: int = Field(default=1000, ge=1, description="UID to run containers as")
+    k8s_run_as_user: int = Field(default=65532, ge=1, description="UID to run containers as")
     k8s_seccomp_profile_type: Literal["RuntimeDefault", "Unconfined"] = Field(
         default="RuntimeDefault",
         description="Seccomp profile type for execution pods",

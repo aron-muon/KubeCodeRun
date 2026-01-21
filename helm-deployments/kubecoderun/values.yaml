@@ -21,11 +21,11 @@ serviceAccount:
 
 podAnnotations: {}
 podSecurityContext:
-  fsGroup: 1000
+  fsGroup: 65532
 
 securityContext:
   runAsNonRoot: true
-  runAsUser: 1000
+  runAsUser: 65532
   capabilities:
     drop:
       - ALL
@@ -248,9 +248,9 @@ execution:
   # Pod security context
   securityContext:
     runAsNonRoot: true
-    runAsUser: 1000
-    runAsGroup: 1000
-    fsGroup: 1000
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
     readOnlyRootFilesystem: false
     # Seccomp profile for execution pods - blocks dangerous syscalls
     # Options: RuntimeDefault (recommended), Unconfined

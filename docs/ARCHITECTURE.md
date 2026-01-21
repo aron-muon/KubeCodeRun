@@ -102,7 +102,7 @@ The pod uses `shareProcessNamespace: true`, allowing containers to see each othe
 
 **nsenter Privilege Model:**
 
-The sidecar runs as non-root (UID 1000) but requires Linux capabilities to use `nsenter`. Since capabilities for non-root users only populate the *bounding set* (not effective/permitted), we use **file capabilities** via `setcap` on the nsenter binary:
+The sidecar runs as non-root (UID 65532) but requires Linux capabilities to use `nsenter`. Since capabilities for non-root users only populate the *bounding set* (not effective/permitted), we use **file capabilities** via `setcap` on the nsenter binary:
 
 ```dockerfile
 # In sidecar Dockerfile
@@ -271,11 +271,11 @@ Each execution pod is isolated via:
 1. **Network Policy**: Deny all egress by default
 2. **Security Context**:
    - `runAsNonRoot: true`
-   - `runAsUser: 1000`
+   - `runAsUser: 65532`
    - Resource limits enforced
    - Sidecar uses file capabilities (`setcap`) on nsenter binary for required privileges
 3. **Ephemeral Storage**: Pods destroyed after execution
-4. **Non-root Execution**: Both containers run as UID 1000
+4. **Non-root Execution**: Both containers run as UID 65532
 5. **Binary-specific Capabilities**: Only the `nsenter` binary has elevated capabilities; other processes cannot gain them
 
 ### RBAC Requirements

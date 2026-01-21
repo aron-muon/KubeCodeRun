@@ -113,8 +113,8 @@ class PodSpec:
     sidecar_memory_request: str = "256Mi"
 
     # Security context
-    run_as_user: int = 1000
-    run_as_group: int = 1000
+    run_as_user: int = 65532
+    run_as_group: int = 65532
     run_as_non_root: bool = True
     seccomp_profile_type: str = "RuntimeDefault"
 

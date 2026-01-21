@@ -25,7 +25,7 @@ class TestLanguageConfig:
             code="test",
             name="Test",
             image="test:latest",
-            user_id=1000,
+            user_id=65532,
             file_extension="test",
             execution_command="test",
         )
@@ -41,7 +41,7 @@ class TestLanguageConfig:
             code="test",
             name="Test",
             image="test:latest",
-            user_id=1000,
+            user_id=65532,
             file_extension="test",
             execution_command="test",
         )
@@ -65,7 +65,7 @@ class TestLanguagesRegistry:
         py = LANGUAGES["py"]
         assert py.name == "Python"
         assert py.uses_stdin is True
-        assert py.user_id == 999
+        assert py.user_id == 65532
 
     def test_typescript_has_compilation(self):
         """Test TypeScript has compilation in command."""
@@ -174,17 +174,17 @@ class TestGetUserIdForLanguage:
     def test_get_user_id_python(self):
         """Test getting user ID for Python."""
         user_id = get_user_id_for_language("py")
-        assert user_id == 999
+        assert user_id == 65532
 
     def test_get_user_id_javascript(self):
         """Test getting user ID for JavaScript."""
         user_id = get_user_id_for_language("js")
-        assert user_id == 1001
+        assert user_id == 65532
 
-    def test_get_user_id_d_is_root(self):
-        """Test D language runs as root."""
+    def test_get_user_id_d(self):
+        """Test D language UID."""
         user_id = get_user_id_for_language("d")
-        assert user_id == 0
+        assert user_id == 65532
 
     def test_get_user_id_unsupported_language(self):
         """Test error for unsupported language."""

@@ -110,7 +110,7 @@ Code is analyzed for potentially dangerous patterns:
 - **Kubernetes pods**: All code runs in isolated Kubernetes pods
 - **Resource limits**: Memory and CPU limits enforced via Kubernetes
 - **Network isolation**: NetworkPolicy denies all egress by default
-- **Security context**: Pods run as non-root (`runAsUser: 1000`)
+- **Security context**: Pods run as non-root (`runAsUser: 65532`)
 - **Ephemeral execution**: Pods destroyed immediately after execution
 
 #### Namespace Sharing Security (nsenter)
@@ -119,7 +119,7 @@ The sidecar container uses Linux `nsenter` to execute code in the main container
 
 **The Problem:**
 
-When the sidecar runs as non-root (UID 1000), `nsenter` fails with:
+When the sidecar runs as non-root (UID 65532), `nsenter` fails with:
 ```
 nsenter: reassociate to namespaces failed: Operation not permitted
 ```
@@ -162,7 +162,7 @@ spec:
   containers:
   - name: sidecar
     securityContext:
-      runAsUser: 1000
+      runAsUser: 65532
       runAsNonRoot: true
       allowPrivilegeEscalation: true  # Required for file capabilities to be honored
       capabilities:
@@ -191,7 +191,7 @@ spec:
 
 4. **No host namespace access**: The capabilities are limited to pod-level process visibility and cannot be used to access host processes or namespaces.
 
-5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`). The sidecar uses file capabilities rather than running as root.
+5. **Non-root execution**: Both containers run as non-root (`runAsUser: 65532`). The sidecar uses file capabilities rather than running as root.
 
 6. **Minimal capabilities**: All capabilities are dropped except the three required for `nsenter` to function.
 
@@ -224,7 +224,7 @@ Kubernetes cluster, or internal network configuration.
 | Feature | Protection |
 |---------|------------|
 | Generic hostname | All pods use hostname "sandbox" instead of revealing node info |
-| Non-root execution | Pods run as `runAsUser: 1000` with `runAsNonRoot: true` |
+| Non-root execution | Pods run as `runAsUser: 65532` with `runAsNonRoot: true` |
 | Network policies | Egress denied by default, blocks cloud metadata endpoints |
 | Public DNS only | Execution pods use only public DNS (8.8.8.8, 1.1.1.1) |
 
