@@ -1,19 +1,32 @@
-# syntax=docker/dockerfile:1.4
-# Python execution environment with BuildKit optimizations.
-FROM python:3.13-slim
+# syntax=docker/dockerfile:1
+# Python execution environment with Docker Hardened Images.
 
-# Install common packages for data science and general use
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+################################
+# Builder stage - install packages with build tools
+################################
+FROM dhi.io/python:3.14-debian13-dev AS builder
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install build dependencies
+# Build deps are needed for compiling native extensions
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    # Build tools (not needed in final image)
     gcc \
     g++ \
     make \
     pkg-config \
+    python3-dev \
+    # Development libraries (runtime libs installed in final stage)
     libxml2-dev \
     libxslt-dev \
     libffi-dev \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libgdk-pixbuf-2.0-dev \
     libssl-dev \
     libjpeg-dev \
     libpng-dev \
@@ -22,22 +35,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
     liblcms2-dev \
     libwebp-dev \
-    tcl8.6-dev \
-    tk8.6-dev \
-    python3-tk \
-    python3-dev \
-    poppler-utils \
-    tesseract-ocr \
-    pandoc \
     portaudio19-dev \
-    flac \
-    ffmpeg \
     libpulse-dev \
-    antiword \
-    unrtf \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pip and build tools
+# PIP_NO_BUILD_ISOLATION=1: Use pre-installed build tools (setuptools, wheel) instead of
+# downloading fresh copies for each package. This ensures consistent versions across all
+# package builds and avoids compatibility issues with the pinned versions below.
 ENV PIP_NO_BUILD_ISOLATION=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
@@ -56,49 +63,101 @@ COPY requirements/python-visualization.txt /tmp/python-visualization.txt
 COPY requirements/python-documents.txt /tmp/python-documents.txt
 COPY requirements/python-utilities.txt /tmp/python-utilities.txt
 
-# Layer 1: Core data packages (most stable, rarely changes)
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-core.txt
+     pip install \
+     -r /tmp/python-core.txt \
+     -r /tmp/python-analysis.txt \
+     -r /tmp/python-visualization.txt \
+     -r /tmp/python-documents.txt \
+     -r /tmp/python-utilities.txt
 
-# Layer 2: Analysis packages (math, science, ML)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-analysis.txt
+################################
+# Runtime dependencies stage - install runtime libraries
+################################
+FROM dhi.io/python:3.14-debian13-dev AS runtime-deps
 
-# Layer 3: Visualization packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-visualization.txt
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Layer 4: Document processing packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-documents.txt
+# Install ONLY runtime dependencies (no -dev packages, no compilers)
+# Create both arch lib dirs to ensure COPY works on either architecture
+RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    # Runtime libraries (counterparts to -dev packages in builder)
+    libxml2 \
+    libxslt1.1 \
+    libffi8 \
+    libssl3t64 \
+    libjpeg62-turbo \
+    libpng16-16t64 \
+    libtiff6 \
+    libopenjp2-7 \
+    libfreetype6 \
+    liblcms2-2 \
+    libwebp7 \
+    libportaudio2 \
+    libpulse0 \
+    # External tools needed at runtime
+    poppler-utils \
+    tesseract-ocr \
+    pandoc \
+    ffmpeg \
+    flac \
+    antiword \
+    unrtf \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /mnt/data && chown 65532:65532 /mnt/data
 
-# Layer 5: Utility packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-utilities.txt
+################################
+# Final stage - minimal runtime image
+################################
+FROM dhi.io/python:3.14-debian13 AS final
 
-# Layer 6: NEW packages (changes most frequently)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-new.txt
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
 
-# Clean up requirements files
-RUN rm -f /tmp/python-*.txt
+LABEL org.opencontainers.image.title="KubeCodeRun Python Environment" \
+      org.opencontainers.image.description="Secure execution environment for Python code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
-# Create non-root user
-RUN groupadd -r codeuser && useradd -r -g codeuser codeuser
+# Copy runtime libraries from runtime-deps stage
+COPY --from=runtime-deps /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
+COPY --from=runtime-deps /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
+COPY --from=runtime-deps /usr/bin/pdftotext /usr/bin/pdftoppm /usr/bin/pdfinfo /usr/bin/
+COPY --from=runtime-deps /usr/bin/tesseract /usr/bin/
+COPY --from=runtime-deps /usr/bin/pandoc /usr/bin/
+COPY --from=runtime-deps /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/
+COPY --from=runtime-deps /usr/bin/flac /usr/bin/
+COPY --from=runtime-deps /usr/bin/antiword /usr/bin/
+COPY --from=runtime-deps /usr/bin/unrtf /usr/bin/
+COPY --from=runtime-deps /usr/share/tesseract-ocr /usr/share/tesseract-ocr
 
-# Set working directory
+# Copy installed Python packages from builder
+# DHI Python is installed in /opt/python, not /usr/local
+COPY --from=builder /opt/python/lib/python3.14/site-packages /opt/python/lib/python3.14/site-packages
+COPY --from=builder /opt/python/bin /opt/python/bin
+
+# Copy /usr/bin/env for sidecar's /usr/bin/env -i execution pattern
+# Copy sleep for the default CMD (keep container alive for sidecar)
+COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+
+# Create data directory - DHI images run as non-root (UID 65532) by default
+COPY --from=runtime-deps /mnt/data /mnt/data
+
 WORKDIR /mnt/data
 
-# Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
-
-# Switch to non-root user
-USER codeuser
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/mnt/data
-
-# Main container runs sleep infinity, sidecar uses nsenter to execute code
+# Sanitized environment via env -i
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/opt/python/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "PYTHONUNBUFFERED=1", \
+    "PYTHONDONTWRITEBYTECODE=1", \
+    "PYTHONPATH=/mnt/data", \
+    "MPLCONFIGDIR=/tmp/matplotlib"]
 CMD ["sleep", "infinity"]

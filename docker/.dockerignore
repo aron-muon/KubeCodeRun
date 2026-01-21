@@ -19,3 +19,7 @@ Thumbs.db
 .env.*
 .vscode/
 .idea/
+
+# Keep sidecar & API code out of language images
+sidecar/
+api/

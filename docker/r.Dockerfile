@@ -1,28 +1,35 @@
-# syntax=docker/dockerfile:1.4
-# R execution environment with BuildKit optimizations.
-FROM r-base:4.3.0
+# syntax=docker/dockerfile:1
+# R execution environment with Docker Hardened Images.
+# Uses debian-base since there is no DHI R image.
 
-# Install system dependencies for R packages (including Cairo)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libcurl4-openssl-dev \
-    libssl-dev \
-    libxml2-dev \
-    libfontconfig1-dev \
-    libharfbuzz-dev \
-    libfribidi-dev \
-    libfreetype6-dev \
-    libpng-dev \
-    libtiff5-dev \
-    libjpeg-dev \
-    libcairo2-dev \
-    libxt-dev \
-    libx11-dev \
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+################################
+# Builder stage - install R and compile packages
+################################
+FROM dhi.io/debian-base:trixie AS builder
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install R and build dependencies for R packages
+# init-system-helpers required FIRST to fix x11-common postinst failures
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    init-system-helpers \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    r-base \
+    r-base-dev \
+    gcc g++ make pkg-config \
+    libcurl4-openssl-dev libssl-dev libxml2-dev \
+    libfontconfig1-dev libharfbuzz-dev libfribidi-dev \
+    libfreetype-dev libpng-dev libtiff-dev libjpeg-dev \
+    libcairo2-dev libxt-dev libx11-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install all R packages in a single layer using Posit Package Manager
-# - amd64: Downloads pre-compiled binaries (~5 min)
-# - arm64: Compiles from source but single layer avoids redundant dependency builds
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+# Install R packages using Posit Package Manager
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/trixie/latest')); \
     install.packages(c( \
         'dplyr', 'tidyr', 'data.table', 'magrittr', \
         'ggplot2', 'lattice', 'scales', 'Cairo', \
@@ -30,20 +37,48 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
         'MASS', 'survival', 'lubridate', 'stringr', 'glue' \
     ))"
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+################################
+# Final stage - runtime image
+################################
+FROM dhi.io/debian-base:trixie AS final
 
-# Set working directory and ensure ownership
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun R Environment" \
+      org.opencontainers.image.description="Secure execution environment for R code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install runtime dependencies (no -dev packages)
+# init-system-helpers required FIRST to fix x11-common postinst failures
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    init-system-helpers \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    r-base-core \
+    libcurl4t64 libssl3t64 libxml2 \
+    libfontconfig1 libharfbuzz0b libfribidi0 \
+    libfreetype6 libpng16-16t64 libtiff6 libjpeg62-turbo \
+    libcairo2 libxt6t64 libx11-6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed R packages from builder
+COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
+
+RUN mkdir -p /mnt/data && chown 65532:65532 /mnt/data
+
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
 
-# Switch to non-root user
-USER codeuser
+USER 65532
 
-# Set environment variables
-ENV R_LIBS_USER=/usr/local/lib/R/site-library
-
-# Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","R_LIBS_USER=/usr/local/lib/R/site-library"]
-CMD ["R", "--version"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "R_LIBS_USER=/usr/local/lib/R/site-library"]
+CMD ["sleep", "infinity"]

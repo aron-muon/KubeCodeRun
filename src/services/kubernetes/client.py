@@ -284,8 +284,6 @@ def create_pod_manifest(
             client.V1EnvVar(name="PYTHONUNBUFFERED", value="1"),
             client.V1EnvVar(name="HOME", value="/mnt/data"),
         ],
-        # Main container can just sleep, sidecar handles execution
-        command=["sleep", "infinity"],
     )
 
     # Sidecar container (HTTP API)
