@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Fortran execution environment with Docker Hardened Images!
+# Fortran execution environment with Docker Hardened Images.
 
 FROM dhi.io/debian-base:trixie
 

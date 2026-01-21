@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# KubeCodeRun API server with Docker Hardened Images!
+# KubeCodeRun API server with Docker Hardened Images.
 
 ARG BUILD_DATE
 ARG VERSION=0.0.0-dev

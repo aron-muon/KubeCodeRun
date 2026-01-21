@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Rust execution environment with Docker Hardened Images!
+# Rust execution environment with Docker Hardened Images.
 #
 # Pre-compiled crates from rust-Cargo.toml are available without recompilation.
 # CARGO_NET_OFFLINE=true prevents runtime downloads (security hardening).

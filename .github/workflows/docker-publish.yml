@@ -109,13 +109,15 @@ jobs:
             SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
             echo "image_tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag push or workflow_dispatch triggered with a tag ref
+            echo "image_tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            # workflow_dispatch on a branch or other non-tag ref
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
             echo "image_tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
-          else
-            echo "image_tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
           fi
 
   # ==================== Build Jobs ====================

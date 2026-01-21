@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# PHP execution environment with Docker Hardened Images!
+# PHP execution environment with Docker Hardened Images.
 
 # PHP version configuration - single source of truth
 ARG PHP_VERSION=8.4.17

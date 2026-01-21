@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# KubeCodeRun HTTP sidecar with Docker Hardened Images!
+# KubeCodeRun HTTP sidecar with Docker Hardened Images.
 
 ARG BUILD_DATE
 ARG VERSION

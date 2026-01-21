@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Go execution environment using Docker Hardened Images!
+# Go execution environment using Docker Hardened Images.
 
 ################################
 # Stage 1: Build and download dependencies

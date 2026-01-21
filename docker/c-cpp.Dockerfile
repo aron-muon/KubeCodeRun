@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# C/C++ execution environment with Docker Hardened Images!
+# C/C++ execution environment with Docker Hardened Images.
 
 FROM dhi.io/debian-base:trixie
 

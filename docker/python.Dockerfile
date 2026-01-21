@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Python execution environment with Docker Hardened Images!
+# Python execution environment with Docker Hardened Images.
 
 ARG BUILD_DATE
 ARG VERSION

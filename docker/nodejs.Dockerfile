@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Node.js execution environment with BuildKit optimizations.
-# Uses Docker Hardened Images (DHI) for security!
+# Uses Docker Hardened Images (DHI) for security.
 
 ARG BUILD_DATE
 ARG VERSION
