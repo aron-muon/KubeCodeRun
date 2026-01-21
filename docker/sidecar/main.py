@@ -320,14 +320,18 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     print(f"[EXECUTE] main_pid={main_pid}, language={LANGUAGE}")
     print(f"[EXECUTE] container_env PATH={container_env.get('PATH', 'NOT SET')}")
     print(f"[EXECUTE] nsenter_cmd={nsenter_cmd}")
+    if temp_file:
+        print(f"[EXECUTE] code_file={temp_file}, exists={temp_file.exists()}, size={temp_file.stat().st_size if temp_file.exists() else 0}")
 
     try:
+        print(f"[EXECUTE] Creating subprocess...")
         proc = await asyncio.create_subprocess_exec(
             *nsenter_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=request.working_dir,
         )
+        print(f"[EXECUTE] Subprocess created, pid={proc.pid}, waiting for completion (timeout={request.timeout}s)...")
 
         try:
             stdout, stderr = await asyncio.wait_for(
@@ -335,6 +339,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
                 timeout=request.timeout,
             )
         except TimeoutError:
+            print(f"[EXECUTE] TIMEOUT after {request.timeout}s, killing process pid={proc.pid}")
             proc.kill()
             await proc.wait()
             return ExecuteResponse(
@@ -364,6 +369,8 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         )
 
     except Exception as e:
+        print(f"[EXECUTE] EXCEPTION: {type(e).__name__}: {e}")
+        print(f"[EXECUTE] Traceback: {traceback.format_exc()}")
         return ExecuteResponse(
             exit_code=1,
             stdout="",
