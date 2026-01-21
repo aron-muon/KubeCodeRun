@@ -68,6 +68,7 @@ jobs:
           echo "tag=${PLATFORM_TAG}" >> $GITHUB_OUTPUT
           OWNER="${{ github.repository_owner }}"
           echo "owner=${OWNER,,}" >> $GITHUB_OUTPUT
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       - uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
@@ -83,7 +84,9 @@ jobs:
           # DHI base images use zstd which causes layer/diffID mismatch errors
           outputs: type=image,push=true,compression=gzip,compression-level=6,force-compression=true
           build-args: |
+            BUILD_DATE=${{ steps.vars.outputs.build_date }}
             VERSION=${{ inputs.version }}
+            VCS_REF=${{ github.sha }}
 
   manifest:
     needs: build
