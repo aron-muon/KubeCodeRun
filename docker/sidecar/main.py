@@ -10,8 +10,8 @@ Requires: shareProcessNamespace: true in the pod spec.
 
 import asyncio
 import os
-import shutil
 import shlex
+import shutil
 import time
 import traceback
 from contextlib import asynccontextmanager
@@ -19,10 +19,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Response
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-
 
 # Configuration from environment
 WORKING_DIR = os.getenv("WORKING_DIR", "/mnt/data")
@@ -40,7 +39,7 @@ class ExecuteRequest(BaseModel):
     code: str
     timeout: int = Field(default=30, ge=1, le=MAX_EXECUTION_TIME)
     working_dir: str = Field(default=WORKING_DIR)
-    initial_state: Optional[str] = None  # Base64-encoded state
+    initial_state: str | None = None  # Base64-encoded state
     capture_state: bool = False
 
 
@@ -50,8 +49,8 @@ class ExecuteResponse(BaseModel):
     stdout: str
     stderr: str
     execution_time_ms: int
-    state: Optional[str] = None  # Base64-encoded state
-    state_errors: Optional[list] = None
+    state: str | None = None  # Base64-encoded state
+    state_errors: list | None = None
 
 
 class HealthResponse(BaseModel):
@@ -67,7 +66,7 @@ class FileInfo(BaseModel):
     name: str
     path: str
     size: int
-    mime_type: Optional[str] = None
+    mime_type: str | None = None
 
 
 def validate_path_within_working_dir(path: str) -> Path:
@@ -119,7 +118,7 @@ app = FastAPI(
 )
 
 
-def find_main_container_pid() -> Optional[int]:
+def find_main_container_pid() -> int | None:
     """Find the PID of the main container's process.
 
     With shareProcessNamespace: true, we can see all processes in /proc.
@@ -159,110 +158,109 @@ def find_main_container_pid() -> Optional[int]:
     return None
 
 
-def get_language_command(language: str, code: str, working_dir: str) -> tuple[list[str], Optional[Path]]:
+def get_container_env(pid: int) -> dict[str, str]:
+    """Read environment variables from a container's process.
+
+    Reads /proc/<pid>/environ which contains the environment variables
+    that the process was started with. This ensures the sidecar uses
+    the exact same environment as defined in the container's Dockerfile,
+    eliminating config drift between Dockerfiles and sidecar code.
+
+    Args:
+        pid: The process ID to read environment from
+
+    Returns:
+        Dictionary of environment variables
+    """
+    environ_path = Path(f"/proc/{pid}/environ")
+    try:
+        content = environ_path.read_bytes().decode("utf-8", errors="replace")
+        env = {}
+        for item in content.split("\x00"):
+            if "=" in item:
+                key, value = item.split("=", 1)
+                env[key] = value
+        return env
+    except (FileNotFoundError, PermissionError) as e:
+        print(f"[WARN] Failed to read container env from {environ_path}: {e}")
+        return {}
+
+
+def get_language_command(
+    language: str, code: str, working_dir: str, container_env: dict[str, str]
+) -> tuple[list[str], Path | None]:
     """Get the command to execute code for a given language.
 
     Returns (command_list, temp_file_path_or_none).
 
-    All commands are wrapped in 'sh -c' with explicit 'cd' and proper
-    environment setup for the target language runtime.
+    Environment is always read from the container at runtime via /proc/<pid>/environ.
+    This eliminates config drift between Dockerfiles and sidecar code.
 
-    IMPORTANT: When using nsenter -m (mount namespace only), the shell inherits
-    the sidecar's environment, not the target container's. We must explicitly
-    set PATH and other env vars to match each language container's ENTRYPOINT.
+    Two execution modes:
+    - Direct mode: Uses '/usr/bin/env -i' for single-command execution
+    - Shell mode: Uses 'sh -c' for multi-step (compile && run) commands
+
+    Both modes use the runtime-detected environment from the container.
     """
-    # Helper to wrap command with cd to working directory
-    def wrap_cmd(cmd: str, env_setup: str = "") -> list[str]:
-        # Sanitize working_dir to prevent command injection
-        safe_working_dir = shlex.quote(working_dir)
-        if env_setup:
-            return ["sh", "-c", f"{env_setup} cd {safe_working_dir} && {cmd}"]
-        return ["sh", "-c", f"cd {safe_working_dir} && {cmd}"]
+    # Use container env, fall back to minimal defaults if not available
+    env = container_env if container_env else {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp"}
 
-    # Environment setup strings for each language runtime
-    # These match the ENTRYPOINT environment in each language's Dockerfile
+    # Single wrapper using /usr/bin/env -i with runtime-detected environment
+    def wrap(cmd_args: list[str]) -> list[str]:
+        env_args = [f"{k}={v}" for k, v in env.items()]
+        return ["/usr/bin/env", "-i"] + env_args + cmd_args
 
-    # Python: standard PATH (python3 is in /usr/local/bin)
-    PYTHON_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export PYTHONUNBUFFERED=1 &&"
-
-    # Node.js/TypeScript: needs NODE_PATH for global modules
-    NODE_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export NODE_PATH=/usr/local/lib/node_modules && export HOME=/tmp &&"
-
-    # Go: needs /usr/local/go/bin in PATH
-    GO_ENV = "export PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export GO111MODULE=on && export GOPROXY=https://proxy.golang.org,direct && export GOCACHE=/mnt/data/go-build &&"
-
-    # Rust: needs /usr/local/cargo/bin in PATH
-    RUST_ENV = "export PATH=/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export CARGO_HOME=/usr/local/cargo && export RUSTUP_HOME=/usr/local/rustup &&"
-
-    # Java: needs /opt/java/openjdk/bin in PATH
-    JAVA_ENV = "export PATH=/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export CLASSPATH=/mnt/data:/opt/java/lib/* &&"
-
-    # C/C++: standard PATH (gcc/g++ are in /usr/bin or /usr/local/bin)
-    C_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export CC=gcc && export CXX=g++ &&"
-
-    # PHP: needs composer bin in PATH
-    PHP_ENV = "export PATH=/opt/composer/global/vendor/bin:/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export COMPOSER_HOME=/opt/composer/global &&"
-
-    # R: standard PATH with R_LIBS_USER
-    R_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export R_LIBS_USER=/usr/local/lib/R/site-library &&"
-
-    # Fortran: gfortran compiler
-    FORTRAN_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export HOME=/tmp && export FC=gfortran &&"
-
-    # D: ldc2 compiler
-    D_ENV = "export PATH=/usr/local/bin:/usr/bin:/bin && export HOME=/tmp &&"
+    # Helper for compiled languages needing shell for compile && run
+    safe_wd = shlex.quote(working_dir)
 
     if language in ("python", "py"):
-        # Write code to file instead of -c for better error messages and multiline support
         code_file = Path(working_dir) / "code.py"
         code_file.write_text(code)
-        return wrap_cmd(f"python3 {code_file}", PYTHON_ENV), code_file
+        return wrap(["python", str(code_file)]), code_file
     elif language in ("javascript", "js"):
         code_file = Path(working_dir) / "code.js"
         code_file.write_text(code)
-        return wrap_cmd(f"node {code_file}", NODE_ENV), code_file
+        return wrap(["node", str(code_file)]), code_file
     elif language in ("typescript", "ts"):
         code_file = Path(working_dir) / "code.ts"
         code_file.write_text(code)
-        # Use tsc + node instead of ts-node (ts-node has stdout capture issues)
-        # Compile to /tmp to avoid polluting the working directory
-        return wrap_cmd(f"tsc {code_file} --outDir /tmp && node /tmp/code.js", NODE_ENV), code_file
+        return wrap(["node", "/opt/scripts/ts-runner.js", str(code_file)]), code_file
     elif language in ("go",):
         code_file = Path(working_dir) / "main.go"
         code_file.write_text(code)
-        return wrap_cmd(f"go run {code_file}", GO_ENV), code_file
+        return wrap(["go", "run", str(code_file)]), code_file
     elif language in ("rust", "rs"):
         code_file = Path(working_dir) / "main.rs"
         code_file.write_text(code)
-        return wrap_cmd(f"rustc {code_file} -o /tmp/main && /tmp/main", RUST_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && rustc {code_file} -o /tmp/main && /tmp/main"]), code_file
     elif language in ("java",):
         code_file = Path(working_dir) / "Code.java"
         code_file.write_text(code)
-        return wrap_cmd(f"javac {code_file} && java -cp {working_dir} Code", JAVA_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && javac {code_file} && java -cp {working_dir} Code"]), code_file
     elif language in ("c",):
         code_file = Path(working_dir) / "code.c"
         code_file.write_text(code)
-        return wrap_cmd(f"gcc {code_file} -o /tmp/code && /tmp/code", C_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && gcc {code_file} -o /tmp/code && /tmp/code"]), code_file
     elif language in ("cpp",):
         code_file = Path(working_dir) / "code.cpp"
         code_file.write_text(code)
-        return wrap_cmd(f"g++ {code_file} -o /tmp/code && /tmp/code", C_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && g++ {code_file} -o /tmp/code && /tmp/code"]), code_file
     elif language in ("php",):
         code_file = Path(working_dir) / "code.php"
         code_file.write_text(code)
-        return wrap_cmd(f"php {code_file}", PHP_ENV), code_file
+        return wrap(["php", str(code_file)]), code_file
     elif language in ("r",):
         code_file = Path(working_dir) / "code.r"
         code_file.write_text(code)
-        return wrap_cmd(f"Rscript {code_file}", R_ENV), code_file
+        return wrap(["Rscript", str(code_file)]), code_file
     elif language in ("fortran", "f90"):
         code_file = Path(working_dir) / "code.f90"
         code_file.write_text(code)
-        return wrap_cmd(f"gfortran {code_file} -o /tmp/code && /tmp/code", FORTRAN_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && gfortran {code_file} -o /tmp/code && /tmp/code"]), code_file
     elif language in ("d", "dlang"):
         code_file = Path(working_dir) / "code.d"
         code_file.write_text(code)
-        return wrap_cmd(f"ldc2 {code_file} -of=/tmp/code && /tmp/code", D_ENV), code_file
+        return wrap(["sh", "-c", f"cd {safe_wd} && ldc2 {code_file} -of=/tmp/code && /tmp/code"]), code_file
     else:
         return [], None
 
@@ -281,8 +279,15 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
             # Fallback: try to execute directly (might work if runtime is in sidecar)
             return await execute_via_subprocess_direct(request)
 
+        # Read the container's environment from /proc/<pid>/environ
+        # This ensures we use the exact environment from the Dockerfile,
+        # eliminating config drift between Dockerfiles and sidecar code
+        container_env = get_container_env(main_pid)
+
         # Get the command for this language (this writes code to a temp file)
-        cmd, temp_file = get_language_command(LANGUAGE, request.code, request.working_dir)
+        cmd, temp_file = get_language_command(
+            LANGUAGE, request.code, request.working_dir, container_env
+        )
         if not cmd:
             return ExecuteResponse(
                 exit_code=1,
@@ -313,6 +318,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
 
     # Debug logging
     print(f"[EXECUTE] main_pid={main_pid}, language={LANGUAGE}")
+    print(f"[EXECUTE] container_env PATH={container_env.get('PATH', 'NOT SET')}")
     print(f"[EXECUTE] nsenter_cmd={nsenter_cmd}")
 
     try:
@@ -328,7 +334,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
                 proc.communicate(),
                 timeout=request.timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return ExecuteResponse(
@@ -370,7 +376,8 @@ async def execute_via_subprocess_direct(request: ExecuteRequest) -> ExecuteRespo
     """Execute code directly via subprocess (fallback for when nsenter isn't available)."""
     start_time = time.perf_counter()
 
-    cmd, temp_file = get_language_command(LANGUAGE, request.code, request.working_dir)
+    # No container env available in fallback mode - use empty dict for defaults
+    cmd, temp_file = get_language_command(LANGUAGE, request.code, request.working_dir, {})
     if not cmd:
         return ExecuteResponse(
             exit_code=1,
@@ -392,7 +399,7 @@ async def execute_via_subprocess_direct(request: ExecuteRequest) -> ExecuteRespo
                 proc.communicate(),
                 timeout=request.timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.wait()
             return ExecuteResponse(
