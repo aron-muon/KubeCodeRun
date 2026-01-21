@@ -163,6 +163,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   javascript:
     needs: changes
@@ -177,6 +178,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   typescript:
     needs: changes
@@ -191,6 +193,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   go:
     needs: changes
@@ -205,6 +208,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   java:
     needs: changes
@@ -219,6 +223,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   c-cpp:
     needs: changes
@@ -233,6 +238,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   php:
     needs: changes
@@ -247,6 +253,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   rust:
     needs: changes
@@ -261,6 +268,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   r:
     needs: changes
@@ -275,6 +283,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   fortran:
     needs: changes
@@ -289,6 +298,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   d:
     needs: changes
@@ -303,6 +313,7 @@ jobs:
       context: docker
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
 
   # ==================== Retag Unchanged Images (for releases) ====================
   # These jobs run when an image didn't change but we still want it tagged with the new version
