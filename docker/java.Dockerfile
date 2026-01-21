@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Java execution environment with Docker Hardened Images.
+# Java execution environment with Docker Hardened Images!
 
 ARG BUILD_DATE
 ARG VERSION
