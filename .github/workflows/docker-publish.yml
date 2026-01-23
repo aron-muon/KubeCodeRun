@@ -37,8 +37,8 @@ jobs:
       is_release: ${{ steps.tag.outputs.is_release }}
       previous_tag: ${{ steps.prev_tag.outputs.tag_name }}
       version: ${{ steps.version.outputs.version }}
-      # Skip Docker builds for fork PRs (no permission to push to upstream registry)
-      is_fork: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
+      # Skip Docker builds for cross-repo PRs (no permission to push to upstream registry)
+      is_cross_repo_pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
         with:
@@ -121,11 +121,11 @@ jobs:
           fi
 
   # ==================== Build Jobs ====================
-  # Note: All build jobs skip when is_fork == 'true' (fork PRs can't push to upstream registry)
+  # Note: All build jobs skip when is_cross_repo_pr == 'true' (cross-repo PRs can't push to upstream registry)
   api:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.api == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -140,7 +140,7 @@ jobs:
   sidecar:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.sidecar == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -155,7 +155,7 @@ jobs:
   python:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.python == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -170,7 +170,7 @@ jobs:
   javascript:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -185,7 +185,7 @@ jobs:
   typescript:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -200,7 +200,7 @@ jobs:
   go:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.go == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -215,7 +215,7 @@ jobs:
   java:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.java == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -230,7 +230,7 @@ jobs:
   c-cpp:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.c-cpp == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -245,7 +245,7 @@ jobs:
   php:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.php == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -260,7 +260,7 @@ jobs:
   rust:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.rust == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -275,7 +275,7 @@ jobs:
   r:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.r == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -290,7 +290,7 @@ jobs:
   fortran:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.fortran == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
@@ -305,7 +305,7 @@ jobs:
   d:
     needs: changes
     if: |
-      needs.changes.outputs.is_fork != 'true' &&
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
       (needs.changes.outputs.d == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit

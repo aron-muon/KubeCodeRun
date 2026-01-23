@@ -85,7 +85,7 @@ The pod uses `shareProcessNamespace: true`, allowing containers to see each othe
 │  │                     │    │                             ││
 │  │  • Python/Node/Go   │◄───│  • Receives HTTP request    ││
 │  │  • sleep infinity   │    │  • Writes code to /mnt/data ││
-│  │  • PID 1 visible    │    │  • nsenter -m -t <PID> sh   ││
+│  │  • PID 1 visible    │    │  • nsenter -m -t <PID> --wdns=/mnt/data sh ││
 │  │    to sidecar       │    │  • Returns stdout/stderr    ││
 │  └─────────────────────┘    └─────────────────────────────┘│
 │           │                            │                    │
@@ -97,7 +97,7 @@ The pod uses `shareProcessNamespace: true`, allowing containers to see each othe
 **How nsenter works:**
 1. Sidecar finds the main container's PID (typically PID 7 after pause container)
 2. Uses `nsenter -m -t <PID>` to enter the mount namespace
-3. Executes shell commands using the main container's filesystem
+3. Sets the working directory to `/mnt/data` so relative paths write to the shared volume
 4. Captures stdout/stderr and returns via HTTP
 
 **nsenter Privilege Model:**

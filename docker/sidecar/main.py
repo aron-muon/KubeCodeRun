@@ -35,7 +35,6 @@ VERSION = os.getenv("VERSION", "0.0.0-dev")
 # Network isolation mode - when true, disables network-dependent features (e.g., Go module proxy)
 NETWORK_ISOLATED = os.getenv("NETWORK_ISOLATED", "false").lower() in ("true", "1", "yes")
 
-
 class ExecuteRequest(BaseModel):
     """Request to execute code."""
     code: str
@@ -342,13 +341,16 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     # Build nsenter command to enter the main container's mount namespace
     # -t: target PID
     # -m: mount namespace (for filesystem access)
+    # --wdns=<dir>: open cwd after setns (avoids getcwd() ENOENT in Node/Go)
     # Note: The spawned process runs in the SIDECAR's cgroup, not the main container's.
     # This means memory-heavy executions count against sidecar's limit.
     # Ensure sidecar has adequate memory for the target language.
+    wd_args = [f"--wdns={request.working_dir}"]
     nsenter_cmd = [
         "nsenter",
         "-t", str(main_pid),
         "-m",  # Mount namespace - access main container's filesystem
+        *wd_args,
         "--",
     ] + cmd
 
