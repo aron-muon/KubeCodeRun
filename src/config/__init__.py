@@ -158,6 +158,24 @@ class Settings(BaseSettings):
         description="Image pull policy for execution pods (Always, IfNotPresent, Never)",
     )
 
+    # GKE Sandbox (gVisor) Configuration
+    gke_sandbox_enabled: bool = Field(
+        default=False,
+        description="Enable GKE Sandbox (gVisor) for additional kernel isolation",
+    )
+    gke_sandbox_runtime_class: str = Field(
+        default="gvisor",
+        description="Runtime class name for sandboxed pods",
+    )
+    gke_sandbox_node_selector: str | None = Field(
+        default=None,
+        description="JSON string of node selector for sandbox-enabled nodes",
+    )
+    gke_sandbox_custom_tolerations: str | None = Field(
+        default=None,
+        description="JSON string of custom tolerations for node pool taints",
+    )
+
     # Resource Limits - Execution
     max_execution_time: int = Field(default=30, ge=1, le=600)
     max_memory_mb: int = Field(default=512, ge=64, le=16384)
@@ -548,6 +566,23 @@ class Settings(BaseSettings):
     @property
     def kubernetes(self) -> KubernetesConfig:
         """Access Kubernetes configuration group."""
+        import json
+        
+        # Parse JSON strings for node selector and tolerations
+        sandbox_node_selector = None
+        if self.gke_sandbox_node_selector:
+            try:
+                sandbox_node_selector = json.loads(self.gke_sandbox_node_selector)
+            except json.JSONDecodeError:
+                pass
+        
+        custom_tolerations = None
+        if self.gke_sandbox_custom_tolerations:
+            try:
+                custom_tolerations = json.loads(self.gke_sandbox_custom_tolerations)
+            except json.JSONDecodeError:
+                pass
+        
         return KubernetesConfig(
             namespace=self.k8s_namespace,
             service_account=self.k8s_service_account,
@@ -567,6 +602,10 @@ class Settings(BaseSettings):
             job_active_deadline_seconds=self.k8s_job_deadline_seconds,
             image_registry=self.k8s_image_registry,
             image_tag=self.k8s_image_tag,
+            gke_sandbox_enabled=self.gke_sandbox_enabled,
+            runtime_class_name=self.gke_sandbox_runtime_class,
+            sandbox_node_selector=sandbox_node_selector,
+            custom_tolerations=custom_tolerations,
         )
 
     def get_pool_configs(self):
@@ -574,9 +613,25 @@ class Settings(BaseSettings):
 
         Returns list of PoolConfig for all configured languages.
         """
+        import json
         import os
 
         from ..services.kubernetes.models import PoolConfig
+
+        # Parse GKE Sandbox configuration once
+        sandbox_node_selector = None
+        if self.gke_sandbox_node_selector:
+            try:
+                sandbox_node_selector = json.loads(self.gke_sandbox_node_selector)
+            except json.JSONDecodeError:
+                pass
+        
+        custom_tolerations = None
+        if self.gke_sandbox_custom_tolerations:
+            try:
+                custom_tolerations = json.loads(self.gke_sandbox_custom_tolerations)
+            except json.JSONDecodeError:
+                pass
 
         configs = []
         languages = ["py", "js", "ts", "go", "java", "c", "cpp", "php", "rs", "r", "f90", "d"]
@@ -625,6 +680,10 @@ class Settings(BaseSettings):
                     image_pull_policy=self.k8s_image_pull_policy,
                     seccomp_profile_type=self.k8s_seccomp_profile_type,
                     network_isolated=self.enable_network_isolation,
+                    gke_sandbox_enabled=self.gke_sandbox_enabled,
+                    runtime_class_name=self.gke_sandbox_runtime_class,
+                    sandbox_node_selector=sandbox_node_selector,
+                    custom_tolerations=custom_tolerations,
                 )
             )
 

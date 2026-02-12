@@ -45,6 +45,16 @@ data:
   K8S_JOB_TTL_SECONDS: {{ .Values.execution.jobs.ttlSecondsAfterFinished | quote }}
   K8S_JOB_DEADLINE_SECONDS: {{ .Values.execution.jobs.activeDeadlineSeconds | quote }}
 
+  # GKE Sandbox Configuration
+  GKE_SANDBOX_ENABLED: {{ .Values.execution.gkeSandbox.enabled | quote }}
+  GKE_SANDBOX_RUNTIME_CLASS: {{ .Values.execution.gkeSandbox.runtimeClassName | quote }}
+  {{- if .Values.execution.gkeSandbox.nodeSelector }}
+  GKE_SANDBOX_NODE_SELECTOR: {{ .Values.execution.gkeSandbox.nodeSelector | toJson | quote }}
+  {{- end }}
+  {{- if .Values.execution.gkeSandbox.customTolerations }}
+  GKE_SANDBOX_CUSTOM_TOLERATIONS: {{ .Values.execution.gkeSandbox.customTolerations | toJson | quote }}
+  {{- end }}
+
   # Pod Lifecycle
   POD_TTL_MINUTES: {{ .Values.execution.podTtlMinutes | quote }}
   POD_CLEANUP_INTERVAL_MINUTES: {{ .Values.execution.podCleanupIntervalMinutes | quote }}

@@ -53,6 +53,22 @@ class KubernetesConfig:
     image_registry: str = "aronmuon/kubecoderun"
     image_tag: str = "latest"
 
+    # GKE Sandbox (gVisor) configuration
+    # When enabled, pods run with additional kernel isolation via gVisor
+    gke_sandbox_enabled: bool = False
+    
+    # Runtime class name for sandboxed pods (default: gvisor for GKE)
+    runtime_class_name: str = "gvisor"
+    
+    # Node selector for sandbox nodes
+    # GKE automatically adds: sandbox.gke.io/runtime=gvisor
+    sandbox_node_selector: dict[str, str] | None = None
+    
+    # Custom tolerations for execution pods
+    # GKE Sandbox automatically adds toleration for sandbox.gke.io/runtime=gvisor
+    # Use this for additional custom node pool taints (e.g., pool=sandbox)
+    custom_tolerations: list[dict[str, str]] | None = None
+
     def get_image_for_language(self, language: str) -> str:
         """Get the container image for a language.
 

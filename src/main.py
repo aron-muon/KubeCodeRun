@@ -153,6 +153,10 @@ async def lifespan(app: FastAPI):
                 default_memory_request=settings.k8s_memory_request,
                 seccomp_profile_type=settings.k8s_seccomp_profile_type,
                 network_isolated=settings.enable_network_isolation,
+                gke_sandbox_enabled=settings.gke_sandbox_enabled,
+                runtime_class_name=settings.gke_sandbox_runtime_class,
+                sandbox_node_selector=settings.kubernetes.sandbox_node_selector,
+                custom_tolerations=settings.kubernetes.custom_tolerations,
             )
 
             await kubernetes_manager.start()

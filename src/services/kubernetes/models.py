@@ -125,6 +125,12 @@ class PodSpec:
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)
     network_isolated: bool = False
 
+    # GKE Sandbox (gVisor) configuration
+    gke_sandbox_enabled: bool = False
+    runtime_class_name: str = "gvisor"
+    sandbox_node_selector: dict[str, str] | None = None
+    custom_tolerations: list[dict[str, str]] | None = None
+
 
 @dataclass
 class PoolConfig:
@@ -153,6 +159,12 @@ class PoolConfig:
 
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)
     network_isolated: bool = False
+
+    # GKE Sandbox (gVisor) configuration
+    gke_sandbox_enabled: bool = False
+    runtime_class_name: str = "gvisor"
+    sandbox_node_selector: dict[str, str] | None = None
+    custom_tolerations: list[dict[str, str]] | None = None
 
     @property
     def uses_pool(self) -> bool:

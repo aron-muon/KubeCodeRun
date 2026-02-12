@@ -125,6 +125,10 @@ class JobExecutor:
             sidecar_memory_request=spec.sidecar_memory_request,
             seccomp_profile_type=spec.seccomp_profile_type,
             network_isolated=spec.network_isolated,
+            gke_sandbox_enabled=spec.gke_sandbox_enabled,
+            runtime_class_name=spec.runtime_class_name,
+            sandbox_node_selector=spec.sandbox_node_selector,
+            custom_tolerations=spec.custom_tolerations,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )

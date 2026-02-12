@@ -48,6 +48,10 @@ class KubernetesManager:
         default_memory_request: str = "128Mi",
         seccomp_profile_type: str = "RuntimeDefault",
         network_isolated: bool = False,
+        gke_sandbox_enabled: bool = False,
+        runtime_class_name: str = "gvisor",
+        sandbox_node_selector: dict[str, str] | None = None,
+        custom_tolerations: list[dict[str, str]] | None = None,
     ):
         """Initialize the Kubernetes manager.
 
@@ -61,6 +65,10 @@ class KubernetesManager:
             default_memory_request: Default memory request for pods
             seccomp_profile_type: Seccomp profile type (RuntimeDefault, Unconfined, Localhost)
             network_isolated: Whether network isolation is enabled (disables network-dependent features)
+            gke_sandbox_enabled: Enable GKE Sandbox (gVisor) for additional kernel isolation
+            runtime_class_name: Runtime class name for sandboxed pods
+            sandbox_node_selector: Node selector for sandbox-enabled nodes
+            custom_tolerations: Custom tolerations for node pool taints
         """
         self.namespace = namespace or get_current_namespace()
         self.sidecar_image = sidecar_image
@@ -70,6 +78,10 @@ class KubernetesManager:
         self.default_memory_request = default_memory_request
         self.seccomp_profile_type = seccomp_profile_type
         self.network_isolated = network_isolated
+        self.gke_sandbox_enabled = gke_sandbox_enabled
+        self.runtime_class_name = runtime_class_name
+        self.sandbox_node_selector = sandbox_node_selector
+        self.custom_tolerations = custom_tolerations
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
@@ -280,6 +292,10 @@ class KubernetesManager:
                 memory_request=self.default_memory_request,
                 seccomp_profile_type=self.seccomp_profile_type,
                 network_isolated=self.network_isolated,
+                gke_sandbox_enabled=self.gke_sandbox_enabled,
+                runtime_class_name=self.runtime_class_name,
+                sandbox_node_selector=self.sandbox_node_selector,
+                custom_tolerations=self.custom_tolerations,
             )
 
             result = await self._job_executor.execute_with_job(

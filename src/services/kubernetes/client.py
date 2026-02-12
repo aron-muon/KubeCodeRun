@@ -193,6 +193,10 @@ def create_pod_manifest(
     sidecar_memory_request: str = "256Mi",
     seccomp_profile_type: str = "RuntimeDefault",
     network_isolated: bool = False,
+    gke_sandbox_enabled: bool = False,
+    runtime_class_name: str = "gvisor",
+    sandbox_node_selector: dict[str, str] | None = None,
+    custom_tolerations: list[dict[str, str]] | None = None,
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
@@ -211,6 +215,11 @@ def create_pod_manifest(
         run_as_user: UID to run containers as
         sidecar_port: Port for sidecar HTTP API
         seccomp_profile_type: Seccomp profile type (RuntimeDefault or Unconfined)
+        network_isolated: Whether network isolation is enabled
+        gke_sandbox_enabled: Enable GKE Sandbox (gVisor) for additional kernel isolation
+        runtime_class_name: Runtime class name for sandboxed pods (default: gvisor)
+        sandbox_node_selector: Node selector for sandbox-enabled nodes
+        custom_tolerations: Additional tolerations for custom node pool taints
 
     Returns:
         V1Pod manifest ready for creation.
@@ -323,6 +332,42 @@ def create_pod_manifest(
         ),
     )
 
+    # GKE Sandbox configuration
+    # When enabled, adds gVisor runtime, node selector, and tolerations
+    runtime_class = runtime_class_name if gke_sandbox_enabled else None
+    
+    # Build node selector
+    node_selector = {}
+    if gke_sandbox_enabled:
+        # GKE automatically adds this label to sandbox-enabled nodes
+        node_selector["sandbox.gke.io/runtime"] = "gvisor"
+    if sandbox_node_selector:
+        node_selector.update(sandbox_node_selector)
+    
+    # Build tolerations list
+    tolerations = []
+    if gke_sandbox_enabled:
+        # GKE Sandbox standard taint
+        tolerations.append(
+            client.V1Toleration(
+                key="sandbox.gke.io/runtime",
+                operator="Equal",
+                value="gvisor",
+                effect="NoSchedule",
+            )
+        )
+    if custom_tolerations:
+        # Add custom node pool taints (e.g., pool=sandbox)
+        for tol in custom_tolerations:
+            tolerations.append(
+                client.V1Toleration(
+                    key=tol.get("key"),
+                    operator=tol.get("operator", "Equal"),
+                    value=tol.get("value"),
+                    effect=tol.get("effect", "NoSchedule"),
+                )
+            )
+    
     # Pod spec
     pod_spec = client.V1PodSpec(
         containers=[main_container, sidecar_container],
@@ -331,6 +376,9 @@ def create_pod_manifest(
         termination_grace_period_seconds=10,
         # Share process namespace so sidecar can use nsenter to execute in main container
         share_process_namespace=True,
+        runtime_class_name=runtime_class,
+        node_selector=node_selector if node_selector else None,
+        tolerations=tolerations if tolerations else None,
         security_context=client.V1PodSecurityContext(
             # Note: We don't set run_as_user at pod level; each container
             # sets its own security context. Both run as non-root UID 65532.
@@ -345,11 +393,17 @@ def create_pod_manifest(
     )
 
     # Pod metadata
+    # Add GKE Sandbox annotation if enabled
+    pod_annotations = annotations or {}
+    if gke_sandbox_enabled:
+        # GKE Sandbox annotation for gVisor runtime
+        pod_annotations["sandbox.gke.io/runtime"] = "gvisor"
+    
     metadata = client.V1ObjectMeta(
         name=name,
         namespace=namespace,
         labels=labels,
-        annotations=annotations or {},
+        annotations=pod_annotations,
     )
 
     return client.V1Pod(
