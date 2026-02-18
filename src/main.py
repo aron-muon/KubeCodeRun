@@ -148,6 +148,24 @@ async def lifespan(app: FastAPI):
             if settings.k8s_image_pull_secrets:
                 pull_secrets = [s.strip() for s in settings.k8s_image_pull_secrets.split(",") if s.strip()]
 
+            # Validate execution mode / sidecar image consistency
+            sidecar_img = settings.k8s_sidecar_image.lower()
+            exec_mode = settings.k8s_execution_mode
+            if exec_mode == "agent" and "nsenter" in sidecar_img:
+                logger.warning(
+                    "Execution mode is 'agent' but sidecar image appears to be nsenter-based. "
+                    "Consider using a sidecar-agent image for agent mode.",
+                    sidecar_image=settings.k8s_sidecar_image,
+                    execution_mode=exec_mode,
+                )
+            elif exec_mode == "nsenter" and "agent" in sidecar_img and "nsenter" not in sidecar_img:
+                logger.warning(
+                    "Execution mode is 'nsenter' but sidecar image appears to be agent-based. "
+                    "Consider using a sidecar-nsenter image for nsenter mode.",
+                    sidecar_image=settings.k8s_sidecar_image,
+                    execution_mode=exec_mode,
+                )
+
             kubernetes_manager = KubernetesManager(
                 namespace=settings.k8s_namespace or None,
                 pool_configs=pool_configs,
@@ -160,6 +178,7 @@ async def lifespan(app: FastAPI):
                 executor_port=settings.k8s_executor_port,
                 seccomp_profile_type=settings.k8s_seccomp_profile_type,
                 network_isolated=settings.enable_network_isolation,
+                image_pull_policy=settings.k8s_image_pull_policy,
                 gke_sandbox_enabled=settings.gke_sandbox_enabled,
                 runtime_class_name=settings.gke_sandbox_runtime_class,
                 sandbox_node_selector=settings.kubernetes.sandbox_node_selector,

@@ -184,6 +184,27 @@ Kubernetes is used for secure code execution in isolated pods.
 | `K8S_MEMORY_REQUEST`   | `128Mi`                                      | Memory request per execution pod         |
 | `K8S_EXECUTION_MODE`   | `agent`                                      | Execution mode: `agent` (default) or `nsenter` |
 | `K8S_EXECUTOR_PORT`    | `9090`                                       | Port for the executor HTTP server inside the main container |
+| `K8S_IMAGE_PULL_POLICY`| `Always`                                     | Image pull policy for execution pods (`Always`, `IfNotPresent`, `Never`) |
+| `K8S_IMAGE_PULL_SECRETS`| `""`                                        | Comma-separated list of Kubernetes secret names for pulling images from private registries |
+
+**Image Pull Secrets:**
+
+When using private container registries, create Kubernetes secrets in the execution namespace and reference them via `K8S_IMAGE_PULL_SECRETS`:
+
+```bash
+# Create the secret
+kubectl create secret docker-registry my-registry-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<user> \
+  --docker-password=<token> \
+  -n <execution-namespace>
+
+# Configure the API
+K8S_IMAGE_PULL_SECRETS=my-registry-secret
+# Multiple secrets: K8S_IMAGE_PULL_SECRETS=secret1,secret2
+```
+
+The secrets are applied to all dynamically created execution pods (both warm pool pods and on-demand Job pods).
 
 **Execution Modes:**
 
@@ -240,6 +261,42 @@ execution:
     # For nsenter mode:
     # repository: ghcr.io/your-org/kubecoderun-sidecar-nsenter
 ```
+
+### GKE Sandbox (gVisor) Configuration
+
+[GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) provides kernel-level isolation using gVisor to protect the host kernel from untrusted code. It is **only compatible with agent execution mode**.
+
+| Variable                            | Default   | Description                                        |
+| ----------------------------------- | --------- | -------------------------------------------------- |
+| `GKE_SANDBOX_ENABLED`               | `false`   | Enable GKE Sandbox (gVisor) for execution pods     |
+| `GKE_SANDBOX_RUNTIME_CLASS`         | `gvisor`  | RuntimeClass name for sandboxed pods               |
+| `GKE_SANDBOX_NODE_SELECTOR`         | `{}`      | JSON node selector for sandbox nodes               |
+| `GKE_SANDBOX_CUSTOM_TOLERATIONS`    | `[]`      | JSON array of custom tolerations for sandbox nodes  |
+
+**Requirements:**
+
+- `K8S_EXECUTION_MODE=agent` (nsenter is **incompatible** with gVisor)
+- GKE cluster with a sandbox-enabled node pool (`--sandbox type=gvisor`)
+- At least two node pools — one with GKE Sandbox enabled, one without
+- Container-Optimized OS with containerd (`cos_containerd`) node image
+
+**Example configuration:**
+
+```bash
+K8S_EXECUTION_MODE=agent
+GKE_SANDBOX_ENABLED=true
+GKE_SANDBOX_RUNTIME_CLASS=gvisor
+# Schedule on specific sandbox node pool:
+GKE_SANDBOX_NODE_SELECTOR={"pool":"sandbox"}
+GKE_SANDBOX_CUSTOM_TOLERATIONS=[{"key":"pool","value":"sandbox","operator":"Equal","effect":"NoSchedule"}]
+```
+
+**Key limitations of GKE Sandbox** (see [GKE docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods#limitations)):
+
+- Incompatible with `nsenter` execution mode, privileged containers, and `shareProcessNamespace` (all avoided in agent mode)
+- Seccomp, AppArmor, and SELinux not applicable inside the sandbox
+- HostPath volumes and port-forwarding not supported
+- Container-level memory metrics not available (pod-level metrics are)
 
 ### Resource Limits
 
@@ -444,6 +501,10 @@ if validate_configuration():
 - [ ] Deploy Kubernetes NetworkPolicy to deny egress
 - [ ] Configure pod security context (non-root user)
 - [ ] Review and adjust resource limits
+- [ ] Choose execution mode (`K8S_EXECUTION_MODE=agent` recommended)
+- [ ] Ensure sidecar image matches execution mode (`sidecar-agent` for agent, `sidecar-nsenter` for nsenter)
+- [ ] Configure `K8S_IMAGE_PULL_SECRETS` if using private registries
+- [ ] Enable GKE Sandbox for additional kernel isolation if running on GKE (`GKE_SANDBOX_ENABLED=true`)
 
 ### Performance
 

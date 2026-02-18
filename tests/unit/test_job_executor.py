@@ -499,3 +499,90 @@ class TestExecuteWithJob:
 
                     # Give asyncio.create_task time to schedule
                     await asyncio.sleep(0.1)
+
+
+class TestCreateJobPassesAllPodSpecFields:
+    """Tests that create_job passes all PodSpec fields to create_job_manifest."""
+
+    @pytest.mark.asyncio
+    async def test_create_job_passes_image_pull_secrets(self, job_executor):
+        """Test that image_pull_secrets are forwarded to create_job_manifest."""
+        spec = PodSpec(
+            image="python:3.11",
+            language="python",
+            namespace="test-namespace",
+            image_pull_secrets=["my-registry-secret", "other-secret"],
+        )
+        mock_batch_api = MagicMock()
+        mock_job = MagicMock()
+        mock_job.metadata.uid = "job-uid-123"
+        mock_batch_api.create_namespaced_job.return_value = mock_job
+
+        with patch("src.services.kubernetes.job_executor.get_batch_api", return_value=mock_batch_api):
+            with patch("src.services.kubernetes.job_executor.create_job_manifest", return_value={}) as mock_manifest:
+                await job_executor.create_job(spec, "session-123")
+
+        _, kwargs = mock_manifest.call_args
+        assert kwargs["image_pull_secrets"] == ["my-registry-secret", "other-secret"]
+
+    @pytest.mark.asyncio
+    async def test_create_job_passes_image_pull_policy(self, job_executor):
+        """Test that image_pull_policy is forwarded to create_job_manifest."""
+        spec = PodSpec(
+            image="python:3.11",
+            language="python",
+            namespace="test-namespace",
+            image_pull_policy="IfNotPresent",
+        )
+        mock_batch_api = MagicMock()
+        mock_job = MagicMock()
+        mock_job.metadata.uid = "job-uid-123"
+        mock_batch_api.create_namespaced_job.return_value = mock_job
+
+        with patch("src.services.kubernetes.job_executor.get_batch_api", return_value=mock_batch_api):
+            with patch("src.services.kubernetes.job_executor.create_job_manifest", return_value={}) as mock_manifest:
+                await job_executor.create_job(spec, "session-123")
+
+        _, kwargs = mock_manifest.call_args
+        assert kwargs["image_pull_policy"] == "IfNotPresent"
+
+    @pytest.mark.asyncio
+    async def test_create_job_passes_execution_mode(self, job_executor):
+        """Test that execution_mode is forwarded to create_job_manifest."""
+        spec = PodSpec(
+            image="python:3.11",
+            language="python",
+            namespace="test-namespace",
+            execution_mode="nsenter",
+        )
+        mock_batch_api = MagicMock()
+        mock_job = MagicMock()
+        mock_job.metadata.uid = "job-uid-123"
+        mock_batch_api.create_namespaced_job.return_value = mock_job
+
+        with patch("src.services.kubernetes.job_executor.get_batch_api", return_value=mock_batch_api):
+            with patch("src.services.kubernetes.job_executor.create_job_manifest", return_value={}) as mock_manifest:
+                await job_executor.create_job(spec, "session-123")
+
+        _, kwargs = mock_manifest.call_args
+        assert kwargs["execution_mode"] == "nsenter"
+
+    @pytest.mark.asyncio
+    async def test_create_job_no_image_pull_secrets_by_default(self, job_executor):
+        """Test that image_pull_secrets defaults to None."""
+        spec = PodSpec(
+            image="python:3.11",
+            language="python",
+            namespace="test-namespace",
+        )
+        mock_batch_api = MagicMock()
+        mock_job = MagicMock()
+        mock_job.metadata.uid = "job-uid-123"
+        mock_batch_api.create_namespaced_job.return_value = mock_job
+
+        with patch("src.services.kubernetes.job_executor.get_batch_api", return_value=mock_batch_api):
+            with patch("src.services.kubernetes.job_executor.create_job_manifest", return_value={}) as mock_manifest:
+                await job_executor.create_job(spec, "session-123")
+
+        _, kwargs = mock_manifest.call_args
+        assert kwargs["image_pull_secrets"] is None

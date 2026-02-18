@@ -126,7 +126,8 @@ class PodSpec:
     sidecar_image: str = "aronmuon/kubecoderun-sidecar-agent:latest"
     sidecar_port: int = 8080
 
-    # Image pull secrets (list of secret names)
+    # Image pull policy and secrets
+    image_pull_policy: str = "Always"
     image_pull_secrets: list[str] | None = None
 
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)

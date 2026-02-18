@@ -50,6 +50,7 @@ class KubernetesManager:
         executor_port: int = 9090,
         seccomp_profile_type: str = "RuntimeDefault",
         network_isolated: bool = False,
+        image_pull_policy: str = "Always",
         gke_sandbox_enabled: bool = False,
         runtime_class_name: str = "gvisor",
         sandbox_node_selector: dict[str, str] | None = None,
@@ -70,6 +71,7 @@ class KubernetesManager:
             executor_port: Port for executor HTTP server in the main container
             seccomp_profile_type: Seccomp profile type (RuntimeDefault, Unconfined, Localhost)
             network_isolated: Whether network isolation is enabled (disables network-dependent features)
+            image_pull_policy: Image pull policy for execution pods (Always, IfNotPresent, Never)
             gke_sandbox_enabled: Enable GKE Sandbox (gVisor) for additional kernel isolation
             runtime_class_name: Runtime class name for sandboxed pods
             sandbox_node_selector: Node selector for sandbox-enabled nodes
@@ -86,6 +88,7 @@ class KubernetesManager:
         self.executor_port = executor_port
         self.seccomp_profile_type = seccomp_profile_type
         self.network_isolated = network_isolated
+        self.image_pull_policy = image_pull_policy
         self.gke_sandbox_enabled = gke_sandbox_enabled
         self.runtime_class_name = runtime_class_name
         self.sandbox_node_selector = sandbox_node_selector
@@ -292,9 +295,11 @@ class KubernetesManager:
             # Use Job execution
             # Get image_pull_secrets from pool config for this language
             pull_secrets = self.image_pull_secrets
+            pull_policy = self.image_pull_policy
             for config in self._pool_configs:
                 if config.language.lower() == language.lower():
                     pull_secrets = config.image_pull_secrets or self.image_pull_secrets
+                    pull_policy = config.image_pull_policy or self.image_pull_policy
                     break
 
             spec = PodSpec(
@@ -311,6 +316,7 @@ class KubernetesManager:
                 executor_port=self.executor_port,
                 seccomp_profile_type=self.seccomp_profile_type,
                 network_isolated=self.network_isolated,
+                image_pull_policy=pull_policy,
                 gke_sandbox_enabled=self.gke_sandbox_enabled,
                 runtime_class_name=self.runtime_class_name,
                 sandbox_node_selector=self.sandbox_node_selector,

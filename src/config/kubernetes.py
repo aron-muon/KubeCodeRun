@@ -27,7 +27,9 @@ class KubernetesConfig:
     cpu_request: str = "100m"
     memory_request: str = "128Mi"
 
-    # Sidecar resource limits (CRITICAL: user code inherits these via nsenter)
+    # Sidecar resource limits
+    # In nsenter mode: user code runs in sidecar's cgroup via nsenter
+    # In agent mode: user code runs in main container's cgroup
     sidecar_cpu_limit: str = "500m"
     sidecar_memory_limit: str = "512Mi"
     sidecar_cpu_request: str = "100m"

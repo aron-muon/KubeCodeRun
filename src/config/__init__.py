@@ -618,6 +618,8 @@ class Settings(BaseSettings):
             job_active_deadline_seconds=self.k8s_job_deadline_seconds,
             image_registry=self.k8s_image_registry,
             image_tag=self.k8s_image_tag,
+            image_pull_policy=self.k8s_image_pull_policy,
+            image_pull_secrets=self.k8s_image_pull_secrets,
             gke_sandbox_enabled=self.gke_sandbox_enabled,
             runtime_class_name=self.gke_sandbox_runtime_class,
             sandbox_node_selector=sandbox_node_selector,

@@ -5,8 +5,6 @@ for each execution. This has higher latency but simpler management.
 """
 
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
@@ -131,6 +129,8 @@ class JobExecutor:
             runtime_class_name=spec.runtime_class_name,
             sandbox_node_selector=spec.sandbox_node_selector,
             custom_tolerations=spec.custom_tolerations,
+            image_pull_policy=spec.image_pull_policy,
+            image_pull_secrets=spec.image_pull_secrets,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )
