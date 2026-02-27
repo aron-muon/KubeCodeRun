@@ -211,6 +211,12 @@ Enable TLS for encrypted connections. Required by most managed Redis services (G
 | `REDIS_TLS_CHECK_HOSTNAME`     | `false` | Verify server hostname against certificate CN/SAN                |
 
 > When `REDIS_TLS_ENABLED=true` the generated URL uses the `rediss://` scheme automatically.
+>
+> **Security note:** `REDIS_TLS_CHECK_HOSTNAME` is `false` by default because managed Redis services
+> (GCP Memorystore, AWS ElastiCache) and Redis Cluster node discovery expose IP addresses
+> that do not match certificate CN/SAN entries. The CA certificate chain is still fully
+> validated. For environments where Redis hostnames match their certificates, set
+> `REDIS_TLS_CHECK_HOSTNAME=true` for stronger TLS authentication.
 
 **Example — GCP Memorystore with TLS:**
 

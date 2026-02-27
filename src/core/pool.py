@@ -20,6 +20,9 @@ import redis.asyncio as redis
 import structlog
 from redis.asyncio.cluster import RedisCluster
 from redis.asyncio.sentinel import Sentinel
+from redis.backoff import ExponentialBackoff
+from redis.exceptions import ConnectionError, TimeoutError
+from redis.retry import Retry
 
 from ..config import settings
 
@@ -127,7 +130,8 @@ class RedisPool:
             max_connections=max_conns,
             socket_timeout=socket_timeout,
             socket_connect_timeout=socket_connect_timeout,
-            retry_on_timeout=True,
+            retry=Retry(ExponentialBackoff(), retries=3),
+            retry_on_error=[ConnectionError, TimeoutError],
             **tls_kwargs,
         )
         logger.info(

@@ -62,7 +62,7 @@ class KubernetesConfig:
     # e.g., aronmuon/kubecoderun-python:latest
     image_registry: str = "aronmuon/kubecoderun"
     image_tag: str = "latest"
-    image_pull_policy: str = "IfNotPresent"
+    image_pull_policy: str = "Always"
 
     # Image pull secrets for private registries
     # Format: comma-separated list of secret names, e.g., "secret-for-registry,another-secret"

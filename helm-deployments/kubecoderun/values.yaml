@@ -341,8 +341,10 @@ execution:
   # Provides additional kernel isolation for untrusted workloads using gVisor
   # See: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods
   gkeSandbox:
-    # Enable GKE Sandbox for execution pods
-    enabled: true
+    # Enable GKE Sandbox for execution pods.
+    # WARNING: When enabled, pods require nodes with the gVisor runtime class.
+    # Pods will stay Pending on clusters without sandbox-enabled node pools.
+    enabled: false
 
     # Runtime class name (default: gvisor for GKE)
     runtimeClassName: "gvisor"
@@ -350,30 +352,24 @@ execution:
     # Node selector for sandbox-enabled nodes
     # GKE automatically adds sandbox.gke.io/runtime=gvisor to sandbox nodes
     # Add additional selectors here if needed (e.g., for specific node pools)
-    nodeSelector:
-      sandbox.gke.io/runtime: gvisor
+    nodeSelector: {}
     # Example:
+    #   sandbox.gke.io/runtime: gvisor
     #   cloud.google.com/gke-nodepool: sandbox-pool
 
     # Custom tolerations for node pool taints
     # GKE automatically adds toleration for sandbox.gke.io/runtime=gvisor
     # Use this for additional custom taints (e.g., dedicated sandbox node pools)
-    customTolerations:
+    customTolerations: []
     # Example:
     # - key: pool
     #   operator: Equal
     #   value: sandbox
     #   effect: NoSchedule
-      # Custom node pool taint
-      - key: pool
-        operator: Equal
-        value: sandbox
-        effect: NoSchedule
-      # GKE Sandbox standard taint
-      - key: sandbox.gke.io/runtime
-        operator: Equal
-        value: gvisor
-        effect: NoSchedule
+    # - key: sandbox.gke.io/runtime
+    #   operator: Equal
+    #   value: gvisor
+    #   effect: NoSchedule
 
 # Resource Limits Configuration
 resourceLimits:

@@ -801,3 +801,50 @@ class TestCreatePodManifest:
             mock_logger.warning.assert_called_once()
             warning_msg = mock_logger.warning.call_args[0][0]
             assert "gVisor" in warning_msg or "GKE Sandbox" in warning_msg
+
+    def test_create_pod_manifest_annotations_not_mutated(self):
+        """Test that the caller's annotations dict is not mutated by GKE Sandbox."""
+        original_annotations = {"custom": "value"}
+        annotations_copy = dict(original_annotations)
+
+        client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            sidecar_image="sidecar:latest",
+            language="python",
+            labels={"app": "test"},
+            annotations=original_annotations,
+            gke_sandbox_enabled=True,
+        )
+
+        # Original dict must be unchanged
+        assert original_annotations == annotations_copy
+
+    def test_create_pod_manifest_custom_tolerations_missing_key_skipped(self):
+        """Test that custom tolerations without a 'key' field are skipped with a warning."""
+        with patch("src.services.kubernetes.client.logger") as mock_logger:
+            pod = client.create_pod_manifest(
+                name="test-pod",
+                namespace="test-ns",
+                main_image="python:3.12",
+                sidecar_image="sidecar:latest",
+                language="python",
+                labels={"app": "test"},
+                gke_sandbox_enabled=True,
+                custom_tolerations=[
+                    {"key": "pool", "value": "sandbox"},
+                    {"operator": "Exists", "effect": "NoSchedule"},  # missing key
+                    {"key": "other", "value": "val"},
+                ],
+            )
+
+            # The GKE default + 2 valid custom (the one missing 'key' is skipped)
+            assert len(pod.spec.tolerations) == 3
+            keys = [t.key for t in pod.spec.tolerations]
+            assert "pool" in keys
+            assert "other" in keys
+            assert "sandbox.gke.io/runtime" in keys
+
+            # Should warn about the skipped toleration
+            mock_logger.warning.assert_called_once()

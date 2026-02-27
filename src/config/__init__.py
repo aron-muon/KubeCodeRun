@@ -667,14 +667,24 @@ class Settings(BaseSettings):
             try:
                 sandbox_node_selector = json.loads(self.gke_sandbox_node_selector)
             except json.JSONDecodeError:
-                pass
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Invalid JSON in GKE_SANDBOX_NODE_SELECTOR, ignoring: %s",
+                    self.gke_sandbox_node_selector,
+                )
 
         custom_tolerations = None
         if self.gke_sandbox_custom_tolerations:
             try:
                 custom_tolerations = json.loads(self.gke_sandbox_custom_tolerations)
             except json.JSONDecodeError:
-                pass
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Invalid JSON in GKE_SANDBOX_CUSTOM_TOLERATIONS, ignoring: %s",
+                    self.gke_sandbox_custom_tolerations,
+                )
 
         return KubernetesConfig(
             namespace=self.k8s_namespace,

@@ -93,9 +93,17 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 		workingDir = "/mnt/data"
 	}
 
-	// Validate that working directory is within the safe /mnt/data directory
+	// Validate that working directory is within the safe /mnt/data directory.
+	// Use filepath.Clean + exact-prefix check to prevent traversal to e.g. /mnt/data2.
 	absDir, err := filepath.Abs(workingDir)
-	if err != nil || !strings.HasPrefix(absDir, "/mnt/data") {
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, ExecuteResponse{
+			ExitCode: 1, Stderr: fmt.Sprintf("Invalid working directory: %v", err),
+		})
+		return
+	}
+	absDir = filepath.Clean(absDir)
+	if absDir != "/mnt/data" && !strings.HasPrefix(absDir, "/mnt/data/") {
 		writeJSON(w, http.StatusBadRequest, ExecuteResponse{
 			ExitCode: 1, Stderr: fmt.Sprintf("Invalid working directory: must be within /mnt/data, got %q", workingDir),
 		})
@@ -114,11 +122,23 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	cmd.Dir = workingDir
 
 	// Inherit the current process environment (from container's ENTRYPOINT env -i).
-	// Optionally merge request-provided env overrides (e.g., for network isolation).
+	// Merge request-provided env overrides by replacing existing keys (so the
+	// override actually takes effect regardless of runtime first/last-wins semantics).
 	if len(req.Env) > 0 {
 		env := os.Environ()
 		for k, v := range req.Env {
-			env = append(env, fmt.Sprintf("%s=%s", k, v))
+			prefix := k + "="
+			found := false
+			for i, e := range env {
+				if strings.HasPrefix(e, prefix) {
+					env[i] = prefix + v
+					found = true
+					break
+				}
+			}
+			if !found {
+				env = append(env, prefix+v)
+			}
 		}
 		cmd.Env = env
 	}

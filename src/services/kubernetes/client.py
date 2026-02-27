@@ -428,9 +428,13 @@ def create_pod_manifest(
     if custom_tolerations:
         # Add custom node pool taints (e.g., pool=sandbox)
         for tol in custom_tolerations:
+            tol_key = tol.get("key")
+            if not tol_key:
+                logger.warning("Skipping custom toleration with missing 'key' field", toleration=tol)
+                continue
             tolerations.append(
                 client.V1Toleration(
-                    key=tol.get("key"),
+                    key=tol_key,
                     operator=tol.get("operator", "Equal"),
                     value=tol.get("value"),
                     effect=tol.get("effect", "NoSchedule"),
@@ -463,7 +467,7 @@ def create_pod_manifest(
 
     # Pod metadata
     # Add GKE Sandbox annotation if enabled
-    pod_annotations = annotations or {}
+    pod_annotations = dict(annotations) if annotations else {}
     if gke_sandbox_enabled:
         # GKE Sandbox annotation for gVisor runtime
         pod_annotations["sandbox.gke.io/runtime"] = "gvisor"
