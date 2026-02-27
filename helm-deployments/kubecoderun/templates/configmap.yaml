@@ -319,8 +319,13 @@ data:
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
   WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | toJson | quote }}
 
-  # Redis Advanced Configuration
+  # Redis Configuration
   REDIS_MODE: {{ .Values.redis.mode | quote }}
+  {{- if .Values.redis.host }}
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  {{- end }}
+  REDIS_PORT: {{ .Values.redis.port | quote }}
+  REDIS_DB: {{ .Values.redis.db | quote }}
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
   REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
   REDIS_SOCKET_CONNECT_TIMEOUT: {{ .Values.redis.socketConnectTimeout | quote }}

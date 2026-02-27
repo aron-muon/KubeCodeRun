@@ -101,9 +101,7 @@ class TestGetClient:
 
                 mock_cluster.assert_called_once()
                 call_kwargs = mock_cluster.call_args[1]
-                assert "retry_on_timeout" not in call_kwargs, (
-                    "RedisCluster does not accept retry_on_timeout"
-                )
+                assert "retry_on_timeout" not in call_kwargs, "RedisCluster does not accept retry_on_timeout"
                 assert "retry" in call_kwargs
                 assert "retry_on_error" in call_kwargs
 

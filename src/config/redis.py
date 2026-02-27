@@ -138,10 +138,37 @@ class RedisConfig(BaseSettings):
         if isinstance(v, str):
             for scheme in ("rediss://", "redis://"):
                 if v.lower().startswith(scheme):
-                    v = v[len(scheme):]
+                    v = v[len(scheme) :]
                     # Drop any trailing slash left over
                     v = v.rstrip("/")
                     break
+        return v
+
+    @field_validator("password", "sentinel_password", mode="before")
+    @classmethod
+    def _empty_string_to_none(cls, v: str | None) -> str | None:
+        """Convert empty strings to ``None``.
+
+        Kubernetes ConfigMaps and Helm values often set ``REDIS_PASSWORD: ""``
+        which pydantic-settings reads as ``""`` rather than ``None``.  Passing
+        an empty password to redis-py causes it to send ``AUTH ""`` which
+        fails when the server has no authentication configured.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    @field_validator("cluster_nodes", "sentinel_nodes", mode="before")
+    @classmethod
+    def _empty_nodes_to_none(cls, v: str | None) -> str | None:
+        """Convert empty/whitespace-only node lists to ``None``.
+
+        Helm values default to ``clusterNodes: ""`` which renders in the
+        ConfigMap as an empty string.  This validator treats it the same
+        as "not set" so the code falls back to ``host:port``.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
         return v
 
     # -- Helpers ---------------------------------------------------------------

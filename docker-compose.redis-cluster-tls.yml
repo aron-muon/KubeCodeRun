@@ -1,0 +1,231 @@
+# Redis Cluster with TLS for integration testing
+#
+# This mimics a production GCP Memorystore Redis Cluster setup:
+# - 6-node cluster (3 masters + 3 replicas) with TLS enabled
+# - No authentication (no password)
+# - Server-side TLS with CA verification (no mutual TLS / no client certs)
+# - Accessible on localhost ports 6380-6385 (TLS)
+#
+# Usage:
+#   docker compose -f docker-compose.redis-cluster-tls.yml up -d
+#
+# Test with:
+#   redis-cli -c -p 6380 --tls --cacert tests/tls-certs/ca.crt CLUSTER INFO
+
+services:
+  redis-tls-node-0:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-0
+    ports:
+      - "127.0.0.1:6380:6380"
+      - "127.0.0.1:16380:16380"
+    volumes:
+      - redis-tls-cluster-0:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6380
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6380", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-tls-node-1:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-1
+    ports:
+      - "127.0.0.1:6381:6381"
+      - "127.0.0.1:16381:16381"
+    volumes:
+      - redis-tls-cluster-1:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6381
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6381", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-tls-node-2:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-2
+    ports:
+      - "127.0.0.1:6382:6382"
+      - "127.0.0.1:16382:16382"
+    volumes:
+      - redis-tls-cluster-2:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6382
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6382", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-tls-node-3:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-3
+    ports:
+      - "127.0.0.1:6383:6383"
+      - "127.0.0.1:16383:16383"
+    volumes:
+      - redis-tls-cluster-3:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6383
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6383", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-tls-node-4:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-4
+    ports:
+      - "127.0.0.1:6384:6384"
+      - "127.0.0.1:16384:16384"
+    volumes:
+      - redis-tls-cluster-4:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6384
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6384", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis-tls-node-5:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-5
+    ports:
+      - "127.0.0.1:6385:6385"
+      - "127.0.0.1:16385:16385"
+    volumes:
+      - redis-tls-cluster-5:/data
+      - ./tests/tls-certs:/tls:ro
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6385
+      --tls-cert-file /tls/redis.crt
+      --tls-key-file /tls/redis.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      --tls-replication yes
+      --cluster-enabled yes
+      --cluster-config-file nodes.conf
+      --cluster-node-timeout 5000
+      --appendonly yes
+      --bind 0.0.0.0
+      --protected-mode no
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6385", "--tls", "--cert", "/tls/redis.crt", "--key", "/tls/redis.key", "--cacert", "/tls/ca.crt", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Initializer: creates TLS cluster from the 6 nodes
+  redis-tls-cluster-init:
+    image: redis:7-alpine
+    container_name: redis-tls-cluster-init
+    volumes:
+      - ./tests/tls-certs:/tls:ro
+    depends_on:
+      redis-tls-node-0:
+        condition: service_healthy
+      redis-tls-node-1:
+        condition: service_healthy
+      redis-tls-node-2:
+        condition: service_healthy
+      redis-tls-node-3:
+        condition: service_healthy
+      redis-tls-node-4:
+        condition: service_healthy
+      redis-tls-node-5:
+        condition: service_healthy
+    restart: "no"
+    entrypoint:
+      - sh
+      - -c
+      - |
+        echo 'Creating Redis TLS Cluster...' &&
+        redis-cli --cluster create redis-tls-node-0:6380 redis-tls-node-1:6381 redis-tls-node-2:6382 redis-tls-node-3:6383 redis-tls-node-4:6384 redis-tls-node-5:6385 --cluster-replicas 1 --cluster-yes --tls --cert /tls/redis.crt --key /tls/redis.key --cacert /tls/ca.crt &&
+        echo 'Redis TLS Cluster created successfully' &&
+        redis-cli -h redis-tls-node-0 -p 6380 --tls --cert /tls/redis.crt --key /tls/redis.key --cacert /tls/ca.crt CLUSTER INFO
+
+volumes:
+  redis-tls-cluster-0:
+  redis-tls-cluster-1:
+  redis-tls-cluster-2:
+  redis-tls-cluster-3:
+  redis-tls-cluster-4:
+  redis-tls-cluster-5:

@@ -113,8 +113,7 @@ class ConfigValidator:
                 # --- Cluster mode ---
                 if redis_cfg.cluster_nodes:
                     startup_nodes = [
-                        ClusterNode(host=h, port=p)
-                        for h, p in redis_cfg.parse_nodes(redis_cfg.cluster_nodes)
+                        ClusterNode(host=h, port=p) for h, p in redis_cfg.parse_nodes(redis_cfg.cluster_nodes)
                     ]
                 else:
                     startup_nodes = [ClusterNode(host=redis_cfg.host, port=redis_cfg.port)]

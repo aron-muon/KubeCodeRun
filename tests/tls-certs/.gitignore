@@ -1,0 +1,6 @@
+# Generated TLS certificates — do not commit
+*.key
+*.crt
+*.csr
+*.srl
+*.cnf

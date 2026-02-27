@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     )
     redis_host: str = Field(default="localhost")
     redis_port: int = Field(default=6379, ge=1, le=65535)
-    redis_password: str | None = Field(default=None)
+    redis_password: str | None = Field(default=None, description="Redis password (empty string treated as no password)")
     redis_db: int = Field(default=0, ge=0, le=15)
     redis_url: str | None = Field(default=None)
     redis_max_connections: int = Field(default=20, ge=1)
@@ -530,8 +530,29 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             for scheme in ("rediss://", "redis://"):
                 if v.lower().startswith(scheme):
-                    v = v[len(scheme):].rstrip("/")
+                    v = v[len(scheme) :].rstrip("/")
                     break
+        return v
+
+    @field_validator("redis_password", "redis_sentinel_password", mode="before")
+    @classmethod
+    def sanitize_redis_password(cls, v):
+        """Convert empty password strings to None.
+
+        Kubernetes / Helm often set REDIS_PASSWORD="" which pydantic reads
+        as empty string.  Passing an empty password to redis-py sends
+        AUTH "" which fails when the server has no auth configured.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    @field_validator("redis_cluster_nodes", "redis_sentinel_nodes", mode="before")
+    @classmethod
+    def sanitize_redis_nodes(cls, v):
+        """Convert empty node lists to None so code falls back to host:port."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
         return v
 
     @field_validator("minio_endpoint")
