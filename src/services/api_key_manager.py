@@ -138,8 +138,9 @@ class ApiKeyManagerService:
                 source="environment",
             )
 
-            # Store in Redis
-            pipe = self.redis.pipeline(transaction=True)
+            # Store in Redis (transaction=False for Redis Cluster compatibility
+            # — record key and index key hash to different slots)
+            pipe = self.redis.pipeline(transaction=False)
             pipe.hset(record_key, mapping=record.to_redis_hash())
             pipe.sadd(self.ENV_KEYS_INDEX, key_hash)
             await pipe.execute()
@@ -245,9 +246,10 @@ class ApiKeyManagerService:
             metadata=metadata or {},
         )
 
-        # Store in Redis
+        # Store in Redis (transaction=False for Redis Cluster compatibility
+        # — record key and index key hash to different slots)
         record_key = f"{self.RECORD_PREFIX}{key_hash}"
-        pipe = self.redis.pipeline(transaction=True)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.hset(record_key, mapping=record.to_redis_hash())
         pipe.sadd(self.INDEX_KEY, key_hash)
         await pipe.execute()
@@ -366,8 +368,9 @@ class ApiKeyManagerService:
         if not exists:
             return False
 
-        # Delete from Redis
-        pipe = self.redis.pipeline(transaction=True)
+        # Delete from Redis (transaction=False for Redis Cluster compatibility
+        # — keys hash to different slots)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.delete(record_key)
         pipe.srem(self.INDEX_KEY, key_hash)
         pipe.delete(f"{self.VALID_CACHE_PREFIX}{self._short_hash(key_hash)}")

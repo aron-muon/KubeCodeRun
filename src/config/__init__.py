@@ -495,6 +495,12 @@ class Settings(BaseSettings):
             }
         return data
 
+    # Service Version Override (set at deploy time to override build-time version)
+    service_version: str | None = Field(
+        default=None,
+        description="Runtime version override (e.g. '2.1.4'). Falls back to build-time version from _version.py.",
+    )
+
     # Logging Configuration
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="json")

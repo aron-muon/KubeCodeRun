@@ -33,6 +33,9 @@ from .utils.error_handlers import (
 from .utils.logging import setup_logging
 from .utils.shutdown import setup_graceful_shutdown, shutdown_handler
 
+# Resolve effective version: runtime SERVICE_VERSION overrides build-time _version.py
+effective_version: str = settings.service_version or __version__
+
 # Setup logging
 setup_logging()
 logger = structlog.get_logger()
@@ -42,7 +45,7 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Code Interpreter API", version=__version__)
+    logger.info("Starting Code Interpreter API", version=effective_version)
 
     # Setup graceful shutdown callbacks (uvicorn handles signals)
     setup_graceful_shutdown()
@@ -290,7 +293,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Code Interpreter API",
     description="A secure API for executing code in isolated Kubernetes pods",
-    version=__version__,
+    version=effective_version,
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     debug=settings.api_debug,
@@ -328,7 +331,7 @@ async def health_check():
     """Health check endpoint for liveness probe."""
     return {
         "status": "healthy",
-        "version": __version__,
+        "version": effective_version,
         "config": {
             "debug": settings.api_debug,
             "docs_enabled": settings.enable_docs,

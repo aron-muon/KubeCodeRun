@@ -169,8 +169,9 @@ class SessionService(SessionServiceInterface):
         # Extract entity_id from metadata if provided
         entity_id = request.metadata.get("entity_id") if request.metadata else None
 
-        # Use Redis transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
+        # Use pipeline for batching (transaction=False for Redis Cluster
+        # compatibility — keys span different hash slots)
+        pipe = await self.redis.pipeline(transaction=False)
         try:
             # Store session data
             pipe.hset(session_key, mapping=session_data)
@@ -307,8 +308,9 @@ class SessionService(SessionServiceInterface):
                 )
                 # Continue with session deletion even if file cleanup fails
 
-        # Use transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
+        # Use pipeline for batching (transaction=False for Redis Cluster
+        # compatibility — keys span different hash slots)
+        pipe = await self.redis.pipeline(transaction=False)
         try:
             # Remove session data
             pipe.delete(session_key)

@@ -133,8 +133,9 @@ class StateService:
             state_hash = self.compute_hash(raw_bytes)
             now = datetime.now(UTC)
 
-            # Use pipeline for atomic operations
-            pipe = self.redis.pipeline(transaction=True)
+            # Use pipeline for batching (transaction=False for Redis Cluster
+            # compatibility — state/hash/meta keys hash to different slots)
+            pipe = self.redis.pipeline(transaction=False)
 
             # Save state
             pipe.setex(self._state_key(session_id), ttl_seconds, state_b64)

@@ -243,6 +243,7 @@ build_image() {
     build_output=$(docker build \
         $NO_CACHE \
         $target_flag \
+        --build-arg VERSION="$TAG" \
         -t "$full_name" \
         -f "$DOCKER_DIR/$dockerfile" \
         "$context_path" 2>&1) || exit_code=$?
@@ -338,6 +339,7 @@ build_single_image() {
             docker build \
                 $NO_CACHE \
                 $target_flag \
+                --build-arg VERSION="$TAG" \
                 -t "$full_name" \
                 -f "$DOCKER_DIR/$dockerfile" \
                 "$context_path"
