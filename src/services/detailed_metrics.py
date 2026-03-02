@@ -59,7 +59,7 @@ class DetailedMetricsService:
             prefix = settings.redis.key_prefix
         except Exception:
             prefix = ""
-        
+
         self.BUFFER_KEY = f"{prefix}{self._BUFFER_KEY}"
         self.HOURLY_PREFIX = f"{prefix}{self._HOURLY_PREFIX}"
         self.DAILY_PREFIX = f"{prefix}{self._DAILY_PREFIX}"

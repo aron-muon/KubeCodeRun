@@ -206,7 +206,7 @@ class RedisPool:
         """Prepend the configured key prefix to *key*.
 
         Returns *key* unchanged when no prefix is configured.
-        
+
         This is a pure string operation that does not trigger Redis pool
         initialization. The prefix is loaded directly from settings if the
         pool has not been initialized yet.
@@ -220,7 +220,7 @@ class RedisPool:
                 prefix = settings.redis.key_prefix
             except Exception:
                 prefix = ""
-        
+
         if prefix:
             return f"{prefix}{key}"
         return key

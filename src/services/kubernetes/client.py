@@ -240,7 +240,7 @@ def create_pod_manifest(
 
     Returns:
         V1Pod manifest ready for creation.
-    
+
     Raises:
         ValueError: If execution_mode is not 'agent' or 'nsenter'.
     """
@@ -250,7 +250,7 @@ def create_pod_manifest(
             f"Invalid execution_mode '{execution_mode}'. "
             "Must be 'agent' (recommended, no capabilities) or 'nsenter' (legacy, requires capabilities)."
         )
-    
+
     use_agent = execution_mode == "agent"
 
     # Warn if GKE Sandbox is enabled with nsenter mode (incompatible with gVisor)
