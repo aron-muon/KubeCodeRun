@@ -51,10 +51,10 @@ ENV PIP_NO_BUILD_ISOLATION=1 \
 # Install pip and build tooling with compatible versions
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install \
-    "pip<24.1" \
-    "setuptools<70" \
+    "pip>=24.1" \
+    "setuptools>=70" \
     wheel \
-    "packaging<24"
+    "packaging>=24"
 
 # Copy requirements files
 COPY requirements/python-core.txt /tmp/python-core.txt
