@@ -52,15 +52,19 @@ class DetailedMetricsService:
         self._redis = redis_client
         self._in_memory_buffer: list[DetailedExecutionMetrics] = []
 
-        # Compute prefixed keys once
-        from ..core.pool import redis_pool
-
-        mk = redis_pool.make_key
-        self.BUFFER_KEY = mk(self._BUFFER_KEY)
-        self.HOURLY_PREFIX = mk(self._HOURLY_PREFIX)
-        self.DAILY_PREFIX = mk(self._DAILY_PREFIX)
-        self.POOL_STATS_KEY = mk(self._POOL_STATS_KEY)
-        self.API_KEY_HOURLY_PREFIX = mk(self._API_KEY_HOURLY_PREFIX)
+        # Compute prefixed keys once.
+        # Load prefix directly from settings to avoid triggering Redis pool
+        # initialization during service construction (important for tests/mocks).
+        try:
+            prefix = settings.redis.key_prefix
+        except Exception:
+            prefix = ""
+        
+        self.BUFFER_KEY = f"{prefix}{self._BUFFER_KEY}"
+        self.HOURLY_PREFIX = f"{prefix}{self._HOURLY_PREFIX}"
+        self.DAILY_PREFIX = f"{prefix}{self._DAILY_PREFIX}"
+        self.POOL_STATS_KEY = f"{prefix}{self._POOL_STATS_KEY}"
+        self.API_KEY_HOURLY_PREFIX = f"{prefix}{self._API_KEY_HOURLY_PREFIX}"
 
     def register_event_handlers(self) -> None:
         """Register event handlers for pool metrics."""

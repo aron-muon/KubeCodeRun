@@ -240,7 +240,17 @@ def create_pod_manifest(
 
     Returns:
         V1Pod manifest ready for creation.
+    
+    Raises:
+        ValueError: If execution_mode is not 'agent' or 'nsenter'.
     """
+    # Validate execution_mode to prevent silent security downgrades from typos
+    if execution_mode not in ("agent", "nsenter"):
+        raise ValueError(
+            f"Invalid execution_mode '{execution_mode}'. "
+            "Must be 'agent' (recommended, no capabilities) or 'nsenter' (legacy, requires capabilities)."
+        )
+    
     use_agent = execution_mode == "agent"
 
     # Warn if GKE Sandbox is enabled with nsenter mode (incompatible with gVisor)
@@ -406,22 +416,26 @@ def create_pod_manifest(
     runtime_class = runtime_class_name if gke_sandbox_enabled else None
 
     # Build node selector
+    # Derive sandbox runtime value from runtime_class_name to ensure consistency
+    # between runtimeClassName, node selector, tolerations, and annotations
     node_selector = {}
     if gke_sandbox_enabled:
         # GKE automatically adds this label to sandbox-enabled nodes
-        node_selector["sandbox.gke.io/runtime"] = "gvisor"
+        # Use runtime_class_name to ensure consistency across the pod spec
+        node_selector["sandbox.gke.io/runtime"] = runtime_class_name
     if sandbox_node_selector:
         node_selector.update(sandbox_node_selector)
 
     # Build tolerations list
     tolerations = []
     if gke_sandbox_enabled:
-        # GKE Sandbox standard taint
+        # GKE Sandbox standard taint - derive value from runtime_class_name
+        # to maintain consistency across pod scheduling attributes
         tolerations.append(
             client.V1Toleration(
                 key="sandbox.gke.io/runtime",
                 operator="Equal",
-                value="gvisor",
+                value=runtime_class_name,
                 effect="NoSchedule",
             )
         )
@@ -469,8 +483,9 @@ def create_pod_manifest(
     # Add GKE Sandbox annotation if enabled
     pod_annotations = dict(annotations) if annotations else {}
     if gke_sandbox_enabled:
-        # GKE Sandbox annotation for gVisor runtime
-        pod_annotations["sandbox.gke.io/runtime"] = "gvisor"
+        # GKE Sandbox annotation - use runtime_class_name for consistency
+        # with runtimeClassName, node selector, and tolerations
+        pod_annotations["sandbox.gke.io/runtime"] = runtime_class_name
 
     metadata = client.V1ObjectMeta(
         name=name,

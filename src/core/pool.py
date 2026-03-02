@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 import redis.asyncio as redis
 import structlog
-from redis.asyncio.cluster import RedisCluster
+from redis.asyncio.cluster import ClusterNode, RedisCluster
 from redis.asyncio.sentinel import Sentinel
 from redis.backoff import ExponentialBackoff
 from redis.exceptions import ConnectionError, TimeoutError
@@ -119,9 +119,9 @@ class RedisPool:
         socket_connect_timeout: float,
     ) -> None:
         if cfg.cluster_nodes:
-            startup_nodes = [redis.cluster.ClusterNode(host=h, port=p) for h, p in cfg.parse_nodes(cfg.cluster_nodes)]
+            startup_nodes = [ClusterNode(host=h, port=p) for h, p in cfg.parse_nodes(cfg.cluster_nodes)]
         else:
-            startup_nodes = [redis.cluster.ClusterNode(host=cfg.host, port=cfg.port)]
+            startup_nodes = [ClusterNode(host=cfg.host, port=cfg.port)]
 
         self._client = RedisCluster(
             startup_nodes=startup_nodes,
@@ -206,8 +206,21 @@ class RedisPool:
         """Prepend the configured key prefix to *key*.
 
         Returns *key* unchanged when no prefix is configured.
+        
+        This is a pure string operation that does not trigger Redis pool
+        initialization. The prefix is loaded directly from settings if the
+        pool has not been initialized yet.
         """
-        prefix = self.key_prefix
+        # Avoid triggering Redis pool initialization for simple key construction
+        if self._initialized:
+            prefix = self._key_prefix
+        else:
+            # Load prefix directly from settings without initializing the pool
+            try:
+                prefix = settings.redis.key_prefix
+            except Exception:
+                prefix = ""
+        
         if prefix:
             return f"{prefix}{key}"
         return key
