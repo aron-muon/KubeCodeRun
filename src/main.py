@@ -33,6 +33,9 @@ from .utils.error_handlers import (
 from .utils.logging import setup_logging
 from .utils.shutdown import setup_graceful_shutdown, shutdown_handler
 
+# Resolve effective version: runtime SERVICE_VERSION overrides build-time _version.py
+effective_version: str = settings.service_version or __version__
+
 # Setup logging
 setup_logging()
 logger = structlog.get_logger()
@@ -42,7 +45,7 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Code Interpreter API", version=__version__)
+    logger.info("Starting Code Interpreter API", version=effective_version)
 
     # Setup graceful shutdown callbacks (uvicorn handles signals)
     setup_graceful_shutdown()
@@ -143,6 +146,39 @@ async def lifespan(app: FastAPI):
             # Build pool configs from settings
             pool_configs = settings.get_pool_configs()
 
+            # Parse image pull secrets (comma-separated string -> list)
+            pull_secrets = None
+            if settings.k8s_image_pull_secrets:
+                pull_secrets = [s.strip() for s in settings.k8s_image_pull_secrets.split(",") if s.strip()]
+
+            # Validate execution mode / sidecar image consistency
+            sidecar_img = settings.k8s_sidecar_image.lower()
+            exec_mode = settings.k8s_execution_mode
+            if exec_mode == "agent" and "nsenter" in sidecar_img:
+                logger.warning(
+                    "Execution mode is 'agent' but sidecar image appears to be nsenter-based. "
+                    "Consider using a sidecar-agent image for agent mode.",
+                    sidecar_image=settings.k8s_sidecar_image,
+                    execution_mode=exec_mode,
+                )
+            elif exec_mode == "nsenter" and "agent" in sidecar_img and "nsenter" not in sidecar_img:
+                logger.warning(
+                    "Execution mode is 'nsenter' but sidecar image appears to be agent-based. "
+                    "Consider using a sidecar-nsenter image for nsenter mode.",
+                    sidecar_image=settings.k8s_sidecar_image,
+                    execution_mode=exec_mode,
+                )
+
+            # Validate GKE Sandbox / execution mode compatibility
+            if settings.gke_sandbox_enabled and exec_mode == "nsenter":
+                logger.warning(
+                    "GKE Sandbox (gVisor) is enabled but execution mode is 'nsenter'. "
+                    "nsenter requires SYS_PTRACE/SYS_ADMIN/SYS_CHROOT capabilities which are "
+                    "incompatible with gVisor. Switch to 'agent' execution mode for GKE Sandbox.",
+                    execution_mode=exec_mode,
+                    gke_sandbox_enabled=True,
+                )
+
             kubernetes_manager = KubernetesManager(
                 namespace=settings.k8s_namespace or None,
                 pool_configs=pool_configs,
@@ -151,8 +187,16 @@ async def lifespan(app: FastAPI):
                 default_memory_limit=settings.k8s_memory_limit,
                 default_cpu_request=settings.k8s_cpu_request,
                 default_memory_request=settings.k8s_memory_request,
+                execution_mode=settings.k8s_execution_mode,
+                executor_port=settings.k8s_executor_port,
                 seccomp_profile_type=settings.k8s_seccomp_profile_type,
                 network_isolated=settings.enable_network_isolation,
+                image_pull_policy=settings.k8s_image_pull_policy,
+                gke_sandbox_enabled=settings.gke_sandbox_enabled,
+                runtime_class_name=settings.gke_sandbox_runtime_class,
+                sandbox_node_selector=settings.kubernetes.sandbox_node_selector,
+                custom_tolerations=settings.kubernetes.custom_tolerations,
+                image_pull_secrets=pull_secrets,
             )
 
             await kubernetes_manager.start()
@@ -249,7 +293,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Code Interpreter API",
     description="A secure API for executing code in isolated Kubernetes pods",
-    version=__version__,
+    version=effective_version,
     docs_url="/docs" if settings.enable_docs else None,
     redoc_url="/redoc" if settings.enable_docs else None,
     debug=settings.api_debug,
@@ -287,7 +331,7 @@ async def health_check():
     """Health check endpoint for liveness probe."""
     return {
         "status": "healthy",
-        "version": __version__,
+        "version": effective_version,
         "config": {
             "debug": settings.api_debug,
             "docs_enabled": settings.enable_docs,

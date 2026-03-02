@@ -193,8 +193,26 @@ def create_pod_manifest(
     sidecar_memory_request: str = "256Mi",
     seccomp_profile_type: str = "RuntimeDefault",
     network_isolated: bool = False,
+    execution_mode: str = "agent",
+    executor_port: int = 9090,
+    gke_sandbox_enabled: bool = False,
+    runtime_class_name: str = "gvisor",
+    sandbox_node_selector: dict[str, str] | None = None,
+    custom_tolerations: list[dict[str, str]] | None = None,
+    image_pull_secrets: list[str] | None = None,
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
+
+    Supports two execution modes:
+
+    - agent (default): An executor agent runs in the main container, providing
+      HTTP-based code execution. No nsenter, no capabilities, no privilege
+      escalation needed. Compatible with GKE Sandbox (gVisor) and restricted
+      Pod Security Standards.
+
+    - nsenter (legacy): The sidecar uses nsenter to enter the main container's
+      mount namespace. Requires SYS_PTRACE, SYS_ADMIN, SYS_CHROOT capabilities,
+      shareProcessNamespace, and allowPrivilegeEscalation: true.
 
     Args:
         name: Pod name
@@ -211,10 +229,30 @@ def create_pod_manifest(
         run_as_user: UID to run containers as
         sidecar_port: Port for sidecar HTTP API
         seccomp_profile_type: Seccomp profile type (RuntimeDefault or Unconfined)
+        network_isolated: Whether network isolation is enabled
+        execution_mode: Execution mode - "agent" (default) or "nsenter"
+        executor_port: Port for the executor HTTP server inside the main container
+        gke_sandbox_enabled: Enable GKE Sandbox (gVisor) for additional kernel isolation
+        runtime_class_name: Runtime class name for sandboxed pods (default: gvisor)
+        sandbox_node_selector: Node selector for sandbox-enabled nodes
+        custom_tolerations: Additional tolerations for custom node pool taints
+        image_pull_secrets: List of secret names for pulling images from private registries
 
     Returns:
         V1Pod manifest ready for creation.
     """
+    use_agent = execution_mode == "agent"
+
+    # Warn if GKE Sandbox is enabled with nsenter mode (incompatible with gVisor)
+    if gke_sandbox_enabled and not use_agent:
+        logger.warning(
+            "GKE Sandbox (gVisor) is enabled but execution mode is 'nsenter'. "
+            "nsenter requires capabilities incompatible with gVisor. "
+            "Consider switching to 'agent' execution mode.",
+            execution_mode=execution_mode,
+            gke_sandbox_enabled=gke_sandbox_enabled,
+        )
+
     # Shared volume for code and data
     shared_volume = client.V1Volume(
         name="shared-data",
@@ -229,8 +267,8 @@ def create_pod_manifest(
         mount_path="/mnt/data",
     )
 
-    # Security context for main container
-    security_context = client.V1SecurityContext(
+    # Security context for main container - minimal privileges in both modes
+    main_security_context = client.V1SecurityContext(
         run_as_user=run_as_user,
         run_as_group=run_as_user,
         run_as_non_root=True,
@@ -238,34 +276,35 @@ def create_pod_manifest(
         capabilities=client.V1Capabilities(drop=["ALL"]),
     )
 
-    # Security context for sidecar - needs elevated privileges for nsenter
-    #
-    # The sidecar uses nsenter to execute code in the main container's mount namespace.
-    # nsenter requires these capabilities:
-    # - SYS_PTRACE: access /proc/<pid>/ns/ of other processes
-    # - SYS_ADMIN: call setns() to enter namespaces
-    # - SYS_CHROOT: required for mount namespace operations
-    #
-    # For non-root users, Linux capabilities only populate the bounding set, not
-    # effective/permitted sets. To make capabilities usable, the sidecar Docker image
-    # uses setcap on the nsenter binary:
-    #   setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
-    #
-    # The pod spec must still:
-    # - Add capabilities to the bounding set (capabilities.add)
-    # - Allow privilege escalation (for file capabilities to be honored)
-    #
-    # This approach allows running as non-root while still having nsenter work.
-    sidecar_security_context = client.V1SecurityContext(
-        run_as_user=run_as_user,
-        run_as_group=run_as_user,
-        run_as_non_root=True,
-        allow_privilege_escalation=True,  # Required for file capabilities
-        capabilities=client.V1Capabilities(
-            add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],
-            drop=["ALL"],
-        ),
-    )
+    if use_agent:
+        # Agent mode: sidecar also has minimal privileges (no nsenter needed)
+        sidecar_security_context = client.V1SecurityContext(
+            run_as_user=run_as_user,
+            run_as_group=run_as_user,
+            run_as_non_root=True,
+            allow_privilege_escalation=False,
+            capabilities=client.V1Capabilities(drop=["ALL"]),
+        )
+    else:
+        # nsenter mode: sidecar needs elevated privileges for nsenter
+        #
+        # The sidecar uses nsenter to execute code in the main container's mount namespace.
+        # nsenter requires these capabilities:
+        # - SYS_PTRACE: access /proc/<pid>/ns/ of other processes
+        # - SYS_ADMIN: call setns() to enter namespaces
+        # - SYS_CHROOT: required for mount namespace operations
+        #
+        # File capabilities (setcap on nsenter) require allowPrivilegeEscalation: true.
+        sidecar_security_context = client.V1SecurityContext(
+            run_as_user=run_as_user,
+            run_as_group=run_as_user,
+            run_as_non_root=True,
+            allow_privilege_escalation=True,
+            capabilities=client.V1Capabilities(
+                add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],
+                drop=["ALL"],
+            ),
+        )
 
     # Resource requirements
     resources = client.V1ResourceRequirements(
@@ -279,13 +318,28 @@ def create_pod_manifest(
         image=main_image,
         image_pull_policy=image_pull_policy,
         volume_mounts=[shared_mount],
-        security_context=security_context,
+        security_context=main_security_context,
         resources=resources,
         env=[
             client.V1EnvVar(name="PYTHONUNBUFFERED", value="1"),
             client.V1EnvVar(name="HOME", value="/mnt/data"),
         ],
     )
+
+    # In agent mode, override CMD to run the executor agent from the shared volume
+    # (copied there by the init container)
+    if use_agent:
+        main_container.args = ["/mnt/data/.executor-agent", "--port", str(executor_port)]
+
+    # Sidecar environment variables
+    sidecar_env = [
+        client.V1EnvVar(name="LANGUAGE", value=language),
+        client.V1EnvVar(name="WORKING_DIR", value="/mnt/data"),
+        client.V1EnvVar(name="SIDECAR_PORT", value=str(sidecar_port)),
+        client.V1EnvVar(name="NETWORK_ISOLATED", value=str(network_isolated).lower()),
+        client.V1EnvVar(name="EXECUTION_MODE", value=execution_mode),
+        client.V1EnvVar(name="EXECUTOR_PORT", value=str(executor_port)),
+    ]
 
     # Sidecar container (HTTP API)
     sidecar_container = client.V1Container(
@@ -296,17 +350,12 @@ def create_pod_manifest(
         volume_mounts=[shared_mount],
         security_context=sidecar_security_context,
         resources=client.V1ResourceRequirements(
-            # CRITICAL: User code runs in the sidecar's cgroup via nsenter (Issue #32)
-            # These limits apply to user code execution, not just the sidecar process
+            # In nsenter mode: user code runs in the sidecar's cgroup via nsenter
+            # In agent mode: sidecar only proxies requests, user code runs in main container
             limits={"cpu": sidecar_cpu_limit, "memory": sidecar_memory_limit},
             requests={"cpu": sidecar_cpu_request, "memory": sidecar_memory_request},
         ),
-        env=[
-            client.V1EnvVar(name="LANGUAGE", value=language),
-            client.V1EnvVar(name="WORKING_DIR", value="/mnt/data"),
-            client.V1EnvVar(name="SIDECAR_PORT", value=str(sidecar_port)),
-            client.V1EnvVar(name="NETWORK_ISOLATED", value=str(network_isolated).lower()),
-        ],
+        env=sidecar_env,
         readiness_probe=client.V1Probe(
             http_get=client.V1HTTPGetAction(path="/ready", port=sidecar_port),
             initial_delay_seconds=5,
@@ -323,33 +372,111 @@ def create_pod_manifest(
         ),
     )
 
+    # Init containers (agent mode only)
+    # Copy the executor agent binary from the sidecar image to the shared volume
+    init_containers = None
+    if use_agent:
+        init_containers = [
+            client.V1Container(
+                name="agent-init",
+                image=sidecar_image,
+                image_pull_policy=image_pull_policy,
+                command=[
+                    "python",
+                    "-c",
+                    "import shutil, os; shutil.copy2('/opt/executor-agent', '/mnt/data/.executor-agent'); os.chmod('/mnt/data/.executor-agent', 0o755)",
+                ],
+                volume_mounts=[shared_mount],
+                security_context=client.V1SecurityContext(
+                    run_as_user=run_as_user,
+                    run_as_group=run_as_user,
+                    run_as_non_root=True,
+                    allow_privilege_escalation=False,
+                    capabilities=client.V1Capabilities(drop=["ALL"]),
+                ),
+                resources=client.V1ResourceRequirements(
+                    limits={"cpu": "100m", "memory": "64Mi"},
+                    requests={"cpu": "50m", "memory": "32Mi"},
+                ),
+            )
+        ]
+
+    # GKE Sandbox configuration
+    # When enabled, adds gVisor runtime, node selector, and tolerations
+    runtime_class = runtime_class_name if gke_sandbox_enabled else None
+
+    # Build node selector
+    node_selector = {}
+    if gke_sandbox_enabled:
+        # GKE automatically adds this label to sandbox-enabled nodes
+        node_selector["sandbox.gke.io/runtime"] = "gvisor"
+    if sandbox_node_selector:
+        node_selector.update(sandbox_node_selector)
+
+    # Build tolerations list
+    tolerations = []
+    if gke_sandbox_enabled:
+        # GKE Sandbox standard taint
+        tolerations.append(
+            client.V1Toleration(
+                key="sandbox.gke.io/runtime",
+                operator="Equal",
+                value="gvisor",
+                effect="NoSchedule",
+            )
+        )
+    if custom_tolerations:
+        # Add custom node pool taints (e.g., pool=sandbox)
+        for tol in custom_tolerations:
+            tol_key = tol.get("key")
+            if not tol_key:
+                logger.warning("Skipping custom toleration with missing 'key' field", toleration=tol)
+                continue
+            tolerations.append(
+                client.V1Toleration(
+                    key=tol_key,
+                    operator=tol.get("operator", "Equal"),
+                    value=tol.get("value"),
+                    effect=tol.get("effect", "NoSchedule"),
+                )
+            )
+
+    # Build image pull secrets list
+    pull_secrets = None
+    if image_pull_secrets:
+        pull_secrets = [client.V1LocalObjectReference(name=secret_name) for secret_name in image_pull_secrets]
+
     # Pod spec
     pod_spec = client.V1PodSpec(
+        init_containers=init_containers,
         containers=[main_container, sidecar_container],
         volumes=[shared_volume],
         restart_policy="Never",
         termination_grace_period_seconds=10,
-        # Share process namespace so sidecar can use nsenter to execute in main container
-        share_process_namespace=True,
+        # Share process namespace only needed for nsenter mode
+        share_process_namespace=not use_agent,
+        runtime_class_name=runtime_class,
+        node_selector=node_selector if node_selector else None,
+        tolerations=tolerations if tolerations else None,
+        image_pull_secrets=pull_secrets,
         security_context=client.V1PodSecurityContext(
-            # Note: We don't set run_as_user at pod level; each container
-            # sets its own security context. Both run as non-root UID 65532.
-            # The sidecar uses file capabilities (setcap) on nsenter for privileges.
             fs_group=run_as_user,
-            # Apply seccomp profile to block dangerous syscalls
-            # while preserving nsenter functionality for the sidecar
             seccomp_profile=client.V1SeccompProfile(type=seccomp_profile_type),
         ),
-        # Prevent scheduling on same node as other execution pods
-        # (optional, can be configured via affinity)
     )
 
     # Pod metadata
+    # Add GKE Sandbox annotation if enabled
+    pod_annotations = dict(annotations) if annotations else {}
+    if gke_sandbox_enabled:
+        # GKE Sandbox annotation for gVisor runtime
+        pod_annotations["sandbox.gke.io/runtime"] = "gvisor"
+
     metadata = client.V1ObjectMeta(
         name=name,
         namespace=namespace,
         labels=labels,
-        annotations=annotations or {},
+        annotations=pod_annotations,
     )
 
     return client.V1Pod(
