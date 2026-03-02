@@ -48,8 +48,10 @@ EXECUTION_MODE = os.getenv("EXECUTION_MODE", "agent")
 # Executor port (used in agent mode for the executor agent HTTP server)
 EXECUTOR_PORT = int(os.getenv("EXECUTOR_PORT", "9090"))
 
+
 class ExecuteRequest(BaseModel):
     """Request to execute code."""
+
     code: str
     timeout: int = Field(default=30, ge=1, le=MAX_EXECUTION_TIME)
     working_dir: str = Field(default=WORKING_DIR)
@@ -59,6 +61,7 @@ class ExecuteRequest(BaseModel):
 
 class ExecuteResponse(BaseModel):
     """Response from code execution."""
+
     exit_code: int
     stdout: str
     stderr: str
@@ -69,6 +72,7 @@ class ExecuteResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response."""
+
     status: str
     language: str
     working_dir: str
@@ -77,6 +81,7 @@ class HealthResponse(BaseModel):
 
 class FileInfo(BaseModel):
     """File information."""
+
     name: str
     path: str
     size: int
@@ -135,9 +140,7 @@ def _validate_working_dir(working_dir: str) -> str:
         resolved = Path(working_dir).resolve()
         working_path = Path(WORKING_DIR).resolve()
         if not resolved.is_relative_to(working_path):
-            raise ValueError(
-                f"working_dir '{working_dir}' is outside WORKING_DIR '{WORKING_DIR}'"
-            )
+            raise ValueError(f"working_dir '{working_dir}' is outside WORKING_DIR '{WORKING_DIR}'")
         return str(resolved)
     except ValueError:
         raise
@@ -251,7 +254,7 @@ def apply_network_isolation_overrides(env: dict[str, str], language: str) -> dic
     if language in ("go",):
         env["GOPROXY"] = "off"
         env["GOSUMDB"] = "off"
-        print(f"[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
+        print("[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
 
     # Future: Add overrides for other languages as needed
     # - Rust: CARGO_NET_OFFLINE=true
@@ -347,7 +350,9 @@ def get_language_command(
 
 
 def get_language_command_bare(
-    language: str, code: str, working_dir: str,
+    language: str,
+    code: str,
+    working_dir: str,
 ) -> tuple[list[str], Path | None]:
     """Get the bare command to execute code for a given language (agent mode).
 
@@ -371,7 +376,7 @@ def get_network_isolation_overrides(language: str) -> dict[str, str]:
     if language in ("go",):
         overrides["GOPROXY"] = "off"
         overrides["GOSUMDB"] = "off"
-        print(f"[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
+        print("[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
     return overrides
 
 
@@ -398,9 +403,7 @@ async def execute_via_agent(request: ExecuteRequest) -> ExecuteResponse:
 
     try:
         # Write code to a temp file and get the bare command (no env -i wrapper)
-        cmd, temp_file = get_language_command_bare(
-            LANGUAGE, request.code, safe_working_dir
-        )
+        cmd, temp_file = get_language_command_bare(LANGUAGE, request.code, safe_working_dir)
         if not cmd:
             return ExecuteResponse(
                 exit_code=1,
@@ -462,7 +465,7 @@ async def execute_via_agent(request: ExecuteRequest) -> ExecuteResponse:
             exit_code=1,
             stdout="",
             stderr=f"Cannot connect to executor agent at 127.0.0.1:{EXECUTOR_PORT}. "
-                   f"Ensure the main container is running the executor agent.",
+            f"Ensure the main container is running the executor agent.",
             execution_time_ms=int((time.perf_counter() - start_time) * 1000),
         )
     except Exception as e:
@@ -509,9 +512,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         container_env = apply_network_isolation_overrides(container_env, LANGUAGE)
 
         # Get the command for this language (this writes code to a temp file)
-        cmd, temp_file = get_language_command(
-            LANGUAGE, request.code, safe_working_dir, container_env
-        )
+        cmd, temp_file = get_language_command(LANGUAGE, request.code, safe_working_dir, container_env)
         if not cmd:
             return ExecuteResponse(
                 exit_code=1,
@@ -537,7 +538,8 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     wd_args = [f"--wdns={safe_working_dir}"]
     nsenter_cmd = [
         "nsenter",
-        "-t", str(main_pid),
+        "-t",
+        str(main_pid),
         "-m",  # Mount namespace - access main container's filesystem
         *wd_args,
         "--",
@@ -548,17 +550,23 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     print(f"[EXECUTE] container_env PATH={container_env.get('PATH', 'NOT SET')}", flush=True)
     print(f"[EXECUTE] nsenter_cmd={nsenter_cmd}", flush=True)
     if temp_file:
-        print(f"[EXECUTE] code_file={temp_file}, exists={temp_file.exists()}, size={temp_file.stat().st_size if temp_file.exists() else 0}", flush=True)
+        print(
+            f"[EXECUTE] code_file={temp_file}, exists={temp_file.exists()}, size={temp_file.stat().st_size if temp_file.exists() else 0}",
+            flush=True,
+        )
 
     try:
-        print(f"[EXECUTE] Creating subprocess...", flush=True)
+        print("[EXECUTE] Creating subprocess...", flush=True)
         proc = await asyncio.create_subprocess_exec(
             *nsenter_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=safe_working_dir,
         )
-        print(f"[EXECUTE] Subprocess created, pid={proc.pid}, waiting for completion (timeout={request.timeout}s)...", flush=True)
+        print(
+            f"[EXECUTE] Subprocess created, pid={proc.pid}, waiting for completion (timeout={request.timeout}s)...",
+            flush=True,
+        )
 
         try:
             stdout, stderr = await asyncio.wait_for(
@@ -582,7 +590,10 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         stderr_str = stderr.decode("utf-8", errors="replace")[:MAX_OUTPUT_SIZE]
 
         # Debug logging
-        print(f"[EXECUTE] exit_code={proc.returncode}, stdout_len={len(stdout_str)}, stderr_len={len(stderr_str)}", flush=True)
+        print(
+            f"[EXECUTE] exit_code={proc.returncode}, stdout_len={len(stdout_str)}, stderr_len={len(stderr_str)}",
+            flush=True,
+        )
         if stdout_str:
             print(f"[EXECUTE] stdout preview: {stdout_str[:500]!r}", flush=True)
         if stderr_str:
@@ -690,11 +701,13 @@ async def upload_files(files: list[UploadFile] = File(...)):
             content = await file.read()
             f.write(content)
 
-        uploaded.append(FileInfo(
-            name=safe_name,
-            path=str(dest_path),
-            size=len(content),
-        ))
+        uploaded.append(
+            FileInfo(
+                name=safe_name,
+                path=str(dest_path),
+                size=len(content),
+            )
+        )
 
     return {"uploaded": [f.model_dump() for f in uploaded]}
 
@@ -708,11 +721,13 @@ async def list_files():
 
     files = []
     for item in working_path.iterdir():
-        files.append(FileInfo(
-            name=item.name,
-            path=item.name,
-            size=item.stat().st_size if item.is_file() else 0,
-        ))
+        files.append(
+            FileInfo(
+                name=item.name,
+                path=item.name,
+                size=item.stat().st_size if item.is_file() else 0,
+            )
+        )
     return {"files": [f.model_dump() for f in files]}
 
 
@@ -729,11 +744,13 @@ async def download_file(path: str):
         # List directory contents
         files = []
         for item in file_path.iterdir():
-            files.append(FileInfo(
-                name=item.name,
-                path=str(item.relative_to(working_path)),
-                size=item.stat().st_size if item.is_file() else 0,
-            ))
+            files.append(
+                FileInfo(
+                    name=item.name,
+                    path=str(item.relative_to(working_path)),
+                    size=item.stat().st_size if item.is_file() else 0,
+                )
+            )
         return {"files": [f.model_dump() for f in files]}
 
     return FileResponse(file_path)
