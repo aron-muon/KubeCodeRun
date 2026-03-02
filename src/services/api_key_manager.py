@@ -56,7 +56,7 @@ class ApiKeyManagerService:
             prefix = settings.redis.key_prefix
         except Exception:
             prefix = ""
-        
+
         self.RECORD_PREFIX = f"{prefix}{self._RECORD_PREFIX}"
         self.VALID_CACHE_PREFIX = f"{prefix}{self._VALID_CACHE_PREFIX}"
         self.USAGE_PREFIX = f"{prefix}{self._USAGE_PREFIX}"
