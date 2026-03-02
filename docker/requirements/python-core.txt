@@ -1,19 +1,17 @@
-# Core data processing packages
-# These are the most stable and form the foundation
-
-cloudpickle>=3.0
-lz4>=4.3.0
-numpy>=1.24
-pandas>=2.0
-openpyxl>=3.1
-xlrd>=2.0
-XlsxWriter>=3.1
-pyarrow>=14.0
-tabulate>=0.9
-six>=1.16
-packaging>=23.0
-python-dateutil>=2.8
-pytz>=2024.1
-tzdata>=2024.1
-pendulum>=3.0
-pydantic>=2.5
+# Core data processing
+cloudpickle>=3.1.0
+lz4>=4.3.3
+numpy>=2.2.1
+pandas>=3.0.0
+openpyxl>=3.1.5
+xlrd>=2.0.1
+XlsxWriter>=3.2.0
+pyarrow>=18.1.0
+tabulate>=0.9.0
+six>=1.17.0
+packaging>=24.2
+python-dateutil>=2.9.0
+pytz>=2025.1
+tzdata>=2025.2
+pendulum>=3.0.0
+pydantic>=2.10.6

@@ -83,32 +83,33 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    # Runtime libraries (counterparts to -dev packages in builder)
-    libxml2 \
-    libxslt1.1 \
-    libffi8 \
-    libssl3t64 \
+    # Core System Utilities
+    libgomp1 \
+    liblz4-1 \
+    # Image Processing (Pillow, OpenCV)
+    ffmpeg \
     libjpeg62-turbo \
     libpng16-16t64 \
     libtiff6 \
-    libopenjp2-7 \
-    libfreetype6 \
-    liblcms2-2 \
     libwebp7 \
-    libportaudio2 \
-    libpulse0 \
-    # External tools needed at runtime
+    libopenjp2-7 \
+    liblcms2-2 \
+    # XML/HTML Processing (lxml, beautifulsoup4)
+    libxml2 \
+    libxslt1.1 \
+    # Cryptography (cryptography, PyOpenSSL)
+    libffi8 \
+    libssl3t64 \
+    # Font Support (Matplotlib, WordCloud)
+    libfreetype6 \
+    fontconfig \
+    # External Tools (Runtime executables)
     poppler-utils \
-    tesseract-ocr \
-    pandoc \
-    ffmpeg \
-    flac \
-    antiword \
-    unrtf \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /mnt/data && chown 65532:65532 /mnt/data
+
 
 ################################
 # Final stage - minimal runtime image
@@ -129,13 +130,7 @@ LABEL org.opencontainers.image.title="KubeCodeRun Python Environment" \
 COPY --from=runtime-deps /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
 COPY --from=runtime-deps /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
 COPY --from=runtime-deps /usr/bin/pdftotext /usr/bin/pdftoppm /usr/bin/pdfinfo /usr/bin/
-COPY --from=runtime-deps /usr/bin/tesseract /usr/bin/
-COPY --from=runtime-deps /usr/bin/pandoc /usr/bin/
 COPY --from=runtime-deps /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/
-COPY --from=runtime-deps /usr/bin/flac /usr/bin/
-COPY --from=runtime-deps /usr/bin/antiword /usr/bin/
-COPY --from=runtime-deps /usr/bin/unrtf /usr/bin/
-COPY --from=runtime-deps /usr/share/tesseract-ocr /usr/share/tesseract-ocr
 
 # Copy installed Python packages from builder
 # DHI Python is installed in /opt/python, not /usr/local

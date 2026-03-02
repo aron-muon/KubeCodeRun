@@ -1,0 +1,58 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 120
+
+[*.go]
+indent_style = tab
+indent_size = 4
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+[*.{sh,bash}]
+indent_style = space
+indent_size = 2
+
+[*.{toml,cfg,ini}]
+indent_style = space
+indent_size = 4
+
+[*.{js,ts,json}]
+indent_style = space
+indent_size = 2
+
+[*.{html,css}]
+indent_style = space
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Dockerfile*]
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+[justfile]
+indent_style = space
+indent_size = 4
+
+[*.{tf,hcl}]
+indent_style = space
+indent_size = 2
+
+[helm-deployments/**/*.yaml]
+indent_style = space
+indent_size = 2

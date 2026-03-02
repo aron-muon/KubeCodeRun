@@ -8,7 +8,7 @@
 ################################
 # Builder stage - compile crate dependencies
 ################################
-FROM dhi.io/rust:1.92-debian13-dev AS builder
+FROM dhi.io/rust:1.93-debian13-dev AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -45,7 +45,7 @@ RUN rm -rf /tmp/rust-cache/src /tmp/rust-cache/Cargo.toml /tmp/rust-cache/Cargo.
 ################################
 # Final stage - runtime only
 ################################
-FROM dhi.io/rust:1.92-debian13-dev AS final
+FROM dhi.io/rust:1.93-debian13-dev AS final
 
 ARG BUILD_DATE
 ARG VERSION
