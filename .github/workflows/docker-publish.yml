@@ -145,9 +145,26 @@ jobs:
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
+      image_name: kubecoderun-sidecar-agent
       dockerfile: docker/sidecar/Dockerfile
       context: docker/sidecar
+      build_target: sidecar-agent
+      image_tag: ${{ needs.changes.outputs.image_tag }}
+      is_release: ${{ needs.changes.outputs.is_release == 'true' }}
+      version: ${{ needs.changes.outputs.version }}
+
+  sidecar-nsenter:
+    needs: changes
+    if: |
+      needs.changes.outputs.is_cross_repo_pr != 'true' &&
+      (needs.changes.outputs.sidecar == 'true' || needs.changes.outputs.force_all == 'true')
+    uses: ./.github/workflows/docker-build-reusable.yml
+    secrets: inherit
+    with:
+      image_name: kubecoderun-sidecar-nsenter
+      dockerfile: docker/sidecar/Dockerfile
+      context: docker/sidecar
+      build_target: sidecar-nsenter
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
@@ -344,7 +361,7 @@ jobs:
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
+      image_name: kubecoderun-sidecar-agent
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
 

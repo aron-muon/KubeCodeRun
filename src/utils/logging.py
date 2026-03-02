@@ -110,7 +110,7 @@ def configure_third_party_loggers() -> None:
 def add_service_context(logger, method_name, event_dict):
     """Add service context information to log entries."""
     event_dict["service"] = "kubecoderun-api"
-    event_dict["version"] = __version__
+    event_dict["version"] = settings.service_version or __version__
     return event_dict
 
 

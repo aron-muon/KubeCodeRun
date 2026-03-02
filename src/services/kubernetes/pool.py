@@ -185,8 +185,15 @@ class PodPool:
             sidecar_memory_limit=self.config.sidecar_memory_limit,
             sidecar_cpu_request=self.config.sidecar_cpu_request,
             sidecar_memory_request=self.config.sidecar_memory_request,
+            execution_mode=self.config.execution_mode,
+            executor_port=self.config.executor_port,
             seccomp_profile_type=self.config.seccomp_profile_type,
             network_isolated=self.config.network_isolated,
+            gke_sandbox_enabled=self.config.gke_sandbox_enabled,
+            runtime_class_name=self.config.runtime_class_name,
+            sandbox_node_selector=self.config.sandbox_node_selector,
+            custom_tolerations=self.config.custom_tolerations,
+            image_pull_secrets=self.config.image_pull_secrets,
         )
 
         try:

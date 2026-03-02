@@ -78,19 +78,21 @@ Execution namespace
 {{- end }}
 
 {{/*
-Redis URL
+Redis URL — honours TLS setting to switch between redis:// and rediss://
 */}}
 {{- define "kubecoderun.redisUrl" -}}
 {{- if .Values.redis.url }}
 {{- .Values.redis.url }}
 {{- else if .Values.redis.host }}
+{{- $scheme := ternary "rediss" "redis" .Values.redis.tls.enabled }}
 {{- if .Values.redis.password }}
-{{- printf "redis://:%s@%s:%d/%d" .Values.redis.password .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
+{{- printf "%s://:%s@%s:%d/%d" $scheme .Values.redis.password .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
 {{- else }}
-{{- printf "redis://%s:%d/%d" .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
+{{- printf "%s://%s:%d/%d" $scheme .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
 {{- end }}
 {{- else }}
-{{- "redis://redis:6379/0" }}
+{{- $scheme := ternary "rediss" "redis" .Values.redis.tls.enabled }}
+{{- printf "%s://redis:6379/0" $scheme }}
 {{- end }}
 {{- end }}
 

@@ -48,19 +48,104 @@ The warm pool approach achieves ~85% reduction in P99 latency compared to cold-s
 
 ## Pod Design: Two-Container Sidecar Pattern
 
-Each execution pod contains two containers that share process namespaces, enabling the sidecar to execute code using the main container's runtime environment.
+Each execution pod contains two containers that communicate over the shared pod network (`localhost`). KubeCodeRun supports two execution modes controlled by `K8S_EXECUTION_MODE`.
 
-### 1. Main Container (Language Runtime)
+### Execution Modes
+
+#### Agent Mode (Default) — `K8S_EXECUTION_MODE=agent`
+
+In agent mode, a statically compiled Go binary (**executor agent**) runs inside the main (language) container. The sidecar forwards execution requests to the agent over `localhost:9090`.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Execution Pod                          │
+│  shareProcessNamespace: false (not needed)                  │
+│                                                             │
+│  ┌────────────────┐                                         │
+│  │ Init Container │  Copies /opt/executor-agent              │
+│  │ (agent-init)   │  → /mnt/data/.executor-agent            │
+│  └────────┬───────┘                                         │
+│           │                                                 │
+│  ┌────────▼────────────┐    ┌─────────────────────────────┐ │
+│  │   Main Container    │    │      Sidecar Container      │ │
+│  │                     │    │                             │ │
+│  │  • Language runtime │◄───│  • Receives HTTP request    │ │
+│  │  • Executor agent   │    │  • Forwards to agent via    │ │
+│  │    on 127.0.0.1:9090│    │    POST localhost:9090      │ │
+│  │  • Spawns code      │    │  • Returns stdout/stderr    │ │
+│  │    subprocesses     │    │                             │ │
+│  └─────────────────────┘    └─────────────────────────────┘ │
+│           │                            │                    │
+│           └────────────────────────────┘                    │
+│                   Shared /mnt/data volume                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Security properties:**
+- No `shareProcessNamespace` — containers cannot see each other's processes
+- No capabilities — all capabilities dropped for all containers
+- `allowPrivilegeEscalation: false` — no binary can gain elevated privileges
+- Compatible with **GKE Sandbox (gVisor)** and restricted Pod Security Standards
+- Communication via `localhost` only (pod-internal, not network-accessible)
+
+**Container images:**
+- **Sidecar:** Built with `--target sidecar-agent` from `docker/sidecar/Dockerfile`
+- **Image name:** `kubecoderun-sidecar-agent` (contains executor-agent binary + Python sidecar)
+
+#### nsenter Mode (Legacy) — `K8S_EXECUTION_MODE=nsenter`
+
+In nsenter mode, the sidecar uses Linux `nsenter` to execute code in the main container's mount namespace. This requires elevated privileges and is preserved for backward compatibility.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Execution Pod                          │
+│  shareProcessNamespace: true                                │
+│                                                             │
+│  ┌─────────────────────┐    ┌─────────────────────────────┐ │
+│  │   Main Container    │    │      Sidecar Container      │ │
+│  │                     │    │                             │ │
+│  │  • Python/Node/Go   │◄───│  • Receives HTTP request    │ │
+│  │  • sleep infinity   │    │  • Writes code to /mnt/data │ │
+│  │  • PID 1 visible    │    │  • nsenter -m -t <PID>      │ │
+│  │    to sidecar       │    │    --wdns=/mnt/data sh      │ │
+│  │                     │    │  • Returns stdout/stderr    │ │
+│  └─────────────────────┘    └─────────────────────────────┘ │
+│           │                            │                    │
+│           └────────────────────────────┘                    │
+│                   Shared /mnt/data volume                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Required pod settings:**
+- `shareProcessNamespace: true`
+- Sidecar capabilities: `SYS_PTRACE`, `SYS_ADMIN`, `SYS_CHROOT`
+- `allowPrivilegeEscalation: true` (for file capabilities on nsenter binary)
+- **Not compatible** with GKE Sandbox (gVisor)
+
+**Container images:**
+- **Sidecar:** Built with `--target sidecar-nsenter` from `docker/sidecar/Dockerfile`
+- **Image name:** `kubecoderun-sidecar-nsenter` (contains nsenter with setcap + Python sidecar)
+
+### Container Details
+
+#### 1. Main Container (Language Runtime)
 - Runs the language runtime (Python, Node.js, Go, etc.)
 - Provides the execution environment (compilers, interpreters, libraries)
 - Shares `/mnt/data` volume with sidecar
-- Runs a sleep loop to keep the container alive
+- **Agent mode:** Runs the executor agent binary (copied by init container)
+- **nsenter mode:** Runs `sleep infinity` to keep the container alive
 
-### 2. HTTP Sidecar (Executor)
+#### 2. HTTP Sidecar (Executor)
 - Lightweight FastAPI server (~50MB)
 - Exposes REST API for code execution
-- Uses `nsenter` to execute code in the main container's namespace
+- **Agent mode:** Forwards requests to the executor agent via HTTP on `localhost`
+- **nsenter mode:** Uses `nsenter` to execute code in the main container's namespace
 - Handles file transfers and state management
+
+#### 3. Init Container (Agent Mode Only)
+- Uses the sidecar-agent image
+- Copies `/opt/executor-agent` binary to `/mnt/data/.executor-agent`
+- Runs once at pod startup, then exits
 
 **Sidecar API Endpoints:**
 ```
@@ -71,9 +156,9 @@ GET  /files/{name} - Download file content
 GET  /health      - Health check
 ```
 
-### Namespace Sharing with nsenter
+### Namespace Sharing with nsenter (Legacy Mode)
 
-The pod uses `shareProcessNamespace: true`, allowing containers to see each other's processes. The sidecar uses Linux `nsenter` to execute code in the main container's mount namespace:
+In nsenter mode, the pod uses `shareProcessNamespace: true`, allowing containers to see each other's processes. The sidecar uses Linux `nsenter` to execute code in the main container's mount namespace:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -100,18 +185,18 @@ The pod uses `shareProcessNamespace: true`, allowing containers to see each othe
 3. Sets the working directory to `/mnt/data` so relative paths write to the shared volume
 4. Captures stdout/stderr and returns via HTTP
 
-**nsenter Privilege Model:**
+**nsenter Privilege Model (nsenter mode only):**
 
 The sidecar runs as non-root (UID 65532) but requires Linux capabilities to use `nsenter`. Since capabilities for non-root users only populate the *bounding set* (not effective/permitted), we use **file capabilities** via `setcap` on the nsenter binary:
 
 ```dockerfile
-# In sidecar Dockerfile
+# In sidecar Dockerfile (sidecar-nsenter target only)
 RUN setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
 ```
 
 This allows the non-root user to gain the required capabilities when executing nsenter, without running as root. The pod spec still requires `allowPrivilegeEscalation: true` for file capabilities to be honored. See [SECURITY.md](SECURITY.md) for full details.
 
-**Per-Language Environment Setup:**
+**Per-Language Environment Setup (nsenter mode only):**
 
 Since `nsenter -m` only enters the mount namespace (not the environment), the sidecar explicitly sets up PATH and environment variables for each language:
 
@@ -186,7 +271,8 @@ Since `nsenter -m` only enters the mount namespace (not the environment), the si
    ▼
 5. HTTP Sidecar
    ├── POST /execute
-   ├── Run code in main container
+   ├── Agent mode:  Forward to executor agent → subprocess in main container
+   ├── nsenter mode: nsenter into main container's mount namespace → subprocess
    └── Return stdout/stderr/files
    │
    ▼
@@ -253,7 +339,7 @@ POD_POOL_EXHAUSTION_TRIGGER=true   # Trigger immediate replenishment when exhaus
 
 ```python
 K8S_NAMESPACE=kubecoderun
-K8S_SIDECAR_IMAGE=aronmuon/kubecoderun-sidecar:latest
+K8S_SIDECAR_IMAGE=aronmuon/kubecoderun-sidecar-agent:latest
 K8S_IMAGE_REGISTRY=aronmuon/kubecoderun
 K8S_IMAGE_TAG=latest
 K8S_CPU_LIMIT=1

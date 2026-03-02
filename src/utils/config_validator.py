@@ -5,6 +5,8 @@ from typing import Any, Dict, List
 
 import redis
 from minio.error import S3Error
+from redis.cluster import ClusterNode, RedisCluster
+from redis.sentinel import Sentinel
 
 from ..config import settings
 
@@ -94,18 +96,71 @@ class ConfigValidator:
                 self.errors.append(f"File extension must start with dot: {ext}")
 
     def _validate_redis_connection(self):
-        """Validate Redis connection."""
-        try:
-            # Use Redis URL from settings
-            client = redis.from_url(
-                settings.get_redis_url(),
-                socket_timeout=settings.redis_socket_timeout,
-                socket_connect_timeout=settings.redis_socket_connect_timeout,
-                max_connections=settings.redis_max_connections,
-            )
+        """Validate Redis connection.
 
-            # Test connection
-            client.ping()
+        Uses the correct client type depending on REDIS_MODE (standalone,
+        cluster, or sentinel) and forwards TLS kwargs so that managed
+        services with custom CA certificates are validated correctly.
+        """
+        try:
+            redis_cfg = settings.redis
+            tls_kwargs = redis_cfg.get_tls_kwargs()
+            # ``ssl`` is implied by the ``rediss://`` scheme for standalone;
+            # for cluster/sentinel it's passed directly.
+            tls_standalone = {k: v for k, v in tls_kwargs.items() if k != "ssl"}
+
+            if redis_cfg.mode == "cluster":
+                # --- Cluster mode ---
+                if redis_cfg.cluster_nodes:
+                    startup_nodes = [
+                        ClusterNode(host=h, port=p) for h, p in redis_cfg.parse_nodes(redis_cfg.cluster_nodes)
+                    ]
+                else:
+                    startup_nodes = [ClusterNode(host=redis_cfg.host, port=redis_cfg.port)]
+
+                client = RedisCluster(
+                    startup_nodes=startup_nodes,
+                    password=redis_cfg.password,
+                    socket_timeout=redis_cfg.socket_timeout,
+                    socket_connect_timeout=redis_cfg.socket_connect_timeout,
+                    **tls_kwargs,
+                )
+                client.ping()
+                client.close()
+
+            elif redis_cfg.mode == "sentinel":
+                # --- Sentinel mode ---
+                if redis_cfg.sentinel_nodes:
+                    sentinel_hosts = redis_cfg.parse_nodes(redis_cfg.sentinel_nodes)
+                else:
+                    sentinel_hosts = [(redis_cfg.host, 26379)]
+
+                sentinel = Sentinel(
+                    sentinels=sentinel_hosts,
+                    password=redis_cfg.sentinel_password,
+                    socket_timeout=redis_cfg.socket_timeout,
+                    socket_connect_timeout=redis_cfg.socket_connect_timeout,
+                    **tls_kwargs,
+                )
+                master = sentinel.master_for(
+                    service_name=redis_cfg.sentinel_master,
+                    password=redis_cfg.password,
+                    socket_timeout=redis_cfg.socket_timeout,
+                    socket_connect_timeout=redis_cfg.socket_connect_timeout,
+                    **tls_kwargs,
+                )
+                master.ping()
+
+            else:
+                # --- Standalone mode ---
+                client = redis.from_url(
+                    settings.get_redis_url(),
+                    socket_timeout=settings.redis_socket_timeout,
+                    socket_connect_timeout=settings.redis_socket_connect_timeout,
+                    max_connections=settings.redis_max_connections,
+                    **tls_standalone,
+                )
+                client.ping()
 
         except redis.ConnectionError as e:
             # Treat as warning in development mode to allow startup without Redis
