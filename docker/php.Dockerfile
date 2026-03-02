@@ -2,8 +2,8 @@
 # PHP execution environment with Docker Hardened Images.
 
 # PHP version configuration - single source of truth
-ARG PHP_VERSION=8.4.17
-ARG PHP_MAJOR=8.4
+ARG PHP_VERSION=8.5.3
+ARG PHP_MAJOR=8.5
 ARG DEBIAN_VERSION=debian13
 
 ARG BUILD_DATE
