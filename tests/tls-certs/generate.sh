@@ -84,7 +84,9 @@ openssl x509 -req -in redis.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -extfile redis-ext.cnf -extensions v3_req 2>/dev/null
 
 # Redis needs world-readable key files (containers run as redis user)
-chmod 644 redis.key ca.key
+chmod 644 redis.key
+# CA private key should stay restricted — it is not needed by Redis containers
+chmod 600 ca.key
 
 echo "Verifying certificate chain..."
 openssl verify -CAfile ca.crt redis.crt

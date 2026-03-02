@@ -329,7 +329,7 @@ def create_pod_manifest(
     # In agent mode, override CMD to run the executor agent from the shared volume
     # (copied there by the init container)
     if use_agent:
-        main_container.args = ["/mnt/data/.executor-agent"]
+        main_container.args = ["/mnt/data/.executor-agent", "--port", str(executor_port)]
 
     # Sidecar environment variables
     sidecar_env = [

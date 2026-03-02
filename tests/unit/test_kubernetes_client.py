@@ -440,9 +440,9 @@ class TestCreatePodManifest:
         assert "/opt/executor-agent" in init_container.command[2]
         assert "/mnt/data/.executor-agent" in init_container.command[2]
 
-        # Agent mode: main container runs executor agent
+        # Agent mode: main container runs executor agent with port
         main_container = next(c for c in pod.spec.containers if c.name == "main")
-        assert main_container.args == ["/mnt/data/.executor-agent"]
+        assert main_container.args == ["/mnt/data/.executor-agent", "--port", "9090"]
 
         # Agent mode: sidecar has EXECUTION_MODE and EXECUTOR_PORT env vars
         sidecar = next(c for c in pod.spec.containers if c.name == "sidecar")

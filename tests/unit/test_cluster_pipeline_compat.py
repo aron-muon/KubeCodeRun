@@ -35,7 +35,7 @@ def mock_redis_session():
     pipeline_mock.execute = AsyncMock(return_value=[True, True, True])
     pipeline_mock.reset = AsyncMock()
 
-    redis_mock.pipeline = AsyncMock(return_value=pipeline_mock)
+    redis_mock.pipeline = MagicMock(return_value=pipeline_mock)
     redis_mock.hgetall = AsyncMock(return_value={})
     return redis_mock
 

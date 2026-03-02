@@ -171,7 +171,7 @@ class SessionService(SessionServiceInterface):
 
         # Use pipeline for batching (transaction=False for Redis Cluster
         # compatibility — keys span different hash slots)
-        pipe = await self.redis.pipeline(transaction=False)
+        pipe = self.redis.pipeline(transaction=False)
         try:
             # Store session data
             pipe.hset(session_key, mapping=session_data)
@@ -310,7 +310,7 @@ class SessionService(SessionServiceInterface):
 
         # Use pipeline for batching (transaction=False for Redis Cluster
         # compatibility — keys span different hash slots)
-        pipe = await self.redis.pipeline(transaction=False)
+        pipe = self.redis.pipeline(transaction=False)
         try:
             # Remove session data
             pipe.delete(session_key)
