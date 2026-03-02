@@ -200,6 +200,7 @@ def create_pod_manifest(
     sandbox_node_selector: dict[str, str] | None = None,
     custom_tolerations: list[dict[str, str]] | None = None,
     image_pull_secrets: list[str] | None = None,
+    agent_init_image: str | None = None,
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
@@ -243,6 +244,13 @@ def create_pod_manifest(
 
     Raises:
         ValueError: If execution_mode is not 'agent' or 'nsenter'.
+
+    Note:
+        In agent mode the init container copies ``/opt/executor-agent`` from
+        ``agent_init_image`` (defaults to ``sidecar_image`` when *None*).  If
+        the sidecar image used at runtime is the nsenter variant (which does
+        not ship the binary), pass the agent-sidecar image explicitly via
+        ``agent_init_image`` to avoid an init-container startup failure.
     """
     # Validate execution_mode to prevent silent security downgrades from typos
     if execution_mode not in ("agent", "nsenter"):
@@ -383,13 +391,17 @@ def create_pod_manifest(
     )
 
     # Init containers (agent mode only)
-    # Copy the executor agent binary from the sidecar image to the shared volume
+    # Copy the executor agent binary from the sidecar image to the shared volume.
+    # Use agent_init_image if provided; fall back to sidecar_image.
+    # Callers that use the nsenter sidecar variant at runtime should pass the
+    # agent sidecar image explicitly so the init container finds /opt/executor-agent.
+    _agent_source_image = agent_init_image if agent_init_image is not None else sidecar_image
     init_containers = None
     if use_agent:
         init_containers = [
             client.V1Container(
                 name="agent-init",
-                image=sidecar_image,
+                image=_agent_source_image,
                 image_pull_policy=image_pull_policy,
                 command=[
                     "python",

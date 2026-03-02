@@ -115,6 +115,36 @@ def validate_path_within_working_dir(path: str) -> Path:
         raise HTTPException(status_code=400, detail="Invalid path")
 
 
+def _validate_working_dir(working_dir: str) -> str:
+    """Validate that working_dir is within WORKING_DIR before any file writes.
+
+    Prevents a caller from directing code-file writes outside /mnt/data by
+    supplying a crafted working_dir (e.g. /etc, /proc).  Called at the start
+    of every execute path before _write_code_file / spawning processes.
+
+    Args:
+        working_dir: The user-supplied working directory string.
+
+    Returns:
+        The resolved, safe working directory string.
+
+    Raises:
+        ValueError: If working_dir escapes WORKING_DIR.
+    """
+    try:
+        resolved = Path(working_dir).resolve()
+        working_path = Path(WORKING_DIR).resolve()
+        if not resolved.is_relative_to(working_path):
+            raise ValueError(
+                f"working_dir '{working_dir}' is outside WORKING_DIR '{WORKING_DIR}'"
+            )
+        return str(resolved)
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(f"Invalid working_dir '{working_dir}': {exc}") from exc
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -354,10 +384,22 @@ async def execute_via_agent(request: ExecuteRequest) -> ExecuteResponse:
     """
     start_time = time.perf_counter()
 
+    # Validate working_dir before any file writes to prevent path-traversal
+    # (e.g. a caller supplying /etc would write code files outside /mnt/data)
+    try:
+        safe_working_dir = _validate_working_dir(request.working_dir)
+    except ValueError as exc:
+        return ExecuteResponse(
+            exit_code=1,
+            stdout="",
+            stderr=str(exc),
+            execution_time_ms=0,
+        )
+
     try:
         # Write code to a temp file and get the bare command (no env -i wrapper)
         cmd, temp_file = get_language_command_bare(
-            LANGUAGE, request.code, request.working_dir
+            LANGUAGE, request.code, safe_working_dir
         )
         if not cmd:
             return ExecuteResponse(
@@ -386,7 +428,7 @@ async def execute_via_agent(request: ExecuteRequest) -> ExecuteResponse:
                 json={
                     "command": cmd,
                     "timeout": request.timeout,
-                    "working_dir": request.working_dir,
+                    "working_dir": safe_working_dir,
                     "env": env_overrides if env_overrides else None,
                 },
                 timeout=request.timeout + 10,  # Extra margin for HTTP overhead
@@ -440,6 +482,17 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     """
     start_time = time.perf_counter()
 
+    # Validate working_dir before any file writes to prevent path-traversal
+    try:
+        safe_working_dir = _validate_working_dir(request.working_dir)
+    except ValueError as exc:
+        return ExecuteResponse(
+            exit_code=1,
+            stdout="",
+            stderr=str(exc),
+            execution_time_ms=0,
+        )
+
     try:
         # Find the main container's PID
         main_pid = find_main_container_pid()
@@ -457,7 +510,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
 
         # Get the command for this language (this writes code to a temp file)
         cmd, temp_file = get_language_command(
-            LANGUAGE, request.code, request.working_dir, container_env
+            LANGUAGE, request.code, safe_working_dir, container_env
         )
         if not cmd:
             return ExecuteResponse(
@@ -481,7 +534,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
     # Note: The spawned process runs in the SIDECAR's cgroup, not the main container's.
     # This means memory-heavy executions count against sidecar's limit.
     # Ensure sidecar has adequate memory for the target language.
-    wd_args = [f"--wdns={request.working_dir}"]
+    wd_args = [f"--wdns={safe_working_dir}"]
     nsenter_cmd = [
         "nsenter",
         "-t", str(main_pid),
@@ -503,7 +556,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
             *nsenter_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=request.working_dir,
+            cwd=safe_working_dir,
         )
         print(f"[EXECUTE] Subprocess created, pid={proc.pid}, waiting for completion (timeout={request.timeout}s)...", flush=True)
 

@@ -26,7 +26,7 @@ ARG VCS_REF
 # This binary runs in the main (language) container via init container copy,
 # providing HTTP-based code execution without nsenter.
 ################################
-FROM golang:1.26-alpine AS agent-builder
+FROM dhi.io/golang:1.26-debian13-dev AS agent-builder
 
 WORKDIR /build
 COPY executor-agent/ .
