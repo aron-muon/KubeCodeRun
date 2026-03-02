@@ -150,17 +150,20 @@ class ConfigValidator:
                     **tls_kwargs,
                 )
                 master.ping()
+                master.close()
+                # Sentinel doesn't expose a close method, but it doesn't maintain persistent connections
 
             else:
                 # --- Standalone mode ---
                 client = redis.from_url(
-                    settings.get_redis_url(),
-                    socket_timeout=settings.redis_socket_timeout,
-                    socket_connect_timeout=settings.redis_socket_connect_timeout,
+                    redis_cfg.get_url(),
+                    socket_timeout=redis_cfg.socket_timeout,
+                    socket_connect_timeout=redis_cfg.socket_connect_timeout,
                     max_connections=settings.redis_max_connections,
                     **tls_standalone,
                 )
                 client.ping()
+                client.close()
 
         except redis.ConnectionError as e:
             # Treat as warning in development mode to allow startup without Redis
