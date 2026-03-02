@@ -36,14 +36,31 @@ data:
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
   K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
+  {{- if .Values.execution.imagePullSecrets }}
+  K8S_IMAGE_PULL_SECRETS: {{ join "," (pluck "name" .Values.execution.imagePullSecrets) | quote }}
+  {{- else }}
+  K8S_IMAGE_PULL_SECRETS: ""
+  {{- end }}
   K8S_CPU_LIMIT: {{ .Values.execution.resources.limits.cpu | quote }}
   K8S_MEMORY_LIMIT: {{ .Values.execution.resources.limits.memory | quote }}
   K8S_CPU_REQUEST: {{ .Values.execution.resources.requests.cpu | quote }}
   K8S_MEMORY_REQUEST: {{ .Values.execution.resources.requests.memory | quote }}
   K8S_RUN_AS_USER: {{ .Values.execution.securityContext.runAsUser | quote }}
+  K8S_EXECUTION_MODE: {{ .Values.execution.executionMode | quote }}
+  K8S_EXECUTOR_PORT: {{ .Values.execution.executorPort | quote }}
   K8S_SECCOMP_PROFILE_TYPE: {{ .Values.execution.securityContext.seccompProfile.type | quote }}
   K8S_JOB_TTL_SECONDS: {{ .Values.execution.jobs.ttlSecondsAfterFinished | quote }}
   K8S_JOB_DEADLINE_SECONDS: {{ .Values.execution.jobs.activeDeadlineSeconds | quote }}
+
+  # GKE Sandbox Configuration
+  GKE_SANDBOX_ENABLED: {{ .Values.execution.gkeSandbox.enabled | quote }}
+  GKE_SANDBOX_RUNTIME_CLASS: {{ .Values.execution.gkeSandbox.runtimeClassName | quote }}
+  {{- if .Values.execution.gkeSandbox.nodeSelector }}
+  GKE_SANDBOX_NODE_SELECTOR: {{ .Values.execution.gkeSandbox.nodeSelector | toJson | quote }}
+  {{- end }}
+  {{- if .Values.execution.gkeSandbox.customTolerations }}
+  GKE_SANDBOX_CUSTOM_TOLERATIONS: {{ .Values.execution.gkeSandbox.customTolerations | toJson | quote }}
+  {{- end }}
 
   # Pod Lifecycle
   POD_TTL_MINUTES: {{ .Values.execution.podTtlMinutes | quote }}
@@ -302,10 +319,41 @@ data:
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
   WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | toJson | quote }}
 
-  # Redis Advanced Configuration
+  # Redis Configuration
+  REDIS_MODE: {{ .Values.redis.mode | quote }}
+  {{- if .Values.redis.host }}
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  {{- end }}
+  REDIS_PORT: {{ .Values.redis.port | quote }}
+  REDIS_DB: {{ .Values.redis.db | quote }}
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
   REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
   REDIS_SOCKET_CONNECT_TIMEOUT: {{ .Values.redis.socketConnectTimeout | quote }}
+  {{- if .Values.redis.keyPrefix }}
+  REDIS_KEY_PREFIX: {{ .Values.redis.keyPrefix | quote }}
+  {{- end }}
+  {{- if .Values.redis.clusterNodes }}
+  REDIS_CLUSTER_NODES: {{ .Values.redis.clusterNodes | quote }}
+  {{- end }}
+  {{- if .Values.redis.sentinelNodes }}
+  REDIS_SENTINEL_NODES: {{ .Values.redis.sentinelNodes | quote }}
+  {{- end }}
+  REDIS_SENTINEL_MASTER: {{ .Values.redis.sentinelMaster | quote }}
+  {{- if .Values.redis.sentinelPassword }}
+  REDIS_SENTINEL_PASSWORD: {{ .Values.redis.sentinelPassword | quote }}
+  {{- end }}
+  REDIS_TLS_ENABLED: {{ .Values.redis.tls.enabled | quote }}
+  {{- if .Values.redis.tls.caCertFile }}
+  REDIS_TLS_CA_CERT_FILE: {{ .Values.redis.tls.caCertFile | quote }}
+  {{- end }}
+  {{- if .Values.redis.tls.certFile }}
+  REDIS_TLS_CERT_FILE: {{ .Values.redis.tls.certFile | quote }}
+  {{- end }}
+  {{- if .Values.redis.tls.keyFile }}
+  REDIS_TLS_KEY_FILE: {{ .Values.redis.tls.keyFile | quote }}
+  {{- end }}
+  REDIS_TLS_INSECURE: {{ .Values.redis.tls.insecure | quote }}
+  REDIS_TLS_CHECK_HOSTNAME: {{ .Values.redis.tls.checkHostname | quote }}
 
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}
