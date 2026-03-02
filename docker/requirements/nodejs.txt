@@ -1,34 +1,58 @@
-# Node.js global packages
-# One package per line for npm install -g
+# Node.js packages
+# One package per line: npm install -g <package>
 
-lodash
+# Core utilities
+archiver
 axios
-moment
-uuid
 chalk
 commander
-express
-fs-extra
-csv-parser
-json2csv
-papaparse
-archiver
-yauzl
-pdf-lib
-date-fns
-validator
 crypto-js
+date-fns
+fs-extra
+lodash
+luxon
+uuid
+validator
+zod
+
+# Web scraping & parsing
+cheerio
+
+# Data processing
+papaparse
 mathjs
 ml-matrix
 simple-statistics
-sharp
+
+# File formats - Office documents
+exceljs
+xlsx
+pptxgenjs
+mammoth
+
+# File formats - Other
+js-yaml
+marked
+pdf-lib
+
+# Images
 jimp
+sharp
+
+# Compression
+yauzl
+
+# TypeScript (recommended local + global)
 typescript
 ts-node
-xlsx
-exceljs
-luxon
-zod
+@types/node
+
+# Web frameworks
+express
 handlebars
-cheerio
-marked
+
+# UI libraries
+jquery
+jquery-ui-dist
+three
+p5

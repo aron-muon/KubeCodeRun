@@ -122,15 +122,15 @@ class SessionService(SessionServiceInterface):
 
     def _session_key(self, session_id: str) -> str:
         """Generate Redis key for session data."""
-        return f"sessions:{session_id}"
+        return redis_pool.make_key(f"sessions:{session_id}")
 
     def _session_index_key(self) -> str:
         """Generate Redis key for session index."""
-        return "sessions:index"
+        return redis_pool.make_key("sessions:index")
 
     def _entity_sessions_key(self, entity_id: str) -> str:
         """Generate Redis key for entity-based session grouping."""
-        return f"entity_sessions:{entity_id}"
+        return redis_pool.make_key(f"entity_sessions:{entity_id}")
 
     async def create_session(self, request: SessionCreate) -> Session:
         """Create a new code execution session."""
@@ -169,8 +169,9 @@ class SessionService(SessionServiceInterface):
         # Extract entity_id from metadata if provided
         entity_id = request.metadata.get("entity_id") if request.metadata else None
 
-        # Use Redis transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
+        # Use pipeline for batching (transaction=False for Redis Cluster
+        # compatibility — keys span different hash slots)
+        pipe = self.redis.pipeline(transaction=False)
         try:
             # Store session data
             pipe.hset(session_key, mapping=session_data)
@@ -307,8 +308,9 @@ class SessionService(SessionServiceInterface):
                 )
                 # Continue with session deletion even if file cleanup fails
 
-        # Use transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
+        # Use pipeline for batching (transaction=False for Redis Cluster
+        # compatibility — keys span different hash slots)
+        pipe = self.redis.pipeline(transaction=False)
         try:
             # Remove session data
             pipe.delete(session_key)

@@ -29,8 +29,11 @@ class FileService(FileServiceInterface):
         # which handles IAM vs static credentials automatically
         self.minio_client = settings.minio.create_client()
 
-        # Initialize Redis client
-        self.redis_client = redis.from_url(settings.get_redis_url(), decode_responses=True)
+        # Initialize Redis client via the shared connection pool so that
+        # cluster, sentinel, and TLS modes are handled automatically.
+        from ..core.pool import redis_pool
+
+        self.redis_client = redis_pool.get_client()
 
         self.bucket_name = settings.minio_bucket
 
@@ -55,11 +58,15 @@ class FileService(FileServiceInterface):
 
     def _get_file_metadata_key(self, session_id: str, file_id: str) -> str:
         """Generate Redis key for file metadata."""
-        return f"files:{session_id}:{file_id}"
+        from ..core.pool import redis_pool
+
+        return redis_pool.make_key(f"files:{session_id}:{file_id}")
 
     def _get_session_files_key(self, session_id: str) -> str:
         """Generate Redis key for session file list."""
-        return f"session_files:{session_id}"
+        from ..core.pool import redis_pool
+
+        return redis_pool.make_key(f"session_files:{session_id}")
 
     async def _store_file_metadata(self, session_id: str, file_id: str, metadata: dict[str, Any]) -> None:
         """Store file metadata in Redis."""

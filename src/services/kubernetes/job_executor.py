@@ -5,8 +5,6 @@ for each execution. This has higher latency but simpler management.
 """
 
 import asyncio
-from datetime import datetime
-from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
@@ -41,7 +39,7 @@ class JobExecutor:
         namespace: str | None = None,
         ttl_seconds_after_finished: int = 60,
         active_deadline_seconds: int = 300,
-        sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest",
+        sidecar_image: str = "aronmuon/kubecoderun-sidecar-agent:latest",
     ):
         """Initialize the Job executor.
 
@@ -123,8 +121,16 @@ class JobExecutor:
             sidecar_memory_limit=spec.sidecar_memory_limit,
             sidecar_cpu_request=spec.sidecar_cpu_request,
             sidecar_memory_request=spec.sidecar_memory_request,
+            execution_mode=spec.execution_mode,
+            executor_port=spec.executor_port,
             seccomp_profile_type=spec.seccomp_profile_type,
             network_isolated=spec.network_isolated,
+            gke_sandbox_enabled=spec.gke_sandbox_enabled,
+            runtime_class_name=spec.runtime_class_name,
+            sandbox_node_selector=spec.sandbox_node_selector,
+            custom_tolerations=spec.custom_tolerations,
+            image_pull_policy=spec.image_pull_policy,
+            image_pull_secrets=spec.image_pull_secrets,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )

@@ -51,24 +51,59 @@ class TestRedisPoolInitialize:
         assert pool._initialized is True
         assert pool._client is not None
 
-    def test_initialize_fallback_on_error(self):
-        """Test _initialize creates fallback client on error."""
+    def test_initialize_raises_on_error(self):
+        """Test _initialize propagates errors instead of silently falling back."""
         pool = RedisPool()
 
         with patch("src.core.pool.settings") as mock_settings:
-            mock_settings.get_redis_url.side_effect = Exception("Connection failed")
+            mock_settings.redis.mode = "standalone"
+            mock_settings.redis.get_url.side_effect = Exception("Connection failed")
+            mock_settings.redis.get_tls_kwargs.return_value = {}
+            mock_settings.redis.key_prefix = ""
+            mock_settings.redis.max_connections = 20
+            mock_settings.redis.socket_timeout = 5
+            mock_settings.redis.socket_connect_timeout = 5
 
-            with patch("src.core.pool.redis.from_url") as mock_from_url:
-                mock_from_url.return_value = MagicMock()
-
+            with pytest.raises(Exception, match="Connection failed"):
                 pool._initialize()
 
-        assert pool._initialized is True
-        assert pool._client is not None
+        assert pool._initialized is False
+        assert pool._client is None
 
 
 class TestGetClient:
     """Tests for get_client method."""
+
+    def test_init_cluster_does_not_pass_retry_on_timeout(self):
+        """Test _init_cluster uses retry/retry_on_error instead of retry_on_timeout.
+
+        RedisCluster (async) does not accept retry_on_timeout as a kwarg.
+        """
+        pool = RedisPool()
+
+        with patch("src.core.pool.settings") as mock_settings:
+            cfg = mock_settings.redis
+            cfg.mode = "cluster"
+            cfg.host = "redis-host"
+            cfg.port = 6379
+            cfg.password = None
+            cfg.cluster_nodes = None
+            cfg.key_prefix = ""
+            cfg.tls_enabled = False
+            cfg.max_connections = 20
+            cfg.socket_timeout = 5
+            cfg.socket_connect_timeout = 5
+            cfg.get_tls_kwargs.return_value = {}
+
+            with patch("src.core.pool.RedisCluster") as mock_cluster:
+                mock_cluster.return_value = MagicMock()
+                pool._initialize()
+
+                mock_cluster.assert_called_once()
+                call_kwargs = mock_cluster.call_args[1]
+                assert "retry_on_timeout" not in call_kwargs, "RedisCluster does not accept retry_on_timeout"
+                assert "retry" in call_kwargs
+                assert "retry_on_error" in call_kwargs
 
     def test_get_client_initializes_if_needed(self):
         """Test get_client initializes the pool if not initialized."""
@@ -106,7 +141,7 @@ class TestPoolStats:
 
         stats = pool.pool_stats
 
-        assert stats == {"initialized": False}
+        assert stats == {"initialized": False, "mode": "standalone"}
 
     def test_pool_stats_initialized(self):
         """Test pool_stats when pool is initialized."""
@@ -114,10 +149,12 @@ class TestPoolStats:
         mock_pool = MagicMock()
         mock_pool.max_connections = 20
         pool._pool = mock_pool
+        pool._initialized = True
 
         stats = pool.pool_stats
 
         assert stats["initialized"] is True
+        assert stats["mode"] == "standalone"
         assert stats["max_connections"] == 20
 
 

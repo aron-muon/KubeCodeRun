@@ -1,29 +1,6 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2153  # Variables are intentionally sourced from result files
 # Build all KubeCodeRun Docker images in parallel
-#
-# Usage: ./scripts/build-images.sh [OPTIONS] [IMAGE]
-#
-# Arguments:
-#   IMAGE                Build a single image with full output (e.g., go, python, sidecar)
-#
-# Options:
-#   -t, --tag TAG        Image tag (default: latest)
-#   -r, --registry REG   Registry prefix (e.g., aronmuon/kubecoderun)
-#   -p, --push           Push images after building
-#   --no-cache           Build without cache
-#   --sequential         Build sequentially instead of in parallel
-#   -h, --help           Show this help message
-#
-# Environment:
-#   DHI_USERNAME         Username for dhi.io registry login
-#   DHI_PASSWORD         Password for dhi.io registry login
-#
-# Examples:
-#   ./scripts/build-images.sh                  # Build all images in parallel
-#   ./scripts/build-images.sh go               # Build only the go image with full output
-#   ./scripts/build-images.sh --no-cache rust  # Build rust image without cache
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -61,13 +38,77 @@ LANGUAGE_IMAGES=(
 # Infrastructure images with custom contexts
 # sidecar: context is docker/sidecar/ (contains requirements.txt, main.py)
 # api: context is repo root (needs uv.lock, pyproject.toml, src/)
+#
+# Format: dockerfile_path:image_name:context_dir:docker_target (target is optional)
+# The sidecar Dockerfile has two targets:
+#   sidecar-agent   → kubecoderun-sidecar-agent (default, no nsenter)
+#   sidecar-nsenter → kubecoderun-sidecar-nsenter (legacy, with nsenter+setcap)
 INFRA_IMAGES=(
-    "sidecar/Dockerfile:sidecar:docker/sidecar"
+    "sidecar/Dockerfile:sidecar-agent:docker/sidecar:sidecar-agent"
+    "sidecar/Dockerfile:sidecar-nsenter:docker/sidecar:sidecar-nsenter"
     "api/Dockerfile:api:."
 )
 
 usage() {
-    head -n 25 "$0" | tail -n 23 | sed 's/^# //'
+    cat <<'EOF'
+Usage: ./scripts/build-images.sh [OPTIONS] [IMAGE]
+
+Build Docker images for the KubeCodeRun platform.
+
+When called without arguments, builds ALL images (language runtimes,
+sidecar variants, and API) in parallel. Specify IMAGE to build a
+single image with full terminal output (useful for debugging).
+
+Arguments:
+  IMAGE                   Name of a single image to build (see --list)
+
+Options:
+  -t, --tag TAG           Image tag (default: latest)
+  -r, --registry REG      Registry prefix (e.g., ghcr.io/org/kubecoderun)
+  -p, --push              Push images to the registry after building
+      --no-cache          Build without Docker layer cache
+      --sequential        Build images one at a time instead of in parallel
+  -l, --list              List all available image names and exit
+  -h, -?, --help          Show this help message and exit
+
+Environment Variables:
+  DHI_USERNAME            Username for dhi.io registry authentication
+  DHI_PASSWORD            Password for dhi.io registry authentication
+
+Examples:
+  # Build all images in parallel (default)
+  ./scripts/build-images.sh
+
+  # Build only the Go language image with full output
+  ./scripts/build-images.sh go
+
+  # Build the agent-mode sidecar without cache
+  ./scripts/build-images.sh --no-cache sidecar-agent
+
+  # Build and push all images to a private registry
+  ./scripts/build-images.sh -r ghcr.io/myorg/kubecoderun -t v2.0.0 --push
+
+  # Build the nsenter-mode sidecar
+  ./scripts/build-images.sh sidecar-nsenter
+
+  # List all available image names
+  ./scripts/build-images.sh --list
+EOF
+}
+
+list_images() {
+    local all_images=("${LANGUAGE_IMAGES[@]}" "${INFRA_IMAGES[@]}")
+    echo "Available images:"
+    echo ""
+    printf "  %-20s %-35s %-15s\n" "NAME" "DOCKERFILE" "TARGET"
+    printf "  %-20s %-35s %-15s\n" "────────────────────" "───────────────────────────────────" "───────────────"
+    for entry in "${all_images[@]}"; do
+        IFS=':' read -r dockerfile image_name context_dir docker_target <<< "$entry"
+        printf "  %-20s %-35s %-15s\n" "$image_name" "$dockerfile" "${docker_target:--}"
+    done
+    echo ""
+    echo "Build a single image:  ./scripts/build-images.sh <NAME>"
+    echo "Build all images:      ./scripts/build-images.sh"
 }
 
 dhi_login() {
@@ -112,13 +153,18 @@ parse_args() {
                 SEQUENTIAL=true
                 shift
                 ;;
-            -h|--help)
+            -h|-\?|--help)
                 usage
                 exit 0
                 ;;
+            -l|--list)
+                list_images
+                exit 0
+                ;;
             -*)
-                echo "Unknown option: $1"
-                usage
+                echo "Error: Unknown option '$1'"
+                echo ""
+                echo "Run './scripts/build-images.sh --help' for usage information."
                 exit 1
                 ;;
             *)
@@ -169,6 +215,7 @@ build_image() {
     local image_name="$2"
     local result_file="$3"
     local context_dir="$4"
+    local docker_target="$5"
     local full_name
     full_name=$(get_full_image_name "$image_name")
 
@@ -186,9 +233,17 @@ build_image() {
     local build_output
     local exit_code=0
 
+    # Build with optional --target
+    local target_flag=""
+    if [[ -n "$docker_target" ]]; then
+        target_flag="--target $docker_target"
+    fi
+
     # shellcheck disable=SC2086
     build_output=$(docker build \
         $NO_CACHE \
+        $target_flag \
+        --build-arg VERSION="$TAG" \
         -t "$full_name" \
         -f "$DOCKER_DIR/$dockerfile" \
         "$context_path" 2>&1) || exit_code=$?
@@ -228,9 +283,10 @@ build_image_wrapper() {
     local dockerfile="$1"
     local image_name="$2"
     local context_dir="$3"
+    local docker_target="$4"
     local result_file="$RESULTS_DIR/${image_name}.result"
 
-    if build_image "$dockerfile" "$image_name" "$result_file" "$context_dir"; then
+    if build_image "$dockerfile" "$image_name" "$result_file" "$context_dir" "$docker_target"; then
         echo "Completed: $image_name"
     else
         echo "Failed: $image_name"
@@ -244,7 +300,7 @@ build_single_image() {
     local found=false
 
     for entry in "${all_images[@]}"; do
-        IFS=':' read -r dockerfile image_name context_dir <<< "$entry"
+        IFS=':' read -r dockerfile image_name context_dir docker_target <<< "$entry"
 
         if [[ "$image_name" == "$target_image" ]]; then
             found=true
@@ -268,12 +324,22 @@ build_single_image() {
             echo "Building $image_name -> $full_name"
             echo "  Dockerfile: $DOCKER_DIR/$dockerfile"
             echo "  Context:    $context_path"
+            if [[ -n "$docker_target" ]]; then
+                echo "  Target:     $docker_target"
+            fi
             echo ""
 
-            # Build with output directly to terminal
+            # Build with output directly to terminal (optional --target)
+            local target_flag=""
+            if [[ -n "$docker_target" ]]; then
+                target_flag="--target $docker_target"
+            fi
+
             # shellcheck disable=SC2086
             docker build \
                 $NO_CACHE \
+                $target_flag \
+                --build-arg VERSION="$TAG" \
                 -t "$full_name" \
                 -f "$DOCKER_DIR/$dockerfile" \
                 "$context_path"
@@ -297,7 +363,7 @@ build_single_image() {
         echo ""
         echo "Available images:"
         for entry in "${all_images[@]}"; do
-            IFS=':' read -r _ image_name _ <<< "$entry"
+            IFS=':' read -r _ image_name _ _ <<< "$entry"
             echo "  - $image_name"
         done
         exit 1
@@ -342,8 +408,8 @@ main() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     for entry in "${all_images[@]}"; do
-        # Parse entry: dockerfile:image_name:context_dir
-        IFS=':' read -r dockerfile image_name context_dir <<< "$entry"
+        # Parse entry: dockerfile:image_name:context_dir:docker_target (target is optional)
+        IFS=':' read -r dockerfile image_name context_dir docker_target <<< "$entry"
 
         if [[ ! -f "$DOCKER_DIR/$dockerfile" ]]; then
             echo "Warning: Dockerfile not found: $dockerfile"
@@ -352,9 +418,9 @@ main() {
 
         echo "Starting: $image_name"
         if [[ "$SEQUENTIAL" == true ]]; then
-            build_image_wrapper "$dockerfile" "$image_name" "$context_dir"
+            build_image_wrapper "$dockerfile" "$image_name" "$context_dir" "$docker_target"
         else
-            build_image_wrapper "$dockerfile" "$image_name" "$context_dir" &
+            build_image_wrapper "$dockerfile" "$image_name" "$context_dir" "$docker_target" &
             pids+=($!)
         fi
     done
@@ -386,7 +452,7 @@ main() {
     printf "%-15s %-10s %-12s %-8s\n" "─────────────" "────────" "──────────" "──────"
 
     for entry in "${all_images[@]}"; do
-        IFS=':' read -r _ image_name _ <<< "$entry"
+        IFS=':' read -r _ image_name _ _ <<< "$entry"
         result_file="$RESULTS_DIR/${image_name}.result"
 
         if [[ -f "$result_file" ]]; then

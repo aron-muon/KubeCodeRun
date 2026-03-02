@@ -3,7 +3,7 @@
 
 ################################
 # Stage 1: Build and download dependencies
-FROM dhi.io/golang:1.25-debian13-dev AS builder
+FROM dhi.io/golang:1.26-debian13-dev AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -26,7 +26,7 @@ RUN cd /tmp/gosetup && \
 
 ################################
 # Stage 2: Prepare runtime directories
-FROM dhi.io/golang:1.25-debian13-dev AS runtime-deps
+FROM dhi.io/golang:1.26-debian13-dev AS runtime-deps
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -35,7 +35,7 @@ RUN mkdir -p /mnt/data /mnt/data/go-build && chown -R 65532:65532 /mnt/data
 
 ################################
 # Stage 3: Minimal runtime image
-FROM dhi.io/golang:1.25-debian13 AS final
+FROM dhi.io/golang:1.26-debian13 AS final
 
 ARG BUILD_DATE
 ARG VERSION

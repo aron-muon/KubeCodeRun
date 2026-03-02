@@ -41,13 +41,21 @@ class KubernetesManager:
         self,
         namespace: str | None = None,
         pool_configs: list[PoolConfig] | None = None,
-        sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest",
+        sidecar_image: str = "aronmuon/kubecoderun-sidecar-agent:latest",
         default_cpu_limit: str = "1",
         default_memory_limit: str = "512Mi",
         default_cpu_request: str = "100m",
         default_memory_request: str = "128Mi",
+        execution_mode: str = "agent",
+        executor_port: int = 9090,
         seccomp_profile_type: str = "RuntimeDefault",
         network_isolated: bool = False,
+        image_pull_policy: str = "Always",
+        gke_sandbox_enabled: bool = False,
+        runtime_class_name: str = "gvisor",
+        sandbox_node_selector: dict[str, str] | None = None,
+        custom_tolerations: list[dict[str, str]] | None = None,
+        image_pull_secrets: list[str] | None = None,
     ):
         """Initialize the Kubernetes manager.
 
@@ -59,8 +67,16 @@ class KubernetesManager:
             default_memory_limit: Default memory limit for pods
             default_cpu_request: Default CPU request for pods
             default_memory_request: Default memory request for pods
+            execution_mode: Execution mode - "agent" (default) or "nsenter"
+            executor_port: Port for executor HTTP server in the main container
             seccomp_profile_type: Seccomp profile type (RuntimeDefault, Unconfined, Localhost)
             network_isolated: Whether network isolation is enabled (disables network-dependent features)
+            image_pull_policy: Image pull policy for execution pods (Always, IfNotPresent, Never)
+            gke_sandbox_enabled: Enable GKE Sandbox (gVisor) for additional kernel isolation
+            runtime_class_name: Runtime class name for sandboxed pods
+            sandbox_node_selector: Node selector for sandbox-enabled nodes
+            custom_tolerations: Custom tolerations for node pool taints
+            image_pull_secrets: List of secret names for pulling images from private registries
         """
         self.namespace = namespace or get_current_namespace()
         self.sidecar_image = sidecar_image
@@ -68,13 +84,22 @@ class KubernetesManager:
         self.default_memory_limit = default_memory_limit
         self.default_cpu_request = default_cpu_request
         self.default_memory_request = default_memory_request
+        self.execution_mode = execution_mode
+        self.executor_port = executor_port
         self.seccomp_profile_type = seccomp_profile_type
         self.network_isolated = network_isolated
+        self.image_pull_policy = image_pull_policy
+        self.gke_sandbox_enabled = gke_sandbox_enabled
+        self.runtime_class_name = runtime_class_name
+        self.sandbox_node_selector = sandbox_node_selector
+        self.custom_tolerations = custom_tolerations
+        self.image_pull_secrets = image_pull_secrets
+        self._pool_configs = pool_configs or []
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
             namespace=self.namespace,
-            configs=pool_configs or [],
+            configs=self._pool_configs,
         )
 
         # Job executor for cold languages
@@ -268,6 +293,15 @@ class KubernetesManager:
             return result, handle, source
         else:
             # Use Job execution
+            # Get image_pull_secrets from pool config for this language
+            pull_secrets = self.image_pull_secrets
+            pull_policy = self.image_pull_policy
+            for config in self._pool_configs:
+                if config.language.lower() == language.lower():
+                    pull_secrets = config.image_pull_secrets or self.image_pull_secrets
+                    pull_policy = config.image_pull_policy or self.image_pull_policy
+                    break
+
             spec = PodSpec(
                 language=language,
                 image=self.get_image_for_language(language),
@@ -278,8 +312,16 @@ class KubernetesManager:
                 memory_limit=self.default_memory_limit,
                 cpu_request=self.default_cpu_request,
                 memory_request=self.default_memory_request,
+                execution_mode=self.execution_mode,
+                executor_port=self.executor_port,
                 seccomp_profile_type=self.seccomp_profile_type,
                 network_isolated=self.network_isolated,
+                image_pull_policy=pull_policy,
+                gke_sandbox_enabled=self.gke_sandbox_enabled,
+                runtime_class_name=self.runtime_class_name,
+                sandbox_node_selector=self.sandbox_node_selector,
+                custom_tolerations=self.custom_tolerations,
+                image_pull_secrets=pull_secrets,
             )
 
             result = await self._job_executor.execute_with_job(

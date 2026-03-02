@@ -31,12 +31,12 @@ logger = structlog.get_logger(__name__)
 class DetailedMetricsService:
     """Service for collecting and querying detailed execution metrics."""
 
-    # Redis key prefixes
-    BUFFER_KEY = "metrics:detailed:buffer"
-    HOURLY_PREFIX = "metrics:detailed:hourly:"
-    DAILY_PREFIX = "metrics:detailed:daily:"
-    POOL_STATS_KEY = "metrics:pool:stats"
-    API_KEY_HOURLY_PREFIX = "metrics:api_key:"
+    # Base Redis key prefixes (before application-level prefix)
+    _BUFFER_KEY = "metrics:detailed:buffer"
+    _HOURLY_PREFIX = "metrics:detailed:hourly:"
+    _DAILY_PREFIX = "metrics:detailed:daily:"
+    _POOL_STATS_KEY = "metrics:pool:stats"
+    _API_KEY_HOURLY_PREFIX = "metrics:api_key:"
 
     # Buffer and retention settings
     MAX_BUFFER_SIZE = 10000
@@ -51,6 +51,16 @@ class DetailedMetricsService:
         """
         self._redis = redis_client
         self._in_memory_buffer: list[DetailedExecutionMetrics] = []
+
+        # Compute prefixed keys once
+        from ..core.pool import redis_pool
+
+        mk = redis_pool.make_key
+        self.BUFFER_KEY = mk(self._BUFFER_KEY)
+        self.HOURLY_PREFIX = mk(self._HOURLY_PREFIX)
+        self.DAILY_PREFIX = mk(self._DAILY_PREFIX)
+        self.POOL_STATS_KEY = mk(self._POOL_STATS_KEY)
+        self.API_KEY_HOURLY_PREFIX = mk(self._API_KEY_HOURLY_PREFIX)
 
     def register_event_handlers(self) -> None:
         """Register event handlers for pool metrics."""

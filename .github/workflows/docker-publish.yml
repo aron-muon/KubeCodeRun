@@ -145,7 +145,7 @@ jobs:
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
+      image_name: kubecoderun-sidecar-agent
       dockerfile: docker/sidecar/Dockerfile
       context: docker/sidecar
       image_tag: ${{ needs.changes.outputs.image_tag }}
@@ -344,7 +344,7 @@ jobs:
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
+      image_name: kubecoderun-sidecar-agent
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
 

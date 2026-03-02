@@ -142,16 +142,16 @@ class HealthCheckService:
 
         try:
             # Use shared connection pool
-            if not self._redis_client:
-                from ..core.pool import redis_pool
+            from ..core.pool import redis_pool
 
+            if not self._redis_client:
                 self._redis_client = redis_pool.get_client()
 
             # Test basic connectivity
             await self._redis_client.ping()
 
             # Test read/write operations
-            test_key = "health_check:test"
+            test_key = redis_pool.make_key("health_check:test")
             test_value = f"test_{int(time.time())}"
 
             await self._redis_client.set(test_key, test_value, ex=60)

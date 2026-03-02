@@ -99,6 +99,10 @@ redis:
   # When set, the url/host/port/password/db fields below are ignored
   # Expected secret key: REDIS_URL (full connection string)
   existingSecret: ""
+
+  # Deployment mode: standalone (default), cluster, or sentinel
+  mode: "standalone"
+
   # External Redis URL (required unless existingSecret is set)
   url: "redis://redis:6379/0"
   # Or specify individual fields
@@ -110,6 +114,35 @@ redis:
   maxConnections: 20
   socketTimeout: 5
   socketConnectTimeout: 5
+
+  # Optional key prefix prepended to every Redis key.
+  # Useful when sharing a Redis instance across environments.
+  keyPrefix: ""
+
+  # Redis Cluster mode (mode: cluster)
+  # Comma-separated host:port pairs for cluster startup nodes
+  clusterNodes: ""
+
+  # Redis Sentinel mode (mode: sentinel)
+  # Comma-separated host:port pairs for sentinel instances
+  sentinelNodes: ""
+  sentinelMaster: "mymaster"
+  sentinelPassword: ""
+
+  # TLS/SSL settings (all modes)
+  tls:
+    enabled: false
+    # Path to CA certificate inside the container
+    caCertFile: ""
+    # Client certificate and key for mutual TLS
+    certFile: ""
+    keyFile: ""
+    # Skip server certificate verification (NOT recommended for production)
+    insecure: false
+    # Verify server hostname against certificate CN/SAN.
+    # Off by default because managed Redis services and cluster mode
+    # expose node IPs that typically don't match certificate names.
+    checkHostname: false
 
 minio:
   # Reference an existing Kubernetes Secret containing S3 credentials
@@ -172,17 +205,36 @@ execution:
   # Image pull policy for execution pods (IfNotPresent, Always, Never)
   imagePullPolicy: "IfNotPresent"
 
+  # Image pull secrets for private registries (applies to execution pods)
+  # Example:
+  # imagePullSecrets:
+  #   - name: secret-for-registry
+  #   - name: another-secret
+  imagePullSecrets: []
+
   # Service account for execution pods (with pod/job create permissions)
   serviceAccount:
     create: true
     name: "kubecoderun-executor"
     annotations: {}
 
+  # Execution mode: "agent" (default) or "nsenter" (legacy)
+  # - agent: Executor agent runs inside main container. No nsenter, no capabilities,
+  #   no privilege escalation. Compatible with GKE Sandbox (gVisor). Requires the
+  #   sidecar-agent image (default build target).
+  # - nsenter: Sidecar uses nsenter to enter the main container's namespace. Requires
+  #   the sidecar-nsenter image, shareProcessNamespace, SYS_PTRACE/SYS_ADMIN/SYS_CHROOT
+  #   capabilities, and allowPrivilegeEscalation: true.
+  executionMode: "agent"
+
+  # Port for the executor HTTP server inside the main container
+  executorPort: 9090
+
   # Sidecar container configuration
-  # CRITICAL: User code runs in sidecar's cgroup via nsenter (Issue #32)
-  # These resource limits apply to user code execution, not the main container
+  # In nsenter mode: user code runs in sidecar's cgroup via nsenter
+  # In agent mode: sidecar only proxies requests, user code runs in main container's cgroup
   sidecar:
-    repository: ghcr.io/aron-muon/kubecoderun-sidecar
+    repository: ghcr.io/aron-muon/kubecoderun-sidecar-agent
     # tag defaults to Chart.AppVersion if not specified
     tag: ""
     port: 8080
@@ -284,6 +336,40 @@ execution:
   networkPolicy:
     enabled: true
     denyEgress: true
+
+  # GKE Sandbox (gVisor) Configuration
+  # Provides additional kernel isolation for untrusted workloads using gVisor
+  # See: https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods
+  gkeSandbox:
+    # Enable GKE Sandbox for execution pods.
+    # WARNING: When enabled, pods require nodes with the gVisor runtime class.
+    # Pods will stay Pending on clusters without sandbox-enabled node pools.
+    enabled: false
+
+    # Runtime class name (default: gvisor for GKE)
+    runtimeClassName: "gvisor"
+
+    # Node selector for sandbox-enabled nodes
+    # GKE automatically adds sandbox.gke.io/runtime=gvisor to sandbox nodes
+    # Add additional selectors here if needed (e.g., for specific node pools)
+    nodeSelector: {}
+    # Example:
+    #   sandbox.gke.io/runtime: gvisor
+    #   cloud.google.com/gke-nodepool: sandbox-pool
+
+    # Custom tolerations for node pool taints
+    # GKE automatically adds toleration for sandbox.gke.io/runtime=gvisor
+    # Use this for additional custom taints (e.g., dedicated sandbox node pools)
+    customTolerations: []
+    # Example:
+    # - key: pool
+    #   operator: Equal
+    #   value: sandbox
+    #   effect: NoSchedule
+    # - key: sandbox.gke.io/runtime
+    #   operator: Equal
+    #   value: gvisor
+    #   effect: NoSchedule
 
 # Resource Limits Configuration
 resourceLimits:

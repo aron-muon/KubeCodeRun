@@ -391,8 +391,10 @@ class MetricsCollector:
             }
 
             # Store in Redis with TTL
+            from ..core.pool import redis_pool
+
             await self._redis_client.setex(
-                "metrics:current",
+                redis_pool.make_key("metrics:current"),
                 86400,
                 str(metrics_data),  # 24 hours TTL
             )
@@ -400,7 +402,7 @@ class MetricsCollector:
             # Store historical data (keep last 24 hours)
             hour_key = datetime.now(UTC).strftime("%Y-%m-%d-%H")
             await self._redis_client.setex(
-                f"metrics:hourly:{hour_key}",
+                redis_pool.make_key(f"metrics:hourly:{hour_key}"),
                 86400 * 7,  # 7 days TTL for hourly data
                 str(metrics_data),
             )
@@ -417,7 +419,9 @@ class MetricsCollector:
 
         try:
             # Load current metrics
-            current_data = await self._redis_client.get("metrics:current")
+            from ..core.pool import redis_pool
+
+            current_data = await self._redis_client.get(redis_pool.make_key("metrics:current"))
             if current_data:
                 # In a full implementation, we would parse and restore the metrics
                 # For now, just log that we found existing data

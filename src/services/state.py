@@ -55,19 +55,19 @@ class StateService:
 
     def _state_key(self, session_id: str) -> str:
         """Generate Redis key for session state."""
-        return f"{self.KEY_PREFIX}{session_id}"
+        return redis_pool.make_key(f"{self.KEY_PREFIX}{session_id}")
 
     def _hash_key(self, session_id: str) -> str:
         """Generate Redis key for state hash."""
-        return f"{self.HASH_KEY_PREFIX}{session_id}"
+        return redis_pool.make_key(f"{self.HASH_KEY_PREFIX}{session_id}")
 
     def _meta_key(self, session_id: str) -> str:
         """Generate Redis key for state metadata."""
-        return f"{self.META_KEY_PREFIX}{session_id}"
+        return redis_pool.make_key(f"{self.META_KEY_PREFIX}{session_id}")
 
     def _upload_marker_key(self, session_id: str) -> str:
         """Generate Redis key for upload marker."""
-        return f"{self.UPLOAD_MARKER_PREFIX}{session_id}"
+        return redis_pool.make_key(f"{self.UPLOAD_MARKER_PREFIX}{session_id}")
 
     @staticmethod
     def compute_hash(raw_bytes: bytes) -> str:
@@ -133,8 +133,9 @@ class StateService:
             state_hash = self.compute_hash(raw_bytes)
             now = datetime.now(UTC)
 
-            # Use pipeline for atomic operations
-            pipe = self.redis.pipeline(transaction=True)
+            # Use pipeline for batching (transaction=False for Redis Cluster
+            # compatibility — state/hash/meta keys hash to different slots)
+            pipe = self.redis.pipeline(transaction=False)
 
             # Save state
             pipe.setex(self._state_key(session_id), ttl_seconds, state_b64)

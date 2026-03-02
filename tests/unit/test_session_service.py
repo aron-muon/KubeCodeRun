@@ -26,8 +26,8 @@ def mock_redis():
     pipeline_mock.execute = AsyncMock(return_value=[True, True, True])
     pipeline_mock.reset = AsyncMock()
 
-    # Make pipeline() return the pipeline mock when awaited
-    redis_mock.pipeline = AsyncMock(return_value=pipeline_mock)
+    # Make pipeline() return the pipeline mock (synchronous, like redis.asyncio)
+    redis_mock.pipeline = MagicMock(return_value=pipeline_mock)
     return redis_mock
 
 

@@ -113,7 +113,75 @@ Code is analyzed for potentially dangerous patterns:
 - **Security context**: Pods run as non-root (`runAsUser: 65532`)
 - **Ephemeral execution**: Pods destroyed immediately after execution
 
-#### Namespace Sharing Security (nsenter)
+#### Execution Modes
+
+KubeCodeRun supports two execution modes, controlled by the `K8S_EXECUTION_MODE` environment variable:
+
+##### Agent Mode (Default) — `K8S_EXECUTION_MODE=agent`
+
+In agent mode, a lightweight Go HTTP server (the **executor agent**) runs inside the main language container. The sidecar forwards execution requests to it over `localhost` (pod-internal network). This eliminates the need for `nsenter`, Linux capabilities, privilege escalation, and `shareProcessNamespace`.
+
+**How it works:**
+
+1. An **init container** (using the `sidecar-agent` image) copies the executor agent binary from `/opt/executor-agent` to the shared volume at `/mnt/data/.executor-agent`
+2. The main container's CMD is overridden to run `/mnt/data/.executor-agent` instead of `sleep infinity`
+3. The executor agent starts an HTTP server on `127.0.0.1:9090` (configurable via `K8S_EXECUTOR_PORT`)
+4. The sidecar sends execution requests to the agent via HTTP POST to `/execute`
+5. The agent spawns subprocesses (e.g., `python code.py`) inheriting the container's sanitized environment
+
+**Pod Settings (agent mode):**
+```yaml
+spec:
+  # No shareProcessNamespace needed
+  initContainers:
+  - name: agent-init
+    image: <sidecar-agent-image>
+    command: ["python", "-c", "import shutil,os; shutil.copy2('/opt/executor-agent','/mnt/data/.executor-agent'); os.chmod('/mnt/data/.executor-agent',0o755)"]
+    securityContext:
+      runAsUser: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+  containers:
+  - name: main
+    args: ["/mnt/data/.executor-agent"]  # Runs via existing ENTRYPOINT
+    securityContext:
+      runAsUser: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+  - name: sidecar
+    env:
+    - name: EXECUTION_MODE
+      value: "agent"
+    - name: EXECUTOR_PORT
+      value: "9090"
+    securityContext:
+      runAsUser: 65532
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+```
+
+**Security advantages of agent mode:**
+
+| Feature | Benefit |
+|---------|---------|
+| No `shareProcessNamespace` | Containers cannot see each other's processes |
+| No capabilities | All capabilities dropped for all containers |
+| No `allowPrivilegeEscalation` | No binary can gain elevated privileges |
+| No `nsenter` | No namespace entry, no mount namespace sharing |
+| GKE Sandbox (gVisor) compatible | Works with the most restrictive Pod Security Standards |
+| Communication via localhost | Pod-internal only, not network-accessible |
+
+##### nsenter Mode (Legacy) — `K8S_EXECUTION_MODE=nsenter`
+
+In nsenter mode, the sidecar uses Linux `nsenter` to execute code in the main container's mount namespace. This requires elevated privileges and is preserved for backward compatibility with clusters that allow privilege escalation.
+
+**Namespace Sharing Security (nsenter)**
 
 The sidecar container uses Linux `nsenter` to execute code in the main container's mount namespace. This requires specific pod and image configuration.
 
@@ -267,6 +335,58 @@ execution:
 
 3. **No Inter-Pod Communication**: NetworkPolicy denies all ingress from other pods.
 
+### GKE Sandbox (gVisor) Support
+
+For clusters requiring additional kernel-level isolation, KubeCodeRun supports [GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods), which uses [gVisor](https://gvisor.dev/) to intercept system calls before they reach the host kernel.
+
+**GKE Sandbox requires agent mode** (`K8S_EXECUTION_MODE=agent`). nsenter mode is incompatible with gVisor because:
+- gVisor does not support `shareProcessNamespace` the same way as a standard Linux kernel
+- `nsenter` relies on host kernel namespace operations that gVisor intentionally intercepts
+- Agent mode eliminates the need for `SYS_PTRACE`, `SYS_ADMIN`, and `SYS_CHROOT` capabilities, which are restricted in sandboxed pods
+
+#### Configuration
+
+```yaml
+# In helm values.yaml
+execution:
+  executionMode: "agent"  # Required for GKE Sandbox
+
+  gkeSandbox:
+    enabled: true
+    runtimeClassName: "gvisor"
+    nodeSelector:
+      sandbox.gke.io/runtime: gvisor
+    customTolerations:
+      - key: sandbox.gke.io/runtime
+        operator: Equal
+        value: gvisor
+        effect: NoSchedule
+```
+
+#### Security Benefits
+
+| Feature | Without GKE Sandbox | With GKE Sandbox |
+|---------|-------------------|-----------------|
+| System call isolation | Seccomp profile only | gVisor userspace kernel intercepts all syscalls |
+| Kernel exposure | Container shares host kernel | gVisor provides an independent kernel API |
+| Escape risk | Kernel vulnerability could escape | Two boundaries: gVisor + container |
+| Side-channel attacks | Possible via shared kernel | Mitigated by kernel-level isolation |
+
+#### Requirements
+
+- GKE cluster with at least two node pools (one standard, one sandbox-enabled)
+- Sandbox node pool with `--sandbox type=gvisor`
+- Agent execution mode (`executionMode: "agent"`)
+- Sidecar image built with `--target sidecar-agent` (default)
+
+#### Limitations (from GKE documentation)
+
+- No `hostPath` storage
+- No privileged containers
+- Seccomp, AppArmor, SELinux are not supported (gVisor provides its own isolation)
+- Container-level memory metrics are not available (pod-level metrics work)
+- See [GKE Sandbox limitations](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods#limitations) for the full list
+
 ### State Persistence Security
 
 Python state persistence introduces additional security considerations:
@@ -280,7 +400,7 @@ Python state persistence introduces additional security considerations:
 
 #### Storage Security
 
-- **Redis encryption**: Consider enabling Redis TLS in production for encrypted state storage
+- **Redis encryption**: Enable Redis TLS in production for encrypted state storage (`REDIS_TLS_ENABLED=true`). Required for managed services like GCP Memorystore, AWS ElastiCache, and Azure Cache for Redis. See the [Configuration Guide](CONFIGURATION.md#redis-tlsssl) for details.
 - **MinIO encryption**: Enable server-side encryption for archived states
 - **TTL-based cleanup**: States automatically expire (2 hours in Redis, 7 days in MinIO archives)
 - **Size limits**: `STATE_MAX_SIZE_MB` prevents denial-of-service via large states

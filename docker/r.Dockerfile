@@ -9,7 +9,7 @@ ARG VCS_REF
 ################################
 # Builder stage - install R and compile packages
 ################################
-FROM dhi.io/debian-base:trixie AS builder
+FROM dhi.io/debian-base:trixie-debian13-dev AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -40,7 +40,7 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
 ################################
 # Final stage - runtime image
 ################################
-FROM dhi.io/debian-base:trixie AS final
+FROM dhi.io/debian-base:trixie-debian13-dev AS final
 
 ARG BUILD_DATE
 ARG VERSION

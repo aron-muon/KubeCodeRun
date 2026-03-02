@@ -88,14 +88,70 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = Field(default=True, description="Enable per-key rate limiting for Redis-managed keys")
 
     # Redis Configuration
+    redis_mode: Literal["standalone", "cluster", "sentinel"] = Field(
+        default="standalone",
+        description="Redis deployment mode: standalone, cluster, or sentinel",
+    )
     redis_host: str = Field(default="localhost")
     redis_port: int = Field(default=6379, ge=1, le=65535)
-    redis_password: str | None = Field(default=None)
+    redis_password: str | None = Field(default=None, description="Redis password (empty string treated as no password)")
     redis_db: int = Field(default=0, ge=0, le=15)
     redis_url: str | None = Field(default=None)
     redis_max_connections: int = Field(default=20, ge=1)
     redis_socket_timeout: int = Field(default=5, ge=1)
     redis_socket_connect_timeout: int = Field(default=5, ge=1)
+
+    # Redis Cluster
+    redis_cluster_nodes: str | None = Field(
+        default=None,
+        description="Comma-separated host:port pairs for Redis Cluster startup nodes",
+    )
+
+    # Redis Sentinel
+    redis_sentinel_nodes: str | None = Field(
+        default=None,
+        description="Comma-separated host:port pairs for Sentinel instances",
+    )
+    redis_sentinel_master: str = Field(
+        default="mymaster",
+        description="Name of the Sentinel-monitored master",
+    )
+    redis_sentinel_password: str | None = Field(
+        default=None,
+        description="Password for authenticating to Sentinel instances",
+    )
+
+    # Redis Key Prefix
+    redis_key_prefix: str = Field(
+        default="",
+        description="Optional prefix prepended to every Redis key (e.g. 'prod:', 'kubecoderun:')",
+    )
+
+    # Redis TLS/SSL
+    redis_tls_enabled: bool = Field(
+        default=False,
+        description="Enable TLS/SSL for Redis connections",
+    )
+    redis_tls_cert_file: str | None = Field(
+        default=None,
+        description="Path to client TLS certificate (mutual TLS)",
+    )
+    redis_tls_key_file: str | None = Field(
+        default=None,
+        description="Path to client TLS private key (mutual TLS)",
+    )
+    redis_tls_ca_cert_file: str | None = Field(
+        default=None,
+        description="Path to CA certificate for verifying the server",
+    )
+    redis_tls_insecure: bool = Field(
+        default=False,
+        description="Skip TLS certificate verification (NOT recommended for production)",
+    )
+    redis_tls_check_hostname: bool = Field(
+        default=False,
+        description="Enable TLS hostname verification (off by default for managed Redis / cluster)",
+    )
 
     # MinIO/S3 Configuration
     minio_endpoint: str = Field(default="localhost:9000")
@@ -119,7 +175,7 @@ class Settings(BaseSettings):
         description="Service account for execution pods",
     )
     k8s_sidecar_image: str = Field(
-        default="aronmuon/kubecoderun-sidecar:latest",
+        default="aronmuon/kubecoderun-sidecar-agent:latest",
         description="Sidecar container image for pod communication",
     )
     k8s_sidecar_port: int = Field(default=8080, ge=1, le=65535, description="Sidecar HTTP API port")
@@ -132,6 +188,16 @@ class Settings(BaseSettings):
     k8s_cpu_request: str = Field(default="100m", description="CPU request for execution pods")
     k8s_memory_request: str = Field(default="128Mi", description="Memory request for execution pods")
     k8s_run_as_user: int = Field(default=65532, ge=1, description="UID to run containers as")
+    k8s_execution_mode: Literal["agent", "nsenter"] = Field(
+        default="agent",
+        description="Execution mode: 'agent' (no nsenter/capabilities, gVisor-safe) or 'nsenter' (legacy)",
+    )
+    k8s_executor_port: int = Field(
+        default=9090,
+        ge=1,
+        le=65535,
+        description="Port for the executor HTTP server inside the main container",
+    )
     k8s_seccomp_profile_type: Literal["RuntimeDefault", "Unconfined"] = Field(
         default="RuntimeDefault",
         description="Seccomp profile type for execution pods",
@@ -156,6 +222,28 @@ class Settings(BaseSettings):
     k8s_image_pull_policy: str = Field(
         default="Always",
         description="Image pull policy for execution pods (Always, IfNotPresent, Never)",
+    )
+    k8s_image_pull_secrets: str = Field(
+        default="",
+        description="Comma-separated list of secret names for pulling images from private registries",
+    )
+
+    # GKE Sandbox (gVisor) Configuration
+    gke_sandbox_enabled: bool = Field(
+        default=False,
+        description="Enable GKE Sandbox (gVisor) for additional kernel isolation",
+    )
+    gke_sandbox_runtime_class: str = Field(
+        default="gvisor",
+        description="Runtime class name for sandboxed pods",
+    )
+    gke_sandbox_node_selector: str | None = Field(
+        default=None,
+        description="JSON string of node selector for sandbox-enabled nodes",
+    )
+    gke_sandbox_custom_tolerations: str | None = Field(
+        default=None,
+        description="JSON string of custom tolerations for node pool taints",
     )
 
     # Resource Limits - Execution
@@ -407,6 +495,12 @@ class Settings(BaseSettings):
             }
         return data
 
+    # Service Version Override (set at deploy time to override build-time version)
+    service_version: str | None = Field(
+        default=None,
+        description="Runtime version override (e.g. '2.1.4'). Falls back to build-time version from _version.py.",
+    )
+
     # Logging Configuration
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="json")
@@ -434,6 +528,38 @@ class Settings(BaseSettings):
     def parse_api_keys(cls, v):
         """Parse comma-separated API keys into a list."""
         return [key.strip() for key in v.split(",") if key.strip()] if v else None
+
+    @field_validator("redis_host", mode="before")
+    @classmethod
+    def sanitize_redis_host(cls, v):
+        """Strip accidental URL scheme from Redis host."""
+        if isinstance(v, str):
+            for scheme in ("rediss://", "redis://"):
+                if v.lower().startswith(scheme):
+                    v = v[len(scheme) :].rstrip("/")
+                    break
+        return v
+
+    @field_validator("redis_password", "redis_sentinel_password", mode="before")
+    @classmethod
+    def sanitize_redis_password(cls, v):
+        """Convert empty password strings to None.
+
+        Kubernetes / Helm often set REDIS_PASSWORD="" which pydantic reads
+        as empty string.  Passing an empty password to redis-py sends
+        AUTH "" which fails when the server has no auth configured.
+        """
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
+
+    @field_validator("redis_cluster_nodes", "redis_sentinel_nodes", mode="before")
+    @classmethod
+    def sanitize_redis_nodes(cls, v):
+        """Convert empty node lists to None so code falls back to host:port."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
 
     @field_validator("minio_endpoint")
     @classmethod
@@ -470,6 +596,7 @@ class Settings(BaseSettings):
     def redis(self) -> RedisConfig:
         """Access Redis configuration group."""
         return RedisConfig(
+            redis_mode=self.redis_mode,
             redis_host=self.redis_host,
             redis_port=self.redis_port,
             redis_password=self.redis_password,
@@ -478,6 +605,17 @@ class Settings(BaseSettings):
             redis_max_connections=self.redis_max_connections,
             redis_socket_timeout=self.redis_socket_timeout,
             redis_socket_connect_timeout=self.redis_socket_connect_timeout,
+            redis_cluster_nodes=self.redis_cluster_nodes,
+            redis_sentinel_nodes=self.redis_sentinel_nodes,
+            redis_sentinel_master=self.redis_sentinel_master,
+            redis_sentinel_password=self.redis_sentinel_password,
+            redis_key_prefix=self.redis_key_prefix,
+            redis_tls_enabled=self.redis_tls_enabled,
+            redis_tls_cert_file=self.redis_tls_cert_file,
+            redis_tls_key_file=self.redis_tls_key_file,
+            redis_tls_ca_cert_file=self.redis_tls_ca_cert_file,
+            redis_tls_insecure=self.redis_tls_insecure,
+            redis_tls_check_hostname=self.redis_tls_check_hostname,
         )
 
     @property
@@ -548,6 +686,33 @@ class Settings(BaseSettings):
     @property
     def kubernetes(self) -> KubernetesConfig:
         """Access Kubernetes configuration group."""
+        import json
+
+        # Parse JSON strings for node selector and tolerations
+        sandbox_node_selector = None
+        if self.gke_sandbox_node_selector:
+            try:
+                sandbox_node_selector = json.loads(self.gke_sandbox_node_selector)
+            except json.JSONDecodeError:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Invalid JSON in GKE_SANDBOX_NODE_SELECTOR, ignoring: %s",
+                    self.gke_sandbox_node_selector,
+                )
+
+        custom_tolerations = None
+        if self.gke_sandbox_custom_tolerations:
+            try:
+                custom_tolerations = json.loads(self.gke_sandbox_custom_tolerations)
+            except json.JSONDecodeError:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Invalid JSON in GKE_SANDBOX_CUSTOM_TOLERATIONS, ignoring: %s",
+                    self.gke_sandbox_custom_tolerations,
+                )
+
         return KubernetesConfig(
             namespace=self.k8s_namespace,
             service_account=self.k8s_service_account,
@@ -562,11 +727,19 @@ class Settings(BaseSettings):
             cpu_request=self.k8s_cpu_request,
             memory_request=self.k8s_memory_request,
             run_as_user=self.k8s_run_as_user,
+            execution_mode=self.k8s_execution_mode,
+            executor_port=self.k8s_executor_port,
             seccomp_profile_type=self.k8s_seccomp_profile_type,
             job_ttl_seconds_after_finished=self.k8s_job_ttl_seconds,
             job_active_deadline_seconds=self.k8s_job_deadline_seconds,
             image_registry=self.k8s_image_registry,
             image_tag=self.k8s_image_tag,
+            image_pull_policy=self.k8s_image_pull_policy,
+            image_pull_secrets=self.k8s_image_pull_secrets,
+            gke_sandbox_enabled=self.gke_sandbox_enabled,
+            runtime_class_name=self.gke_sandbox_runtime_class,
+            sandbox_node_selector=sandbox_node_selector,
+            custom_tolerations=custom_tolerations,
         )
 
     def get_pool_configs(self):
@@ -574,9 +747,25 @@ class Settings(BaseSettings):
 
         Returns list of PoolConfig for all configured languages.
         """
+        import json
         import os
 
         from ..services.kubernetes.models import PoolConfig
+
+        # Parse GKE Sandbox configuration once
+        sandbox_node_selector = None
+        if self.gke_sandbox_node_selector:
+            try:
+                sandbox_node_selector = json.loads(self.gke_sandbox_node_selector)
+            except json.JSONDecodeError:
+                pass
+
+        custom_tolerations = None
+        if self.gke_sandbox_custom_tolerations:
+            try:
+                custom_tolerations = json.loads(self.gke_sandbox_custom_tolerations)
+            except json.JSONDecodeError:
+                pass
 
         configs = []
         languages = ["py", "js", "ts", "go", "java", "c", "cpp", "php", "rs", "r", "f90", "d"]
@@ -610,6 +799,11 @@ class Settings(BaseSettings):
             sidecar_cpu_request = os.getenv(f"LANG_CPU_REQUEST_{lang_upper}") or self.k8s_sidecar_cpu_request
             sidecar_memory_request = os.getenv(f"LANG_MEMORY_REQUEST_{lang_upper}") or self.k8s_sidecar_memory_request
 
+            # Parse image pull secrets (comma-separated string -> list)
+            pull_secrets = None
+            if self.k8s_image_pull_secrets:
+                pull_secrets = [s.strip() for s in self.k8s_image_pull_secrets.split(",") if s.strip()]
+
             configs.append(
                 PoolConfig(
                     language=lang,
@@ -623,8 +817,15 @@ class Settings(BaseSettings):
                     sidecar_cpu_request=sidecar_cpu_request,
                     sidecar_memory_request=sidecar_memory_request,
                     image_pull_policy=self.k8s_image_pull_policy,
+                    image_pull_secrets=pull_secrets,
+                    execution_mode=self.k8s_execution_mode,
+                    executor_port=self.k8s_executor_port,
                     seccomp_profile_type=self.k8s_seccomp_profile_type,
                     network_isolated=self.enable_network_isolation,
+                    gke_sandbox_enabled=self.gke_sandbox_enabled,
+                    runtime_class_name=self.gke_sandbox_runtime_class,
+                    sandbox_node_selector=sandbox_node_selector,
+                    custom_tolerations=custom_tolerations,
                 )
             )
 
@@ -643,11 +844,15 @@ class Settings(BaseSettings):
         return Path(self.ssl_cert_file).exists() and Path(self.ssl_key_file).exists()
 
     def get_redis_url(self) -> str:
-        """Get Redis connection URL."""
+        """Get Redis connection URL.
+
+        Automatically uses ``rediss://`` when TLS is enabled.
+        """
         if self.redis_url:
             return self.redis_url
+        scheme = "rediss" if self.redis_tls_enabled else "redis"
         password_part = f":{self.redis_password}@" if self.redis_password else ""
-        return f"redis://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"{scheme}://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     def get_valid_api_keys(self) -> list[str]:
         """Get all valid API keys including the primary key."""

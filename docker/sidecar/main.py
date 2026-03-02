@@ -2,10 +2,17 @@
 """HTTP Sidecar for Kubernetes Pod Execution.
 
 This sidecar runs alongside the main language container and provides
-an HTTP API for code execution. It uses nsenter to execute code in
-the main container's mount namespace.
+an HTTP API for code execution. It supports two execution modes:
 
-Requires: shareProcessNamespace: true in the pod spec.
+1. Agent mode (default): Forwards execution requests to an executor agent
+   HTTP server running inside the main container. No nsenter, no capabilities,
+   no privilege escalation needed. Compatible with GKE Sandbox (gVisor).
+
+2. nsenter mode (legacy): Uses nsenter to execute code in the main container's
+   mount namespace. Requires shareProcessNamespace, SYS_PTRACE, SYS_ADMIN,
+   SYS_CHROOT capabilities, and allowPrivilegeEscalation: true.
+
+The mode is controlled by the EXECUTION_MODE environment variable.
 """
 
 import asyncio
@@ -19,6 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -34,6 +42,11 @@ MAIN_PROCESS_NAME = os.getenv("MAIN_PROCESS_NAME", "")
 VERSION = os.getenv("VERSION", "0.0.0-dev")
 # Network isolation mode - when true, disables network-dependent features (e.g., Go module proxy)
 NETWORK_ISOLATED = os.getenv("NETWORK_ISOLATED", "false").lower() in ("true", "1", "yes")
+
+# Execution mode: "agent" (default, no nsenter) or "nsenter" (legacy)
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "agent")
+# Executor port (used in agent mode for the executor agent HTTP server)
+EXECUTOR_PORT = int(os.getenv("EXECUTOR_PORT", "9090"))
 
 class ExecuteRequest(BaseModel):
     """Request to execute code."""
@@ -218,83 +231,206 @@ def apply_network_isolation_overrides(env: dict[str, str], language: str) -> dic
     return env
 
 
-def get_language_command(
-    language: str, code: str, working_dir: str, container_env: dict[str, str]
-) -> tuple[list[str], Path | None]:
-    """Get the command to execute code for a given language.
+def _write_code_file(language: str, code: str, working_dir: str) -> tuple[list[str], Path | None]:
+    """Write code to a temp file and return the bare command to execute it.
 
+    This is the core (DRY) logic shared by both execution modes.
     Returns (command_list, temp_file_path_or_none).
-
-    Environment is always read from the container at runtime via /proc/<pid>/environ.
-    This eliminates config drift between Dockerfiles and sidecar code.
-
-    Two execution modes:
-    - Direct mode: Uses '/usr/bin/env -i' for single-command execution
-    - Shell mode: Uses 'sh -c' for multi-step (compile && run) commands
-
-    Both modes use the runtime-detected environment from the container.
     """
-    # Use container env, fall back to minimal defaults if not available
-    env = container_env if container_env else {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp"}
-
-    # Single wrapper using /usr/bin/env -i with runtime-detected environment
-    def wrap(cmd_args: list[str]) -> list[str]:
-        env_args = [f"{k}={v}" for k, v in env.items()]
-        return ["/usr/bin/env", "-i"] + env_args + cmd_args
-
-    # Helper for compiled languages needing shell for compile && run
     safe_wd = shlex.quote(working_dir)
 
     if language in ("python", "py"):
         code_file = Path(working_dir) / "code.py"
         code_file.write_text(code)
-        return wrap(["python", str(code_file)]), code_file
+        return ["python", str(code_file)], code_file
     elif language in ("javascript", "js"):
         code_file = Path(working_dir) / "code.js"
         code_file.write_text(code)
-        return wrap(["node", str(code_file)]), code_file
+        return ["node", str(code_file)], code_file
     elif language in ("typescript", "ts"):
         code_file = Path(working_dir) / "code.ts"
         code_file.write_text(code)
-        return wrap(["node", "/opt/scripts/ts-runner.js", str(code_file)]), code_file
+        return ["node", "/opt/scripts/ts-runner.js", str(code_file)], code_file
     elif language in ("go",):
         code_file = Path(working_dir) / "main.go"
         code_file.write_text(code)
-        return wrap(["go", "run", str(code_file)]), code_file
+        return ["go", "run", str(code_file)], code_file
     elif language in ("rust", "rs"):
         code_file = Path(working_dir) / "main.rs"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && rustc {code_file} -o /tmp/main && /tmp/main"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && rustc {code_file} -o /tmp/main && /tmp/main"], code_file
     elif language in ("java",):
         code_file = Path(working_dir) / "Code.java"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && javac {code_file} && java -cp {working_dir} Code"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && javac {code_file} && java -cp {working_dir} Code"], code_file
     elif language in ("c",):
         code_file = Path(working_dir) / "code.c"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && gcc {code_file} -o /tmp/code && /tmp/code"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && gcc {code_file} -o /tmp/code && /tmp/code"], code_file
     elif language in ("cpp",):
         code_file = Path(working_dir) / "code.cpp"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && g++ {code_file} -o /tmp/code && /tmp/code"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && g++ {code_file} -o /tmp/code && /tmp/code"], code_file
     elif language in ("php",):
         code_file = Path(working_dir) / "code.php"
         code_file.write_text(code)
-        return wrap(["php", str(code_file)]), code_file
+        return ["php", str(code_file)], code_file
     elif language in ("r",):
         code_file = Path(working_dir) / "code.r"
         code_file.write_text(code)
-        return wrap(["Rscript", str(code_file)]), code_file
+        return ["Rscript", str(code_file)], code_file
     elif language in ("fortran", "f90"):
         code_file = Path(working_dir) / "code.f90"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && gfortran {code_file} -o /tmp/code && /tmp/code"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && gfortran {code_file} -o /tmp/code && /tmp/code"], code_file
     elif language in ("d", "dlang"):
         code_file = Path(working_dir) / "code.d"
         code_file.write_text(code)
-        return wrap(["sh", "-c", f"cd {safe_wd} && ldc2 {code_file} -of=/tmp/code && /tmp/code"]), code_file
+        return ["sh", "-c", f"cd {safe_wd} && ldc2 {code_file} -of=/tmp/code && /tmp/code"], code_file
     else:
         return [], None
+
+
+def get_language_command(
+    language: str, code: str, working_dir: str, container_env: dict[str, str]
+) -> tuple[list[str], Path | None]:
+    """Get the command to execute code for a given language (nsenter mode).
+
+    Wraps the bare command with `/usr/bin/env -i` and the container's environment
+    variables to ensure a clean, reproducible execution context.
+
+    Returns (command_list, temp_file_path_or_none).
+
+    Environment is always read from the container at runtime via /proc/<pid>/environ.
+    This eliminates config drift between Dockerfiles and sidecar code.
+    """
+    cmd, temp_file = _write_code_file(language, code, working_dir)
+    if not cmd:
+        return [], None
+
+    # Use container env, fall back to minimal defaults if not available
+    env = container_env if container_env else {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": "/tmp"}
+
+    # Wrap with /usr/bin/env -i for a clean environment
+    env_args = [f"{k}={v}" for k, v in env.items()]
+    return ["/usr/bin/env", "-i"] + env_args + cmd, temp_file
+
+
+def get_language_command_bare(
+    language: str, code: str, working_dir: str,
+) -> tuple[list[str], Path | None]:
+    """Get the bare command to execute code for a given language (agent mode).
+
+    Used in agent mode where the executor agent already inherits the correct
+    environment from the container's ENTRYPOINT. No env -i wrapper needed.
+
+    Returns (command_list, temp_file_path_or_none).
+    """
+    return _write_code_file(language, code, working_dir)
+
+
+def get_network_isolation_overrides(language: str) -> dict[str, str]:
+    """Get environment variable overrides for network-isolated execution.
+
+    Returns a dict of env vars to override in the executor agent's subprocess.
+    """
+    if not NETWORK_ISOLATED:
+        return {}
+
+    overrides = {}
+    if language in ("go",):
+        overrides["GOPROXY"] = "off"
+        overrides["GOSUMDB"] = "off"
+        print(f"[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
+    return overrides
+
+
+async def execute_via_agent(request: ExecuteRequest) -> ExecuteResponse:
+    """Execute code via the executor agent running in the main container.
+
+    The executor agent is a lightweight HTTP server that runs inside the main
+    container, receiving commands over localhost (shared pod network namespace).
+    No nsenter, capabilities, or privilege escalation needed.
+    """
+    start_time = time.perf_counter()
+
+    try:
+        # Write code to a temp file and get the bare command (no env -i wrapper)
+        cmd, temp_file = get_language_command_bare(
+            LANGUAGE, request.code, request.working_dir
+        )
+        if not cmd:
+            return ExecuteResponse(
+                exit_code=1,
+                stdout="",
+                stderr=f"Unsupported language: {LANGUAGE}",
+                execution_time_ms=0,
+            )
+    except Exception as e:
+        return ExecuteResponse(
+            exit_code=1,
+            stdout="",
+            stderr=f"Failed to prepare execution: {str(e)}\n{traceback.format_exc()}",
+            execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+        )
+
+    # Build env overrides for network isolation
+    env_overrides = get_network_isolation_overrides(LANGUAGE)
+
+    print(f"[EXECUTE] agent mode, cmd={cmd}, timeout={request.timeout}s", flush=True)
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"http://127.0.0.1:{EXECUTOR_PORT}/execute",
+                json={
+                    "command": cmd,
+                    "timeout": request.timeout,
+                    "working_dir": request.working_dir,
+                    "env": env_overrides if env_overrides else None,
+                },
+                timeout=request.timeout + 10,  # Extra margin for HTTP overhead
+            )
+
+            if resp.status_code != 200:
+                return ExecuteResponse(
+                    exit_code=1,
+                    stdout="",
+                    stderr=f"Executor agent returned HTTP {resp.status_code}: {resp.text}",
+                    execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+                )
+
+            data = resp.json()
+            return ExecuteResponse(
+                exit_code=data.get("exit_code", 1),
+                stdout=data.get("stdout", ""),
+                stderr=data.get("stderr", ""),
+                execution_time_ms=data.get("execution_time_ms", 0),
+            )
+
+    except httpx.TimeoutException:
+        return ExecuteResponse(
+            exit_code=124,
+            stdout="",
+            stderr=f"Execution timed out after {request.timeout} seconds",
+            execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+        )
+    except httpx.ConnectError:
+        return ExecuteResponse(
+            exit_code=1,
+            stdout="",
+            stderr=f"Cannot connect to executor agent at 127.0.0.1:{EXECUTOR_PORT}. "
+                   f"Ensure the main container is running the executor agent.",
+            execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+        )
+    except Exception as e:
+        print(f"[EXECUTE] AGENT EXCEPTION: {type(e).__name__}: {e}", flush=True)
+        return ExecuteResponse(
+            exit_code=1,
+            stdout="",
+            stderr=f"Agent execution error: {str(e)}\n{traceback.format_exc()}",
+            execution_time_ms=int((time.perf_counter() - start_time) * 1000),
+        )
 
 
 async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
@@ -474,8 +610,11 @@ async def execute_via_subprocess_direct(request: ExecuteRequest) -> ExecuteRespo
 
 @app.post("/execute", response_model=ExecuteResponse)
 async def execute_code(request: ExecuteRequest) -> ExecuteResponse:
-    """Execute code and return results via nsenter."""
-    return await execute_via_nsenter(request)
+    """Execute code using the configured execution mode (agent or nsenter)."""
+    if EXECUTION_MODE == "agent":
+        return await execute_via_agent(request)
+    else:
+        return await execute_via_nsenter(request)
 
 
 @app.post("/files")
@@ -586,10 +725,25 @@ async def readiness_check():
     if not os.path.isdir(WORKING_DIR):
         raise HTTPException(status_code=503, detail="Working directory not ready")
 
-    # Check if we can find the main container
-    main_pid = find_main_container_pid()
-    if not main_pid:
-        raise HTTPException(status_code=503, detail="Main container not found")
+    if EXECUTION_MODE == "agent":
+        # In agent mode, check if the executor agent is reachable
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"http://127.0.0.1:{EXECUTOR_PORT}/health",
+                    timeout=2,
+                )
+                if resp.status_code != 200:
+                    raise HTTPException(status_code=503, detail="Executor agent not healthy")
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail="Executor agent not reachable")
+        except Exception:
+            raise HTTPException(status_code=503, detail="Executor agent health check failed")
+    else:
+        # In nsenter mode, check if we can find the main container
+        main_pid = find_main_container_pid()
+        if not main_pid:
+            raise HTTPException(status_code=503, detail="Main container not found")
 
     return {"status": "ready"}
 

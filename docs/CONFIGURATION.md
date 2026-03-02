@@ -135,23 +135,105 @@ Manages API key authentication and security.
 
 ### Redis Configuration
 
-Redis is used for session management and caching.
+Redis is used for session management and caching. Three deployment modes are supported:
+**standalone** (default), **cluster**, and **sentinel** — all with optional TLS/SSL.
 
-| Variable                       | Default     | Description                                        |
-| ------------------------------ | ----------- | -------------------------------------------------- |
-| `REDIS_HOST`                   | `localhost` | Redis server hostname                              |
-| `REDIS_PORT`                   | `6379`      | Redis server port                                  |
-| `REDIS_PASSWORD`               | -           | Redis password (if required)                       |
-| `REDIS_DB`                     | `0`         | Redis database number                              |
-| `REDIS_URL`                    | -           | Complete Redis URL (overrides individual settings) |
-| `REDIS_MAX_CONNECTIONS`        | `20`        | Maximum connections in pool                        |
-| `REDIS_SOCKET_TIMEOUT`         | `5`         | Socket timeout (seconds)                           |
-| `REDIS_SOCKET_CONNECT_TIMEOUT` | `5`         | Connection timeout (seconds)                       |
+#### Connection Settings
+
+| Variable                       | Default       | Description                                              |
+| ------------------------------ | ------------- | -------------------------------------------------------- |
+| `REDIS_MODE`                   | `standalone`  | Deployment mode: `standalone`, `cluster`, or `sentinel`  |
+| `REDIS_HOST`                   | `localhost`   | Redis server hostname                                    |
+| `REDIS_PORT`                   | `6379`        | Redis server port                                        |
+| `REDIS_PASSWORD`               | -             | Redis password (if required)                             |
+| `REDIS_DB`                     | `0`           | Redis database number (standalone/sentinel only)         |
+| `REDIS_URL`                    | -             | Complete Redis URL (overrides individual settings)       |
+| `REDIS_MAX_CONNECTIONS`        | `20`          | Maximum connections in pool                              |
+| `REDIS_SOCKET_TIMEOUT`         | `5`           | Socket timeout (seconds)                                 |
+| `REDIS_SOCKET_CONNECT_TIMEOUT` | `5`           | Connection timeout (seconds)                             |
+| `REDIS_KEY_PREFIX`             | -             | Optional prefix prepended to every Redis key (e.g. `prod:`) |
 
 **Example Redis URL:**
 
 ```
 REDIS_URL=redis://password@localhost:6379/0
+```
+
+#### Redis Cluster Mode
+
+Use `REDIS_MODE=cluster` when running against a Redis Cluster deployment (e.g. GCP Memorystore Cluster, AWS ElastiCache Cluster Mode).
+
+| Variable               | Default | Description                                                                 |
+| ---------------------- | ------- | --------------------------------------------------------------------------- |
+| `REDIS_CLUSTER_NODES`  | -       | Comma-separated `host:port` pairs for cluster startup nodes                 |
+
+> **Note:** `REDIS_DB` is ignored in cluster mode (Redis Cluster only supports database 0).
+
+**Example:**
+
+```bash
+REDIS_MODE=cluster
+REDIS_CLUSTER_NODES=node1:6379,node2:6379,node3:6379
+REDIS_PASSWORD=your-cluster-password
+```
+
+#### Redis Sentinel Mode
+
+Use `REDIS_MODE=sentinel` for high-availability setups with Redis Sentinel.
+
+| Variable                   | Default    | Description                                                  |
+| -------------------------- | ---------- | ------------------------------------------------------------ |
+| `REDIS_SENTINEL_NODES`     | -          | Comma-separated `host:port` pairs for Sentinel instances     |
+| `REDIS_SENTINEL_MASTER`    | `mymaster` | Name of the Sentinel-monitored master                        |
+| `REDIS_SENTINEL_PASSWORD`  | -          | Password for authenticating to Sentinel instances             |
+
+**Example:**
+
+```bash
+REDIS_MODE=sentinel
+REDIS_SENTINEL_NODES=sentinel1:26379,sentinel2:26379,sentinel3:26379
+REDIS_SENTINEL_MASTER=mymaster
+REDIS_PASSWORD=your-redis-password
+REDIS_SENTINEL_PASSWORD=your-sentinel-password
+```
+
+#### Redis TLS/SSL
+
+Enable TLS for encrypted connections. Required by most managed Redis services (GCP Memorystore, AWS ElastiCache, Azure Cache for Redis).
+
+| Variable                       | Default | Description                                                      |
+| ------------------------------ | ------- | ---------------------------------------------------------------- |
+| `REDIS_TLS_ENABLED`            | `false` | Enable TLS/SSL for Redis connections                             |
+| `REDIS_TLS_CA_CERT_FILE`       | -       | Path to CA certificate for verifying the server                  |
+| `REDIS_TLS_CERT_FILE`          | -       | Path to client TLS certificate (mutual TLS)                     |
+| `REDIS_TLS_KEY_FILE`           | -       | Path to client TLS private key (mutual TLS)                     |
+| `REDIS_TLS_INSECURE`           | `false` | Skip TLS certificate verification (NOT recommended)             |
+| `REDIS_TLS_CHECK_HOSTNAME`     | `false` | Verify server hostname against certificate CN/SAN                |
+
+> When `REDIS_TLS_ENABLED=true` the generated URL uses the `rediss://` scheme automatically.
+>
+> **Security note:** `REDIS_TLS_CHECK_HOSTNAME` is `false` by default because managed Redis services
+> (GCP Memorystore, AWS ElastiCache) and Redis Cluster node discovery expose IP addresses
+> that do not match certificate CN/SAN entries. The CA certificate chain is still fully
+> validated. For environments where Redis hostnames match their certificates, set
+> `REDIS_TLS_CHECK_HOSTNAME=true` for stronger TLS authentication.
+
+**Example — GCP Memorystore with TLS:**
+
+```bash
+REDIS_HOST=10.0.0.3
+REDIS_PORT=6378
+REDIS_TLS_ENABLED=true
+REDIS_TLS_CA_CERT_FILE=/etc/ssl/redis/server-ca.pem
+```
+
+**Example — GCP Memorystore Cluster:**
+
+```bash
+REDIS_MODE=cluster
+REDIS_CLUSTER_NODES=10.0.0.3:6379,10.0.0.4:6379,10.0.0.5:6379
+REDIS_TLS_ENABLED=true
+REDIS_TLS_CA_CERT_FILE=/etc/ssl/redis/server-ca.pem
 ```
 
 ### MinIO/S3 Configuration
@@ -175,22 +257,128 @@ Kubernetes is used for secure code execution in isolated pods.
 | Variable               | Default                                      | Description                              |
 | ---------------------- | -------------------------------------------- | ---------------------------------------- |
 | `K8S_NAMESPACE`        | `""` (uses API's namespace)                  | Namespace for execution pods             |
-| `K8S_SIDECAR_IMAGE`    | `aronmuon/kubecoderun-sidecar:latest` | HTTP sidecar image for pod communication |
+| `K8S_SIDECAR_IMAGE`    | `aronmuon/kubecoderun-sidecar-agent:latest` | HTTP sidecar image for pod communication |
 | `K8S_IMAGE_REGISTRY`   | `aronmuon/kubecoderun`              | Registry prefix for language images      |
 | `K8S_IMAGE_TAG`        | `latest`                                     | Image tag for language images            |
 | `K8S_CPU_LIMIT`        | `1`                                          | CPU limit per execution pod              |
 | `K8S_MEMORY_LIMIT`     | `512Mi`                                      | Memory limit per execution pod           |
 | `K8S_CPU_REQUEST`      | `100m`                                       | CPU request per execution pod            |
 | `K8S_MEMORY_REQUEST`   | `128Mi`                                      | Memory request per execution pod         |
+| `K8S_EXECUTION_MODE`   | `agent`                                      | Execution mode: `agent` (default) or `nsenter` |
+| `K8S_EXECUTOR_PORT`    | `9090`                                       | Port for the executor HTTP server inside the main container |
+| `K8S_IMAGE_PULL_POLICY`| `Always`                                     | Image pull policy for execution pods (`Always`, `IfNotPresent`, `Never`) |
+| `K8S_IMAGE_PULL_SECRETS`| `""`                                        | Comma-separated list of Kubernetes secret names for pulling images from private registries |
+
+**Image Pull Secrets:**
+
+When using private container registries, create Kubernetes secrets in the execution namespace and reference them via `K8S_IMAGE_PULL_SECRETS`:
+
+```bash
+# Create the secret
+kubectl create secret docker-registry my-registry-secret \
+  --docker-server=ghcr.io \
+  --docker-username=<user> \
+  --docker-password=<token> \
+  -n <execution-namespace>
+
+# Configure the API
+K8S_IMAGE_PULL_SECRETS=my-registry-secret
+# Multiple secrets: K8S_IMAGE_PULL_SECRETS=secret1,secret2
+```
+
+The secrets are applied to all dynamically created execution pods (both warm pool pods and on-demand Job pods).
+
+**Execution Modes:**
+
+- **`agent` (default):** A lightweight Go HTTP server runs inside the main container. The sidecar forwards execution requests via localhost. No `nsenter`, no capabilities, no privilege escalation. Compatible with GKE Sandbox (gVisor) and restricted Pod Security Standards.
+- **`nsenter` (legacy):** The sidecar uses `nsenter` to enter the main container's mount namespace. Requires `shareProcessNamespace`, `SYS_PTRACE`/`SYS_ADMIN`/`SYS_CHROOT` capabilities, and `allowPrivilegeEscalation: true`. Use only on clusters that allow privilege escalation.
 
 **Security Notes:**
 
 - Both containers run with `runAsNonRoot: true` and `runAsUser: 65532`
-- The sidecar uses file capabilities (`setcap`) on the `nsenter` binary to allow non-root users to enter namespaces
-- Required pod capabilities (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT) must be in the bounding set with `allowPrivilegeEscalation: true`
+- In agent mode: all capabilities are dropped, `allowPrivilegeEscalation: false` for all containers
+- In nsenter mode: the sidecar uses file capabilities (`setcap`) on the `nsenter` binary to allow non-root namespace entry
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
-- See [SECURITY.md](SECURITY.md) for detailed explanation of the nsenter privilege model
+- See [SECURITY.md](SECURITY.md) for detailed explanation of the security model
+
+#### Sidecar Container Images
+
+The sidecar Dockerfile produces two distinct images via Docker build targets. Use the image that matches your configured `K8S_EXECUTION_MODE`:
+
+| Build Target | Image Name | Execution Mode | Description |
+|-------------|------------|---------------|-------------|
+| `sidecar-agent` (default) | `kubecoderun-sidecar-agent` | `agent` | Contains executor-agent binary; no nsenter, no capabilities |
+| `sidecar-nsenter` | `kubecoderun-sidecar-nsenter` | `nsenter` | Contains nsenter with file capabilities (setcap) |
+
+**Building the images:**
+
+```bash
+# Agent mode sidecar (default, recommended):
+docker build --target sidecar-agent \
+  -t kubecoderun-sidecar-agent:latest \
+  -f docker/sidecar/Dockerfile docker/sidecar/
+
+# nsenter mode sidecar (legacy):
+docker build --target sidecar-nsenter \
+  -t kubecoderun-sidecar-nsenter:latest \
+  -f docker/sidecar/Dockerfile docker/sidecar/
+
+# Or use the build script (builds both automatically):
+./scripts/build-images.sh sidecar-agent     # agent mode sidecar
+./scripts/build-images.sh sidecar-nsenter   # nsenter mode sidecar
+./scripts/build-images.sh                   # all images (both sidecars)
+```
+
+**Helm chart configuration:**
+
+Update `values.yaml` to use the correct sidecar image for your execution mode:
+
+```yaml
+execution:
+  executionMode: "agent"  # or "nsenter"
+  sidecar:
+    # For agent mode (default):
+    repository: ghcr.io/your-org/kubecoderun-sidecar-agent
+    # For nsenter mode:
+    # repository: ghcr.io/your-org/kubecoderun-sidecar-nsenter
+```
+
+### GKE Sandbox (gVisor) Configuration
+
+[GKE Sandbox](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods) provides kernel-level isolation using gVisor to protect the host kernel from untrusted code. It is **only compatible with agent execution mode**.
+
+| Variable                            | Default   | Description                                        |
+| ----------------------------------- | --------- | -------------------------------------------------- |
+| `GKE_SANDBOX_ENABLED`               | `false`   | Enable GKE Sandbox (gVisor) for execution pods     |
+| `GKE_SANDBOX_RUNTIME_CLASS`         | `gvisor`  | RuntimeClass name for sandboxed pods               |
+| `GKE_SANDBOX_NODE_SELECTOR`         | `{}`      | JSON node selector for sandbox nodes               |
+| `GKE_SANDBOX_CUSTOM_TOLERATIONS`    | `[]`      | JSON array of custom tolerations for sandbox nodes  |
+
+**Requirements:**
+
+- `K8S_EXECUTION_MODE=agent` (nsenter is **incompatible** with gVisor)
+- GKE cluster with a sandbox-enabled node pool (`--sandbox type=gvisor`)
+- At least two node pools — one with GKE Sandbox enabled, one without
+- Container-Optimized OS with containerd (`cos_containerd`) node image
+
+**Example configuration:**
+
+```bash
+K8S_EXECUTION_MODE=agent
+GKE_SANDBOX_ENABLED=true
+GKE_SANDBOX_RUNTIME_CLASS=gvisor
+# Schedule on specific sandbox node pool:
+GKE_SANDBOX_NODE_SELECTOR={"pool":"sandbox"}
+GKE_SANDBOX_CUSTOM_TOLERATIONS=[{"key":"pool","value":"sandbox","operator":"Equal","effect":"NoSchedule"}]
+```
+
+**Key limitations of GKE Sandbox** (see [GKE docs](https://docs.cloud.google.com/kubernetes-engine/docs/concepts/sandbox-pods#limitations)):
+
+- Incompatible with `nsenter` execution mode, privileged containers, and `shareProcessNamespace` (all avoided in agent mode)
+- Seccomp, AppArmor, and SELinux not applicable inside the sandbox
+- HostPath volumes and port-forwarding not supported
+- Container-level memory metrics not available (pod-level metrics are)
 
 ### Resource Limits
 
@@ -395,6 +583,10 @@ if validate_configuration():
 - [ ] Deploy Kubernetes NetworkPolicy to deny egress
 - [ ] Configure pod security context (non-root user)
 - [ ] Review and adjust resource limits
+- [ ] Choose execution mode (`K8S_EXECUTION_MODE=agent` recommended)
+- [ ] Ensure sidecar image matches execution mode (`sidecar-agent` for agent, `sidecar-nsenter` for nsenter)
+- [ ] Configure `K8S_IMAGE_PULL_SECRETS` if using private registries
+- [ ] Enable GKE Sandbox for additional kernel isolation if running on GKE (`GKE_SANDBOX_ENABLED=true`)
 
 ### Performance
 

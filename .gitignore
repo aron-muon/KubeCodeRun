@@ -200,3 +200,5 @@ config/local.py
 
 # Hatch auto-generated version file
 _version.py
+
+.pdm-python
