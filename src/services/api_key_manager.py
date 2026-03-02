@@ -49,13 +49,19 @@ class ApiKeyManagerService:
         """
         self._redis = redis_client
 
-        # Compute prefixed keys once so every method uses the prefix
-        mk = redis_pool.make_key
-        self.RECORD_PREFIX = mk(self._RECORD_PREFIX)
-        self.VALID_CACHE_PREFIX = mk(self._VALID_CACHE_PREFIX)
-        self.USAGE_PREFIX = mk(self._USAGE_PREFIX)
-        self.INDEX_KEY = mk(self._INDEX_KEY)
-        self.ENV_KEYS_INDEX = mk(self._ENV_KEYS_INDEX)
+        # Compute prefixed keys once so every method uses the prefix.
+        # Load prefix directly from settings to avoid triggering Redis pool
+        # initialization during service construction (important for tests/mocks).
+        try:
+            prefix = settings.redis.key_prefix
+        except Exception:
+            prefix = ""
+        
+        self.RECORD_PREFIX = f"{prefix}{self._RECORD_PREFIX}"
+        self.VALID_CACHE_PREFIX = f"{prefix}{self._VALID_CACHE_PREFIX}"
+        self.USAGE_PREFIX = f"{prefix}{self._USAGE_PREFIX}"
+        self.INDEX_KEY = f"{prefix}{self._INDEX_KEY}"
+        self.ENV_KEYS_INDEX = f"{prefix}{self._ENV_KEYS_INDEX}"
 
     @property
     def redis(self) -> redis.Redis:
