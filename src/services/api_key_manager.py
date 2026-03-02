@@ -31,12 +31,12 @@ logger = structlog.get_logger(__name__)
 class ApiKeyManagerService:
     """Manages API keys stored in Redis."""
 
-    # Redis key prefixes
-    RECORD_PREFIX = "api_keys:records:"
-    VALID_CACHE_PREFIX = "api_keys:valid:"
-    USAGE_PREFIX = "api_keys:usage:"
-    INDEX_KEY = "api_keys:index"
-    ENV_KEYS_INDEX = "api_keys:env_index"  # Separate index for env keys
+    # Base Redis key prefixes (before application-level prefix)
+    _RECORD_PREFIX = "api_keys:records:"
+    _VALID_CACHE_PREFIX = "api_keys:valid:"
+    _USAGE_PREFIX = "api_keys:usage:"
+    _INDEX_KEY = "api_keys:index"
+    _ENV_KEYS_INDEX = "api_keys:env_index"  # Separate index for env keys
 
     # Cache TTL
     VALIDATION_CACHE_TTL = 300  # 5 minutes
@@ -48,6 +48,14 @@ class ApiKeyManagerService:
             redis_client: Optional Redis client, uses shared pool if not provided
         """
         self._redis = redis_client
+
+        # Compute prefixed keys once so every method uses the prefix
+        mk = redis_pool.make_key
+        self.RECORD_PREFIX = mk(self._RECORD_PREFIX)
+        self.VALID_CACHE_PREFIX = mk(self._VALID_CACHE_PREFIX)
+        self.USAGE_PREFIX = mk(self._USAGE_PREFIX)
+        self.INDEX_KEY = mk(self._INDEX_KEY)
+        self.ENV_KEYS_INDEX = mk(self._ENV_KEYS_INDEX)
 
     @property
     def redis(self) -> redis.Redis:
@@ -130,8 +138,9 @@ class ApiKeyManagerService:
                 source="environment",
             )
 
-            # Store in Redis
-            pipe = self.redis.pipeline(transaction=True)
+            # Store in Redis (transaction=False for Redis Cluster compatibility
+            # — record key and index key hash to different slots)
+            pipe = self.redis.pipeline(transaction=False)
             pipe.hset(record_key, mapping=record.to_redis_hash())
             pipe.sadd(self.ENV_KEYS_INDEX, key_hash)
             await pipe.execute()
@@ -237,9 +246,10 @@ class ApiKeyManagerService:
             metadata=metadata or {},
         )
 
-        # Store in Redis
+        # Store in Redis (transaction=False for Redis Cluster compatibility
+        # — record key and index key hash to different slots)
         record_key = f"{self.RECORD_PREFIX}{key_hash}"
-        pipe = self.redis.pipeline(transaction=True)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.hset(record_key, mapping=record.to_redis_hash())
         pipe.sadd(self.INDEX_KEY, key_hash)
         await pipe.execute()
@@ -358,8 +368,9 @@ class ApiKeyManagerService:
         if not exists:
             return False
 
-        # Delete from Redis
-        pipe = self.redis.pipeline(transaction=True)
+        # Delete from Redis (transaction=False for Redis Cluster compatibility
+        # — keys hash to different slots)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.delete(record_key)
         pipe.srem(self.INDEX_KEY, key_hash)
         pipe.delete(f"{self.VALID_CACHE_PREFIX}{self._short_hash(key_hash)}")
