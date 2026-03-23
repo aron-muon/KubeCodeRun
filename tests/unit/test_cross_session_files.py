@@ -80,9 +80,7 @@ class TestCrossSessionFileConsolidation:
     """Tests reproducing and verifying the fix for issue #34."""
 
     @pytest.mark.asyncio
-    async def test_files_from_multiple_sessions_are_consolidated(
-        self, orchestrator, mock_file_service
-    ):
+    async def test_files_from_multiple_sessions_are_consolidated(self, orchestrator, mock_file_service):
         """Reproduce issue #34: files uploaded in separate sessions should be
         consolidated into the chosen session during mount.
 
@@ -153,9 +151,7 @@ class TestCrossSessionFileConsolidation:
         )
 
     @pytest.mark.asyncio
-    async def test_same_session_files_not_duplicated(
-        self, orchestrator, mock_file_service
-    ):
+    async def test_same_session_files_not_duplicated(self, orchestrator, mock_file_service):
         """Files already in the chosen session should NOT be re-stored."""
         file_info = FileInfo(
             file_id="file-a",
@@ -189,9 +185,7 @@ class TestCrossSessionFileConsolidation:
         mock_file_service.store_uploaded_file.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_consolidation_failure_does_not_break_mount(
-        self, orchestrator, mock_file_service
-    ):
+    async def test_consolidation_failure_does_not_break_mount(self, orchestrator, mock_file_service):
         """If consolidation fails (store_uploaded_file raises), the file
         should still be mounted for the current execution."""
         file_a_info = FileInfo(
