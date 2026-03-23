@@ -139,6 +139,13 @@ class FileServiceInterface(ABC):
         pass
 
     @abstractmethod
+    async def store_uploaded_file(
+        self, session_id: str, filename: str, content: bytes, content_type: str | None = None
+    ) -> str:
+        """Store an uploaded file directly. Returns file_id."""
+        pass
+
+    @abstractmethod
     async def store_execution_output_file(self, session_id: str, filename: str, content: bytes) -> str:
         """Store a file generated during execution. Returns file_id."""
         pass

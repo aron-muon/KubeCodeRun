@@ -99,13 +99,36 @@ async def upload_file(
 
         uploaded_files = []
 
-        # Create an actual session in Redis for this upload
-        session_metadata = {}
+        # Resolve or create session for this upload.
+        # When entity_id is provided, reuse the existing session for that
+        # entity so that multiple file uploads land in the same session
+        # (fixes issue #34 where separate uploads created isolated sessions).
+        session_id = None
         if entity_id:
-            session_metadata["entity_id"] = entity_id
+            try:
+                existing = await session_service.list_sessions_by_entity(entity_id, limit=1)
+                if existing:
+                    candidate = existing[0]
+                    if getattr(candidate.status, "value", str(candidate.status)) == "active":
+                        session_id = candidate.session_id
+                        logger.info(
+                            "Reusing existing session for entity",
+                            session_id=session_id,
+                            entity_id=entity_id,
+                        )
+            except Exception as e:
+                logger.warning(
+                    "Failed to look up session by entity_id",
+                    entity_id=entity_id,
+                    error=str(e),
+                )
 
-        session = await session_service.create_session(SessionCreate(metadata=session_metadata))
-        session_id = session.session_id
+        if not session_id:
+            session_metadata = {}
+            if entity_id:
+                session_metadata["entity_id"] = entity_id
+            session = await session_service.create_session(SessionCreate(metadata=session_metadata))
+            session_id = session.session_id
 
         for file in upload_files:
             # Read file content

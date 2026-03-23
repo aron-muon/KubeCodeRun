@@ -348,6 +348,32 @@ class ExecutionOrchestrator:
             )
             mounted_ids.add(key)
 
+            # Consolidate cross-session files into the chosen session (issue #34).
+            # When files are uploaded in separate sessions (e.g. entity_id=null),
+            # copy them into the execution session so subsequent requests can find them.
+            if ctx.session_id and file_ref.session_id != ctx.session_id:
+                try:
+                    await self.file_service.store_uploaded_file(
+                        session_id=ctx.session_id,
+                        filename=file_info.filename,
+                        content=content,
+                        content_type=file_info.content_type,
+                    )
+                    logger.info(
+                        "Consolidated cross-session file",
+                        source_session=file_ref.session_id,
+                        target_session=ctx.session_id[:12],
+                        filename=file_info.filename,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to consolidate cross-session file",
+                        source_session=file_ref.session_id,
+                        target_session=ctx.session_id[:12],
+                        filename=file_info.filename,
+                        error=str(e),
+                    )
+
             logger.debug(
                 "Mounted file for execution",
                 session_id=file_ref.session_id,
