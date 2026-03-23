@@ -700,8 +700,11 @@ class TestStartRedisConnectionErrors:
         """Test start handles Redis connection timeout."""
         collector = MetricsCollector()
 
-        with patch("src.services.metrics.redis.from_url") as mock_from_url:
-            mock_from_url.side_effect = TimeoutError()
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(side_effect=TimeoutError())
+
+        with patch("src.core.pool.redis_pool") as mock_pool:
+            mock_pool.get_client.return_value = mock_redis
 
             await collector.start()
 
@@ -713,8 +716,11 @@ class TestStartRedisConnectionErrors:
         """Test start handles Redis generic connection error."""
         collector = MetricsCollector()
 
-        with patch("src.services.metrics.redis.from_url") as mock_from_url:
-            mock_from_url.side_effect = Exception("Connection refused")
+        mock_redis = AsyncMock()
+        mock_redis.ping = AsyncMock(side_effect=Exception("Connection refused"))
+
+        with patch("src.core.pool.redis_pool") as mock_pool:
+            mock_pool.get_client.return_value = mock_redis
 
             await collector.start()
 

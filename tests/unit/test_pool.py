@@ -837,11 +837,12 @@ class TestPodPoolReplenishLoop:
             return None
 
         with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                try:
-                    await asyncio.wait_for(pod_pool._replenish_loop(), timeout=1)
-                except TimeoutError:
-                    pass
+            # Signal the event to wake the loop immediately
+            pod_pool._signal_replenish()
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pod_pool._running = False
 
         assert call_count > 0
 
@@ -849,33 +850,35 @@ class TestPodPoolReplenishLoop:
     async def test_replenish_loop_handles_exception(self, pod_pool):
         """Test replenish loop handles exception gracefully."""
         pod_pool._running = True
-        iteration = 0
-
-        async def mock_sleep(_):
-            nonlocal iteration
-            iteration += 1
-            if iteration >= 2:
-                pod_pool._running = False
+        call_count = 0
 
         async def mock_create():
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                pod_pool._running = False
             raise Exception("Create failed")
 
         with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
-            with patch("asyncio.sleep", side_effect=mock_sleep):
-                # Should not raise
-                await pod_pool._replenish_loop()
+            pod_pool._signal_replenish()
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pod_pool._running = False
 
     @pytest.mark.asyncio
     async def test_replenish_loop_cancelled_error(self, pod_pool):
         """Test replenish loop handles CancelledError."""
         pod_pool._running = True
 
-        async def mock_sleep(_):
-            raise asyncio.CancelledError()
-
-        with patch("asyncio.sleep", side_effect=mock_sleep):
-            # Should break out of loop on CancelledError
-            await pod_pool._replenish_loop()
+        # Start the loop and cancel it
+        task = asyncio.create_task(pod_pool._replenish_loop())
+        await asyncio.sleep(0.05)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 
 class TestPodPoolHealthCheckLoop:

@@ -430,13 +430,25 @@ class TestValidateAll:
         assert result is True
 
     def test_validate_all_with_errors(self):
-        """Test validation with errors."""
+        """Test validation returns False when a real check produces an error."""
         validator = ConfigValidator()
-        validator.errors.append("Test error")
 
-        result = validator.validate_all()
+        # Trigger a real validation error: total file size < individual file size
+        with patch("src.utils.config_validator.settings") as mock_settings:
+            mock_settings.api_key = "valid-key-long-enough"
+            mock_settings.api_keys = []
+            mock_settings.allowed_file_extensions = [".py"]
+            mock_settings.enable_network_isolation = True
+            mock_settings.enable_filesystem_isolation = True
+            mock_settings.max_file_size_mb = 100
+            mock_settings.max_total_file_size_mb = 10  # Less than individual → error
+            mock_settings.api_debug = True
+            mock_settings.pod_pool_enabled = False
+
+            result = validator.validate_all()
 
         assert result is False
+        assert any("Total file size" in e for e in validator.errors)
 
     def test_validate_all_clears_previous(self):
         """Test that validate_all clears previous errors/warnings."""
