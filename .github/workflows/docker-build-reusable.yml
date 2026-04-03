@@ -29,6 +29,11 @@ on:
         type: string
         default: ''
         description: 'Version string to pass as VERSION build arg (for hatch-vcs)'
+      runner_image:
+        required: false
+        type: string
+        default: ''
+        description: 'Runner image reference for language builds (e.g., ghcr.io/aron-muon/kubecoderun-runner:dev-abc1234)'
 
 jobs:
   build:
@@ -87,6 +92,7 @@ jobs:
             BUILD_DATE=${{ steps.vars.outputs.build_date }}
             VERSION=${{ inputs.version }}
             VCS_REF=${{ github.sha }}
+            ${{ inputs.runner_image && format('RUNNER_IMAGE={0}', inputs.runner_image) || '' }}
 
   manifest:
     needs: build

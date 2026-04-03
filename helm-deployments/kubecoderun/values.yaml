@@ -256,6 +256,16 @@ execution:
     seccompProfile:
       type: RuntimeDefault
 
+  # Pod scheduling for execution pods
+  # Use these to target sandboxed node pools on any provider (GKE, EKS, AKS, etc.)
+  scheduling:
+    # RuntimeClassName for pod sandboxing (e.g. gvisor, kata). Empty = cluster default.
+    runtimeClassName: ""
+    # Additional node selector labels (e.g. {"sandbox": "true"})
+    nodeSelector: {}
+    # Additional tolerations (e.g. [{"key": "sandbox", "operator": "Exists", "effect": "NoSchedule"}])
+    tolerations: []
+
   # Resource limits for execution pods
   resources:
     limits:

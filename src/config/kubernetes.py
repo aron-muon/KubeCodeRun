@@ -29,6 +29,11 @@ class KubernetesConfig:
     run_as_non_root: bool = True
     seccomp_profile_type: str = "RuntimeDefault"
 
+    # Pod scheduling (for targeting sandboxed node pools, etc.)
+    runtime_class_name: str = ""
+    pod_node_selector: str = ""  # JSON-encoded dict, e.g. '{"sandbox": "true"}'
+    pod_tolerations: str = ""  # JSON-encoded list, e.g. '[{"key":"sandbox","operator":"Exists","effect":"NoSchedule"}]'
+
     # Job settings (for languages with pool_size=0)
     job_ttl_seconds_after_finished: int = 60
     job_active_deadline_seconds: int = 300

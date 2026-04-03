@@ -47,6 +47,9 @@ class KubernetesManager:
         default_memory_request: str = "128Mi",
         seccomp_profile_type: str = "RuntimeDefault",
         network_isolated: bool = False,
+        runtime_class_name: str = "",
+        pod_node_selector: str = "",
+        pod_tolerations: str = "",
     ):
         """Initialize the Kubernetes manager.
 
@@ -59,6 +62,9 @@ class KubernetesManager:
             default_memory_request: Default memory request for pods
             seccomp_profile_type: Seccomp profile type (RuntimeDefault, Unconfined, Localhost)
             network_isolated: Whether network isolation is enabled (disables network-dependent features)
+            runtime_class_name: Optional RuntimeClassName for pod sandboxing (e.g. gvisor, kata)
+            pod_node_selector: JSON-encoded node selector labels for execution pods
+            pod_tolerations: JSON-encoded tolerations for execution pods
         """
         self.namespace = namespace or get_current_namespace()
         self.default_cpu_limit = default_cpu_limit
@@ -67,6 +73,9 @@ class KubernetesManager:
         self.default_memory_request = default_memory_request
         self.seccomp_profile_type = seccomp_profile_type
         self.network_isolated = network_isolated
+        self.runtime_class_name = runtime_class_name
+        self.pod_node_selector = pod_node_selector
+        self.pod_tolerations = pod_tolerations
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
@@ -275,6 +284,9 @@ class KubernetesManager:
                 memory_request=self.default_memory_request,
                 seccomp_profile_type=self.seccomp_profile_type,
                 network_isolated=self.network_isolated,
+                runtime_class_name=self.runtime_class_name,
+                pod_node_selector=self.pod_node_selector,
+                pod_tolerations=self.pod_tolerations,
             )
 
             result = await self._job_executor.execute_with_job(

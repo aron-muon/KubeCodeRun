@@ -148,6 +148,18 @@ class Settings(BaseSettings):
         default="Always",
         description="Image pull policy for execution pods (Always, IfNotPresent, Never)",
     )
+    k8s_runtime_class_name: str = Field(
+        default="",
+        description="RuntimeClassName for execution pods (e.g. gvisor, kata). Empty = cluster default.",
+    )
+    k8s_pod_node_selector: str = Field(
+        default="",
+        description='JSON-encoded node selector labels for execution pods (e.g. \'{"sandbox":"true"}\')',
+    )
+    k8s_pod_tolerations: str = Field(
+        default="",
+        description='JSON-encoded tolerations for execution pods (e.g. \'[{"key":"sandbox","operator":"Exists","effect":"NoSchedule"}]\')',
+    )
 
     # Resource Limits - Execution
     max_execution_time: int = Field(default=30, ge=1, le=600)
@@ -557,6 +569,9 @@ class Settings(BaseSettings):
             job_active_deadline_seconds=self.k8s_job_deadline_seconds,
             image_registry=self.k8s_image_registry,
             image_tag=self.k8s_image_tag,
+            runtime_class_name=self.k8s_runtime_class_name,
+            pod_node_selector=self.k8s_pod_node_selector,
+            pod_tolerations=self.k8s_pod_tolerations,
         )
 
     def get_pool_configs(self):
@@ -608,6 +623,9 @@ class Settings(BaseSettings):
                     image_pull_policy=self.k8s_image_pull_policy,
                     seccomp_profile_type=self.k8s_seccomp_profile_type,
                     network_isolated=self.enable_network_isolation,
+                    runtime_class_name=self.k8s_runtime_class_name,
+                    pod_node_selector=self.k8s_pod_node_selector,
+                    pod_tolerations=self.k8s_pod_tolerations,
                 )
             )
 

@@ -188,6 +188,9 @@ def create_pod_manifest(
     image_pull_policy: str = "Always",
     seccomp_profile_type: str = "RuntimeDefault",
     network_isolated: bool = False,
+    runtime_class_name: str = "",
+    pod_node_selector: str = "",
+    pod_tolerations: str = "",
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
@@ -274,6 +277,19 @@ def create_pod_manifest(
         ),
     )
 
+    # Parse optional scheduling config from JSON strings
+    node_selector = None
+    if pod_node_selector:
+        import json
+
+        node_selector = json.loads(pod_node_selector)
+
+    tolerations = None
+    if pod_tolerations:
+        import json
+
+        tolerations = [client.V1Toleration(**t) for t in json.loads(pod_tolerations)]
+
     # Pod spec
     pod_spec = client.V1PodSpec(
         containers=[main_container],
@@ -284,6 +300,9 @@ def create_pod_manifest(
             fs_group=run_as_user,
             seccomp_profile=client.V1SeccompProfile(type=seccomp_profile_type),
         ),
+        runtime_class_name=runtime_class_name or None,
+        node_selector=node_selector,
+        tolerations=tolerations,
     )
 
     # Pod metadata

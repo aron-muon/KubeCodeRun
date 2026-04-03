@@ -186,6 +186,9 @@ class PodPool:
             runner_port=8080,
             seccomp_profile_type=self.config.seccomp_profile_type,
             network_isolated=self.config.network_isolated,
+            runtime_class_name=self.config.runtime_class_name,
+            pod_node_selector=self.config.pod_node_selector,
+            pod_tolerations=self.config.pod_tolerations,
         )
 
         try:

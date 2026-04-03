@@ -38,6 +38,17 @@ data:
   K8S_JOB_TTL_SECONDS: {{ .Values.execution.jobs.ttlSecondsAfterFinished | quote }}
   K8S_JOB_DEADLINE_SECONDS: {{ .Values.execution.jobs.activeDeadlineSeconds | quote }}
 
+  # Pod Scheduling
+  {{- if .Values.execution.scheduling.runtimeClassName }}
+  K8S_RUNTIME_CLASS_NAME: {{ .Values.execution.scheduling.runtimeClassName | quote }}
+  {{- end }}
+  {{- if .Values.execution.scheduling.nodeSelector }}
+  K8S_POD_NODE_SELECTOR: {{ .Values.execution.scheduling.nodeSelector | toJson | quote }}
+  {{- end }}
+  {{- if .Values.execution.scheduling.tolerations }}
+  K8S_POD_TOLERATIONS: {{ .Values.execution.scheduling.tolerations | toJson | quote }}
+  {{- end }}
+
   # Pod Lifecycle
   POD_TTL_MINUTES: {{ .Values.execution.podTtlMinutes | quote }}
   POD_CLEANUP_INTERVAL_MINUTES: {{ .Values.execution.podCleanupIntervalMinutes | quote }}

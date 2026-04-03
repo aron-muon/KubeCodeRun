@@ -117,6 +117,9 @@ class JobExecutor:
             runner_port=spec.runner_port,
             seccomp_profile_type=spec.seccomp_profile_type,
             network_isolated=spec.network_isolated,
+            runtime_class_name=spec.runtime_class_name,
+            pod_node_selector=spec.pod_node_selector,
+            pod_tolerations=spec.pod_tolerations,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )

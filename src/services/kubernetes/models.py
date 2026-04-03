@@ -118,6 +118,11 @@ class PodSpec:
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)
     network_isolated: bool = False
 
+    # Pod scheduling (for targeting sandboxed node pools, etc.)
+    runtime_class_name: str = ""
+    pod_node_selector: str = ""  # JSON-encoded dict
+    pod_tolerations: str = ""  # JSON-encoded list
+
 
 @dataclass
 class PoolConfig:
@@ -139,6 +144,11 @@ class PoolConfig:
 
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)
     network_isolated: bool = False
+
+    # Pod scheduling (for targeting sandboxed node pools, etc.)
+    runtime_class_name: str = ""
+    pod_node_selector: str = ""  # JSON-encoded dict
+    pod_tolerations: str = ""  # JSON-encoded list
 
     @property
     def uses_pool(self) -> bool:

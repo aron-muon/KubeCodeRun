@@ -35,6 +35,7 @@ jobs:
       force_all: ${{ github.event.inputs.force_all == 'true' }}
       image_tag: ${{ steps.tag.outputs.image_tag }}
       is_release: ${{ steps.tag.outputs.is_release }}
+      runner_image: ${{ steps.tag.outputs.runner_image }}
       previous_tag: ${{ steps.prev_tag.outputs.tag_name }}
       version: ${{ steps.version.outputs.version }}
       # Skip Docker builds for cross-repo PRs (no permission to push to upstream registry)
@@ -105,20 +106,22 @@ jobs:
       - name: Set image tag
         id: tag
         run: |
+          OWNER="${{ github.repository_owner }}"
+          OWNER_LC="${OWNER,,}"
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             SHORT_SHA=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-            echo "image_tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            TAG="dev-${SHORT_SHA}"
             echo "is_release=false" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # Tag push or workflow_dispatch triggered with a tag ref
-            echo "image_tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.ref_name }}"
             echo "is_release=true" >> $GITHUB_OUTPUT
           else
-            # workflow_dispatch on a branch or other non-tag ref
             SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-            echo "image_tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+            TAG="dev-${SHORT_SHA}"
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
+          echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "runner_image=ghcr.io/${OWNER_LC}/kubecoderun-runner:${TAG}" >> $GITHUB_OUTPUT
 
   # ==================== Build Jobs ====================
   # Note: All build jobs skip when is_cross_repo_pr == 'true' (cross-repo PRs can't push to upstream registry)
@@ -167,6 +170,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   javascript:
     needs: [changes, runner]
@@ -183,6 +187,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   typescript:
     needs: [changes, runner]
@@ -199,6 +204,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   go:
     needs: [changes, runner]
@@ -215,6 +221,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   java:
     needs: [changes, runner]
@@ -231,6 +238,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   c-cpp:
     needs: [changes, runner]
@@ -247,6 +255,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   php:
     needs: [changes, runner]
@@ -263,6 +272,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   rust:
     needs: [changes, runner]
@@ -279,6 +289,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   r:
     needs: [changes, runner]
@@ -295,6 +306,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   fortran:
     needs: [changes, runner]
@@ -311,6 +323,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   d:
     needs: [changes, runner]
@@ -327,6 +340,7 @@ jobs:
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
+      runner_image: ${{ needs.changes.outputs.runner_image }}
 
   # ==================== Retag Unchanged Images (for releases) ====================
   # These jobs run when an image didn't change but we still want it tagged with the new version
