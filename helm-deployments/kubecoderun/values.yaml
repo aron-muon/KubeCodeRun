@@ -305,7 +305,9 @@ resourceLimits:
 
 # Session Lifecycle Configuration
 sessions:
-  ttlHours: 24
+  # Session TTL in hours. 0 = no expiry (infinite). Max 8760 (1 year).
+  # Use 0 for agent use cases where files must persist indefinitely.
+  ttlHours: 0
   cleanupIntervalMinutes: 10
   enableOrphanMinioCleanup: false
 

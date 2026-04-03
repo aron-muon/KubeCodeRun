@@ -1033,6 +1033,59 @@ class TestCheckRedisConnectivity:
         assert session_service._redis_available is False
 
 
+class TestInfiniteTTL:
+    """Tests for session_ttl_hours=0 (no expiry) behavior."""
+
+    @pytest.mark.asyncio
+    async def test_create_session_infinite_ttl(self, session_service, mock_redis):
+        """Test session creation with TTL=0 sets far-future expiry and no Redis expiration."""
+        with patch("src.services.session.settings") as mock_settings:
+            mock_settings.get_session_ttl_minutes.return_value = 0
+            mock_settings.session_ttl_hours = 0
+
+            request = SessionCreate(metadata={})
+            session = await session_service.create_session(request)
+
+            assert session.expires_at.year == 9999
+
+            # Verify Redis pipeline did NOT call expire
+            pipeline_mock = mock_redis.pipeline.return_value
+            pipeline_mock.expire.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skips_infinite_ttl_sessions(self, session_service, mock_redis):
+        """Test that cleanup_expired_sessions skips sessions with no expiry."""
+        session_ids = ["infinite1", "expired1"]
+        mock_redis.smembers.return_value = session_ids
+
+        def mock_get_session(session_id):
+            if session_id == "infinite1":
+                return Session(
+                    session_id=session_id,
+                    status=SessionStatus.ACTIVE,
+                    created_at=datetime.now(UTC) - timedelta(days=30),
+                    last_activity=datetime.now(UTC) - timedelta(days=30),
+                    expires_at=datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC),
+                )
+            else:
+                return Session(
+                    session_id=session_id,
+                    status=SessionStatus.ACTIVE,
+                    created_at=datetime.now(UTC) - timedelta(days=2),
+                    last_activity=datetime.now(UTC) - timedelta(days=2),
+                    expires_at=datetime.now(UTC) - timedelta(hours=1),
+                )
+
+        pipeline_mock = mock_redis.pipeline.return_value
+        pipeline_mock.execute.return_value = [1, 1]
+
+        with patch.object(session_service, "get_session", side_effect=mock_get_session):
+            cleaned_count = await session_service.cleanup_expired_sessions()
+
+        # Only the expired session should be cleaned, not the infinite one
+        assert cleaned_count == 1
+
+
 class TestStartCleanupTask:
     """Tests for start_cleanup_task method."""
 

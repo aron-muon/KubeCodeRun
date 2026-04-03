@@ -188,7 +188,12 @@ class Settings(BaseSettings):
     max_sessions_per_entity: int = Field(default=100, ge=1, le=1000)
 
     # Session Configuration
-    session_ttl_hours: int = Field(default=24, ge=1, le=168)
+    session_ttl_hours: int = Field(
+        default=0,
+        ge=0,
+        le=8760,
+        description="Session TTL in hours. 0 = no expiry (infinite). Max 8760 (1 year).",
+    )
     session_cleanup_interval_minutes: int = Field(default=10, ge=1, le=1440)
     session_id_length: int = Field(default=32, ge=16, le=64)
     enable_orphan_minio_cleanup: bool = Field(default=False)
@@ -685,7 +690,7 @@ class Settings(BaseSettings):
         return int(self.max_memory_mb * multiplier)
 
     def get_session_ttl_minutes(self) -> int:
-        """Get session TTL in minutes for backward compatibility."""
+        """Get session TTL in minutes. Returns 0 for no expiry."""
         return self.session_ttl_hours * 60
 
     def is_file_allowed(self, filename: str) -> bool:

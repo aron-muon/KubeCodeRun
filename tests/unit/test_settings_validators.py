@@ -42,3 +42,39 @@ class TestSeccompProfileTypeValidator:
         """Test that the default seccomp profile type is RuntimeDefault."""
         settings = Settings()
         assert settings.k8s_seccomp_profile_type == "RuntimeDefault"
+
+
+class TestSessionTTLValidator:
+    """Tests for session_ttl_hours validation."""
+
+    def test_accepts_zero_infinite_ttl(self):
+        """Test that 0 (no expiry) is accepted."""
+        settings = Settings(session_ttl_hours=0)
+        assert settings.session_ttl_hours == 0
+        assert settings.get_session_ttl_minutes() == 0
+
+    def test_accepts_normal_ttl(self):
+        """Test that a normal TTL value is accepted."""
+        settings = Settings(session_ttl_hours=24)
+        assert settings.session_ttl_hours == 24
+        assert settings.get_session_ttl_minutes() == 1440
+
+    def test_accepts_max_ttl(self):
+        """Test that the max TTL (1 year) is accepted."""
+        settings = Settings(session_ttl_hours=8760)
+        assert settings.session_ttl_hours == 8760
+
+    def test_rejects_negative_ttl(self):
+        """Test that negative TTL is rejected."""
+        with pytest.raises(ValidationError):
+            Settings(session_ttl_hours=-1)
+
+    def test_rejects_over_max_ttl(self):
+        """Test that TTL over 8760 (1 year) is rejected."""
+        with pytest.raises(ValidationError):
+            Settings(session_ttl_hours=8761)
+
+    def test_default_is_zero(self):
+        """Test that the default TTL is 0 (infinite)."""
+        settings = Settings()
+        assert settings.session_ttl_hours == 0

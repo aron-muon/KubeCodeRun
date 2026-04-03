@@ -136,7 +136,13 @@ class SessionService(SessionServiceInterface):
         """Create a new code execution session."""
         session_id = self._generate_session_id()
         now = datetime.now(UTC)
-        expires_at = now + timedelta(minutes=settings.get_session_ttl_minutes())
+        ttl_minutes = settings.get_session_ttl_minutes()
+
+        # TTL=0 means no expiry — set expires_at far in the future
+        if ttl_minutes == 0:
+            expires_at = datetime(9999, 12, 31, 23, 59, 59, tzinfo=UTC)
+        else:
+            expires_at = now + timedelta(minutes=ttl_minutes)
 
         # Ensure metadata is not None
         metadata = request.metadata if request.metadata is not None else {}
@@ -174,8 +180,9 @@ class SessionService(SessionServiceInterface):
         try:
             # Store session data
             pipe.hset(session_key, mapping=session_data)
-            # Set expiration
-            pipe.expire(session_key, int(settings.get_session_ttl_minutes() * 60))
+            # Set Redis key expiration (skip for infinite TTL)
+            if ttl_minutes > 0:
+                pipe.expire(session_key, int(ttl_minutes * 60))
             # Add to session index
             pipe.sadd(self._session_index_key(), session_id)
 
@@ -190,7 +197,12 @@ class SessionService(SessionServiceInterface):
         finally:
             await pipe.reset()
 
-        logger.info("Session created", session_id=session_id, expires_at=expires_at.isoformat())
+        logger.info(
+            "Session created",
+            session_id=session_id,
+            expires_at=expires_at.isoformat(),
+            ttl="infinite" if ttl_minutes == 0 else f"{ttl_minutes}m",
+        )
         return session
 
     async def get_session(self, session_id: str) -> Session | None:
@@ -384,6 +396,10 @@ class SessionService(SessionServiceInterface):
                         error=str(e),
                     )
                 cleaned_count += 1
+                continue
+
+            # Skip sessions with no expiry (TTL=0, expires_at set to year 9999)
+            if session.expires_at.year >= 9999:
                 continue
 
             if session.expires_at < now:
