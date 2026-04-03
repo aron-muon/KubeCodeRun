@@ -70,13 +70,14 @@ class FileService(FileServiceInterface):
             # Store file metadata
             await self.redis_client.hset(metadata_key, mapping=metadata)
 
-            # Set TTL for metadata (same as session TTL)
-            ttl_seconds = settings.get_session_ttl_minutes() * 60
-            await self.redis_client.expire(metadata_key, ttl_seconds)
-
             # Add file to session file list
             await self.redis_client.sadd(session_files_key, file_id)
-            await self.redis_client.expire(session_files_key, ttl_seconds)
+
+            # Set TTL for metadata (skip for infinite TTL — TTL=0 would delete immediately)
+            ttl_seconds = settings.get_session_ttl_minutes() * 60
+            if ttl_seconds > 0:
+                await self.redis_client.expire(metadata_key, ttl_seconds)
+                await self.redis_client.expire(session_files_key, ttl_seconds)
 
         except Exception as e:
             logger.error(

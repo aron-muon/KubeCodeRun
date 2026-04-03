@@ -17,8 +17,8 @@ help:
     @echo "  test-cov         Run tests with coverage report"
     @echo "  perf-test        Run performance tests"
     @echo "  build-images     Build Docker images"
+    @echo "  test-runner      Run Go runner tests (unit + integration)"
     @echo "  test-images      Test Docker images directly"
-    @echo "  test-k8s         Test sidecar in real Kubernetes"
     @echo ""
     @echo "Code Quality:"
     @echo "  lint             Run ruff linter"
@@ -55,6 +55,10 @@ test-cov:
 test-file FILE:
     uv run pytest {{FILE}} -v
 
+# Run Go runner tests (unit + integration)
+test-runner:
+    cd docker/runner && go test ./... -v
+
 # Run performance tests
 perf-test:
     uv run python scripts/perf_test.py
@@ -67,9 +71,9 @@ build-images *ARGS:
 test-images *ARGS:
     ./scripts/test-images.sh {{ARGS}}
 
-# Test sidecar execution in real Kubernetes (requires local K8s cluster)
+# Test execution in real Kubernetes (requires local K8s cluster + Helm deployment)
 test-k8s *ARGS:
-    ./scripts/test-k8s-sidecar.sh {{ARGS}}
+    ./scripts/test-k8s.sh {{ARGS}}
 
 # Lint with ruff
 lint:
