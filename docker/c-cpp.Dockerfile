@@ -55,7 +55,8 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "TMPDIR=/tmp", \
     "CC=gcc", \
     "CXX=g++", \
-    "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
+    "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig", \
+    "LANGUAGE=c"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

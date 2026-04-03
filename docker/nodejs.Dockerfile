@@ -45,7 +45,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Create directories with correct ownership for DHI non-root user (UID 65532)
 # and multi-arch library paths
 RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /mnt/data && \
-    chown 65532:65532 /mnt/data && \
+    chmod 777 /mnt/data && touch /mnt/data/.keep && \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     git \
@@ -88,9 +88,6 @@ COPY scripts/ts-runner.js /opt/scripts/ts-runner.js
 COPY --from=builder /opt/nodejs /opt/nodejs
 COPY --from=builder /opt/node /opt/node
 
-# Copy data directory with correct ownership (DHI UID 65532)
-COPY --from=runtime-deps /mnt/data /mnt/data
-
 WORKDIR /mnt/data
 
 # Sanitized environment via env -i (no shell needed)
@@ -100,5 +97,6 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "NODE_ENV=sandbox", \
-    "NODE_PATH=/opt/node/lib/node_modules"]
+    "NODE_PATH=/opt/node/lib/node_modules", \
+    "LANGUAGE=js"]
 CMD ["/usr/local/bin/runner"]

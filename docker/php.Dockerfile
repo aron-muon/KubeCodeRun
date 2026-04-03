@@ -153,7 +153,7 @@ RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu && \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /mnt/data && chown 65532:65532 /mnt/data
+    && mkdir -p /mnt/data && chmod 777 /mnt/data && touch /mnt/data/.keep
 
 ################################
 # Final stage - minimal runtime image
@@ -194,9 +194,6 @@ COPY --from=runtime-deps /usr/bin/env /usr/bin/
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 
-# Copy data directory with correct ownership - DHI images run as non-root (UID 65532)
-COPY --from=runtime-deps /mnt/data /mnt/data
-
 WORKDIR /mnt/data
 
 # Sanitized environment via env -i
@@ -206,5 +203,6 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "COMPOSER_HOME=/opt/composer/global", \
-    "PHP_INI_SCAN_DIR=/opt/php/etc/conf.d"]
+    "PHP_INI_SCAN_DIR=/opt/php/etc/conf.d", \
+    "LANGUAGE=php"]
 CMD ["/usr/local/bin/runner"]

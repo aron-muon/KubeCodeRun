@@ -452,40 +452,8 @@ class TestCreatePodManifest:
 
             assert pod.spec.security_context.seccomp_profile.type == profile_type
 
-    def test_create_pod_manifest_network_isolated_false(self):
-        """Test pod manifest with network_isolated=False."""
-        pod = client.create_pod_manifest(
-            name="test-pod",
-            namespace="test-ns",
-            main_image="python:3.12",
-            language="python",
-            labels={"app": "test"},
-            network_isolated=False,
-        )
-
-        main_container = pod.spec.containers[0]
-        env_dict = {e.name: e.value for e in main_container.env}
-        assert "NETWORK_ISOLATED" in env_dict
-        assert env_dict["NETWORK_ISOLATED"] == "false"
-
-    def test_create_pod_manifest_network_isolated_true(self):
-        """Test pod manifest with network_isolated=True."""
-        pod = client.create_pod_manifest(
-            name="test-pod",
-            namespace="test-ns",
-            main_image="go:1.22",
-            language="go",
-            labels={"app": "test"},
-            network_isolated=True,
-        )
-
-        main_container = pod.spec.containers[0]
-        env_dict = {e.name: e.value for e in main_container.env}
-        assert "NETWORK_ISOLATED" in env_dict
-        assert env_dict["NETWORK_ISOLATED"] == "true"
-
-    def test_create_pod_manifest_network_isolated_default(self):
-        """Test pod manifest defaults network_isolated to False."""
+    def test_create_pod_manifest_no_env_vars(self):
+        """Test pod manifest has no env vars (baked into Dockerfile ENTRYPOINT)."""
         pod = client.create_pod_manifest(
             name="test-pod",
             namespace="test-ns",
@@ -495,6 +463,4 @@ class TestCreatePodManifest:
         )
 
         main_container = pod.spec.containers[0]
-        env_dict = {e.name: e.value for e in main_container.env}
-        assert "NETWORK_ISOLATED" in env_dict
-        assert env_dict["NETWORK_ISOLATED"] == "false"
+        assert main_container.env is None

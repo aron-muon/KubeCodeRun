@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"time"
@@ -46,6 +47,11 @@ func getenv(key, fallback string) string {
 
 func main() {
 	cfg := loadConfig()
+
+	// Ensure working directory exists. In K8s, the emptyDir volume handles this.
+	os.MkdirAll(cfg.WorkingDir, 0755)
+	// Clean up the .keep marker file used to preserve directory ownership in Docker images
+	os.Remove(filepath.Join(cfg.WorkingDir, ".keep"))
 
 	executor := NewExecutor(cfg)
 	fileHandler := NewFileHandler(cfg.WorkingDir)

@@ -91,7 +91,8 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "CARGO_HOME=/usr/local/cargo", \
     "CARGO_TARGET_DIR=/usr/local/cargo/target", \
     "CARGO_NET_OFFLINE=true", \
-    "RUSTUP_HOME=/usr/local/rustup"]
+    "RUSTUP_HOME=/usr/local/rustup", \
+    "LANGUAGE=rs"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

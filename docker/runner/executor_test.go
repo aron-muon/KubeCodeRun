@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -29,7 +30,7 @@ func TestLanguageAliasesMatch(t *testing.T) {
 	for long, short := range aliases {
 		l := languages[long]
 		s := languages[short]
-		if l.File != s.File || l.Run != s.Run {
+		if l.File != s.File || fmt.Sprint(l.Args) != fmt.Sprint(s.Args) {
 			t.Errorf("alias mismatch: %s != %s", long, short)
 		}
 	}

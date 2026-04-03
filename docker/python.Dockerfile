@@ -111,7 +111,7 @@ RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu && \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /mnt/data && chown 65532:65532 /mnt/data
+    && mkdir -p /mnt/data && chmod 777 /mnt/data && touch /mnt/data/.keep
 
 
 ################################
@@ -146,9 +146,6 @@ COPY --from=runtime-deps /usr/bin/env /usr/bin/
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 
-# Create data directory - DHI images run as non-root (UID 65532) by default
-COPY --from=runtime-deps /mnt/data /mnt/data
-
 WORKDIR /mnt/data
 
 # Sanitized environment via env -i
@@ -159,5 +156,6 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "PYTHONUNBUFFERED=1", \
     "PYTHONDONTWRITEBYTECODE=1", \
     "PYTHONPATH=/mnt/data", \
-    "MPLCONFIGDIR=/tmp/matplotlib"]
+    "MPLCONFIGDIR=/tmp/matplotlib", \
+    "LANGUAGE=py"]
 CMD ["/usr/local/bin/runner"]

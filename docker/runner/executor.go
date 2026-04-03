@@ -15,41 +15,45 @@ import (
 
 // LangSpec defines how to execute code for a language.
 type LangSpec struct {
-	File string // Filename for the code, e.g. "code.py", "main.go"
-	Run  string // Shell command to run. {file} is replaced with the code file path, {wd} with working dir.
+	File string   // Filename for the code, e.g. "code.py", "main.go"
+	Args []string // Direct exec args. {file} and {wd} are substituted at runtime.
+	// If Args[0] is "sh", the command is executed via shell (for compile && run chains).
+	// Otherwise, the command is executed directly without a shell (works on minimal images).
 }
 
 // languages is the single source of truth for language execution commands.
 var languages = map[string]LangSpec{
-	"python": {File: "code.py", Run: "python {file}"},
-	"py":     {File: "code.py", Run: "python {file}"},
+	// Interpreted languages — direct exec, no shell needed
+	"python": {File: "code.py", Args: []string{"python", "{file}"}},
+	"py":     {File: "code.py", Args: []string{"python", "{file}"}},
 
-	"javascript": {File: "code.js", Run: "node {file}"},
-	"js":         {File: "code.js", Run: "node {file}"},
+	"javascript": {File: "code.js", Args: []string{"node", "{file}"}},
+	"js":         {File: "code.js", Args: []string{"node", "{file}"}},
 
-	"typescript": {File: "code.ts", Run: "node /opt/scripts/ts-runner.js {file}"},
-	"ts":         {File: "code.ts", Run: "node /opt/scripts/ts-runner.js {file}"},
+	"typescript": {File: "code.ts", Args: []string{"node", "/opt/scripts/ts-runner.js", "{file}"}},
+	"ts":         {File: "code.ts", Args: []string{"node", "/opt/scripts/ts-runner.js", "{file}"}},
 
-	"go": {File: "main.go", Run: "go run {file}"},
+	"go": {File: "main.go", Args: []string{"go", "run", "{file}"}},
 
-	"java": {File: "Code.java", Run: "javac {file} && java -cp {wd} Code"},
+	"php": {File: "code.php", Args: []string{"php", "{file}"}},
 
-	"c": {File: "code.c", Run: "gcc {file} -o /tmp/code && /tmp/code"},
+	"r": {File: "code.r", Args: []string{"Rscript", "{file}"}},
 
-	"cpp": {File: "code.cpp", Run: "g++ {file} -o /tmp/code && /tmp/code"},
+	// Compiled languages — need shell for compile && run chains
+	"java": {File: "Code.java", Args: []string{"sh", "-c", "javac {file} && java -cp {wd} Code"}},
 
-	"php": {File: "code.php", Run: "php {file}"},
+	"c": {File: "code.c", Args: []string{"sh", "-c", "gcc {file} -o /tmp/code && /tmp/code"}},
 
-	"rust": {File: "main.rs", Run: "rustc {file} -o /tmp/main && /tmp/main"},
-	"rs":   {File: "main.rs", Run: "rustc {file} -o /tmp/main && /tmp/main"},
+	"cpp": {File: "code.cpp", Args: []string{"sh", "-c", "g++ {file} -o /tmp/code && /tmp/code"}},
 
-	"r": {File: "code.r", Run: "Rscript {file}"},
+	"rust": {File: "main.rs", Args: []string{"sh", "-c", "rustc {file} -o /tmp/main && /tmp/main"}},
+	"rs":   {File: "main.rs", Args: []string{"sh", "-c", "rustc {file} -o /tmp/main && /tmp/main"}},
 
-	"fortran": {File: "code.f90", Run: "gfortran {file} -o /tmp/code && /tmp/code"},
-	"f90":     {File: "code.f90", Run: "gfortran {file} -o /tmp/code && /tmp/code"},
+	"fortran": {File: "code.f90", Args: []string{"sh", "-c", "gfortran {file} -o /tmp/code && /tmp/code"}},
+	"f90":     {File: "code.f90", Args: []string{"sh", "-c", "gfortran {file} -o /tmp/code && /tmp/code"}},
 
-	"d":     {File: "code.d", Run: "ldc2 {file} -of=/tmp/code && /tmp/code"},
-	"dlang": {File: "code.d", Run: "ldc2 {file} -of=/tmp/code && /tmp/code"},
+	"d":     {File: "code.d", Args: []string{"sh", "-c", "ldc2 {file} -of=/tmp/code && /tmp/code"}},
+	"dlang": {File: "code.d", Args: []string{"sh", "-c", "ldc2 {file} -of=/tmp/code && /tmp/code"}},
 }
 
 // ExecuteRequest is the JSON request body for POST /execute.
@@ -120,11 +124,15 @@ func (e *Executor) execute(req ExecuteRequest) ExecuteResponse {
 		}
 	}
 
-	// Build the shell command with substitutions
-	cmd := strings.ReplaceAll(spec.Run, "{file}", codePath)
-	cmd = strings.ReplaceAll(cmd, "{wd}", req.WorkingDir)
+	// Build command args with substitutions
+	args := make([]string, len(spec.Args))
+	for i, a := range spec.Args {
+		a = strings.ReplaceAll(a, "{file}", codePath)
+		a = strings.ReplaceAll(a, "{wd}", req.WorkingDir)
+		args[i] = a
+	}
 
-	log.Printf("[EXECUTE] language=%s, code_file=%s, timeout=%ds", e.cfg.Language, codePath, req.Timeout)
+	log.Printf("[EXECUTE] language=%s, code_file=%s, timeout=%ds, cmd=%v", e.cfg.Language, codePath, req.Timeout, args)
 
 	// Set up execution environment
 	env := os.Environ()
@@ -138,7 +146,7 @@ func (e *Executor) execute(req ExecuteRequest) ExecuteResponse {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(req.Timeout)*time.Second)
 	defer cancel()
 
-	proc := exec.CommandContext(ctx, "sh", "-c", cmd)
+	proc := exec.CommandContext(ctx, args[0], args[1:]...)
 	proc.Dir = req.WorkingDir
 	proc.Env = env
 

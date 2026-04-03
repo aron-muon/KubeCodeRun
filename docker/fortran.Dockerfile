@@ -47,7 +47,8 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "FC=gfortran", \
     "F77=gfortran", \
     "F90=gfortran", \
-    "F95=gfortran"]
+    "F95=gfortran", \
+    "LANGUAGE=f90"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

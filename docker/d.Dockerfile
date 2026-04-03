@@ -37,7 +37,8 @@ USER 65532
 ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
-    "TMPDIR=/tmp"]
+    "TMPDIR=/tmp", \
+    "LANGUAGE=d"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

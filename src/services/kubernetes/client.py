@@ -255,12 +255,6 @@ def create_pod_manifest(
         volume_mounts=[shared_mount],
         security_context=security_context,
         resources=resources,
-        env=[
-            client.V1EnvVar(name="LANGUAGE", value=language),
-            client.V1EnvVar(name="WORKING_DIR", value="/mnt/data"),
-            client.V1EnvVar(name="NETWORK_ISOLATED", value=str(network_isolated).lower()),
-            client.V1EnvVar(name="RUNNER_PORT", value=str(runner_port)),
-        ],
         readiness_probe=client.V1Probe(
             http_get=client.V1HTTPGetAction(path="/ready", port=runner_port),
             initial_delay_seconds=2,

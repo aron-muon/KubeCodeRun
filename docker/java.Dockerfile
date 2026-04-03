@@ -84,7 +84,8 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "CLASSPATH=/mnt/data:/opt/java/lib/*", \
-    "JAVA_OPTS=-Xmx512m -Xms128m"]
+    "JAVA_OPTS=-Xmx512m -Xms128m", \
+    "LANGUAGE=java"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

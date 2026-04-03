@@ -83,7 +83,8 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/bin:/bin", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
-    "R_LIBS_USER=/usr/local/lib/R/site-library"]
+    "R_LIBS_USER=/usr/local/lib/R/site-library", \
+    "LANGUAGE=r"]
 # Copy runner binary for code execution
 COPY --from=runner /runner /usr/local/bin/runner
 

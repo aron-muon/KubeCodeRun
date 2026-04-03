@@ -34,7 +34,7 @@ FROM dhi.io/golang:1.26-debian13-dev AS runtime-deps
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Create data and cache directories with correct ownership (DHI uses UID 65532)
-RUN mkdir -p /mnt/data /mnt/data/go-build && chown -R 65532:65532 /mnt/data
+RUN mkdir -p /mnt/data /mnt/data/go-build && chmod -R 777 /mnt/data && touch /mnt/data/.keep
 
 ################################
 # Stage 3: Minimal runtime image
@@ -53,9 +53,6 @@ LABEL org.opencontainers.image.title="KubeCodeRun Go Environment" \
 # Copy pre-downloaded Go modules from builder (chown to non-root user for write access)
 COPY --from=builder --chown=65532:65532 /go/pkg/mod /go/pkg/mod
 
-# Copy data directory with correct ownership
-COPY --from=runtime-deps /mnt/data /mnt/data
-
 # Copy env for ENTRYPOINT
 COPY --from=runtime-deps /usr/bin/env /usr/bin/
 
@@ -73,5 +70,6 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "GOPROXY=https://proxy.golang.org,direct", \
     "GOSUMDB=sum.golang.org", \
     "GOCACHE=/mnt/data/go-build", \
-    "GOMODCACHE=/go/pkg/mod"]
+    "GOMODCACHE=/go/pkg/mod", \
+    "LANGUAGE=go"]
 CMD ["/usr/local/bin/runner"]
