@@ -5,7 +5,7 @@
 # Usage: ./scripts/build-images.sh [OPTIONS] [IMAGE]
 #
 # Arguments:
-#   IMAGE                Build a single image with full output (e.g., go, python, sidecar)
+#   IMAGE                Build a single image with full output (e.g., go, python, runner)
 #
 # Options:
 #   -t, --tag TAG        Image tag (default: latest)
@@ -59,10 +59,10 @@ LANGUAGE_IMAGES=(
 )
 
 # Infrastructure images with custom contexts
-# sidecar: context is docker/sidecar/ (contains requirements.txt, main.py)
+# runner: context is docker/runner/ (Go binary)
 # api: context is repo root (needs uv.lock, pyproject.toml, src/)
 INFRA_IMAGES=(
-    "sidecar/Dockerfile:sidecar:docker/sidecar"
+    "runner/Dockerfile:runner:docker/runner"
     "api/Dockerfile:api:."
 )
 
