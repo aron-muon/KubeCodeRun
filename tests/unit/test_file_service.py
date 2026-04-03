@@ -146,13 +146,27 @@ class TestStoreFileMetadata:
 
     @pytest.mark.asyncio
     async def test_store_metadata_sets_ttl(self, file_service, mock_redis_client):
-        """Test that TTL is set on metadata."""
+        """Test that TTL is set on metadata when session TTL > 0."""
         metadata = {"filename": "test.txt", "size": 1024}
 
-        await file_service._store_file_metadata("session-123", "file-456", metadata)
+        with patch("src.services.file.settings") as mock_settings:
+            mock_settings.get_session_ttl_minutes.return_value = 60  # 1 hour
+            await file_service._store_file_metadata("session-123", "file-456", metadata)
 
         # expire should be called for both metadata and session files list
         assert mock_redis_client.expire.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_store_metadata_skips_ttl_when_infinite(self, file_service, mock_redis_client):
+        """Test that TTL is not set when session TTL is 0 (infinite)."""
+        metadata = {"filename": "test.txt", "size": 1024}
+
+        with patch("src.services.file.settings") as mock_settings:
+            mock_settings.get_session_ttl_minutes.return_value = 0
+            await file_service._store_file_metadata("session-123", "file-456", metadata)
+
+        # expire should NOT be called
+        mock_redis_client.expire.assert_not_called()
 
 
 class TestGetFileMetadata:
