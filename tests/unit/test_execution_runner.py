@@ -432,7 +432,7 @@ class TestDetectGeneratedFiles:
         """Test successful file detection."""
         handle = MagicMock(
             pod_ip="10.0.0.1",
-            sidecar_url="http://10.0.0.1:8080",
+            runner_url="http://10.0.0.1:8080",
             name="test-pod",
         )
 
@@ -463,7 +463,7 @@ class TestDetectGeneratedFiles:
         """Test that code files are skipped."""
         handle = MagicMock(
             pod_ip="10.0.0.1",
-            sidecar_url="http://10.0.0.1:8080",
+            runner_url="http://10.0.0.1:8080",
             name="test-pod",
         )
 
@@ -494,7 +494,7 @@ class TestDetectGeneratedFiles:
         """Test graceful error handling."""
         handle = MagicMock(
             pod_ip="10.0.0.1",
-            sidecar_url="http://10.0.0.1:8080",
+            runner_url="http://10.0.0.1:8080",
             name="test-pod",
         )
 

@@ -2,6 +2,9 @@
 # R execution environment with Docker Hardened Images.
 # Uses debian-base since there is no DHI R image.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
@@ -81,4 +84,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "R_LIBS_USER=/usr/local/lib/R/site-library"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

@@ -1,7 +1,7 @@
 """Kubernetes-specific configuration.
 
 This module provides Kubernetes-related configuration for pod execution,
-including namespace, sidecar settings, resource limits, and RBAC.
+including namespace, resource limits, and RBAC.
 """
 
 from dataclasses import dataclass
@@ -17,21 +17,11 @@ class KubernetesConfig:
     # Service account for execution pods
     service_account: str = "kubecoderun-executor"
 
-    # Sidecar configuration
-    sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest"
-    sidecar_port: int = 8080
-
     # Resource limits for execution pods
     cpu_limit: str = "1"
     memory_limit: str = "512Mi"
     cpu_request: str = "100m"
     memory_request: str = "128Mi"
-
-    # Sidecar resource limits (CRITICAL: user code inherits these via nsenter)
-    sidecar_cpu_limit: str = "500m"
-    sidecar_memory_limit: str = "512Mi"
-    sidecar_cpu_request: str = "100m"
-    sidecar_memory_request: str = "256Mi"
 
     # Security context
     run_as_user: int = 65532

@@ -30,7 +30,7 @@ class PodHandle:
     """Handle to a Kubernetes pod for execution.
 
     Provides the necessary information to communicate with and
-    manage an execution pod via its sidecar.
+    manage an execution pod via its runner HTTP API.
     """
 
     name: str
@@ -40,16 +40,16 @@ class PodHandle:
     session_id: str | None = None
     status: PodStatus = PodStatus.PENDING
     pod_ip: str | None = None
-    sidecar_port: int = 8080
+    runner_port: int = 8080
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     labels: dict[str, str] = field(default_factory=dict)
 
     @property
-    def sidecar_url(self) -> str:
-        """Get the URL for the sidecar HTTP API."""
+    def runner_url(self) -> str:
+        """Get the URL for the runner HTTP API."""
         if self.pod_ip:
-            return f"http://{self.pod_ip}:{self.sidecar_port}"
-        return f"http://{self.name}.{self.namespace}:{self.sidecar_port}"
+            return f"http://{self.pod_ip}:{self.runner_port}"
+        return f"http://{self.name}.{self.namespace}:{self.runner_port}"
 
     @property
     def id(self) -> str:
@@ -69,7 +69,7 @@ class PodHandle:
 class ExecutionResult:
     """Result of code execution in a pod.
 
-    This matches the response from the sidecar HTTP API.
+    This matches the response from the runner HTTP API.
     """
 
     exit_code: int
@@ -106,21 +106,14 @@ class PodSpec:
     cpu_request: str = "100m"
     memory_request: str = "128Mi"
 
-    # Sidecar resource limits (CRITICAL: user code runs in sidecar's cgroup via nsenter)
-    sidecar_cpu_limit: str = "500m"
-    sidecar_memory_limit: str = "512Mi"
-    sidecar_cpu_request: str = "100m"
-    sidecar_memory_request: str = "256Mi"
-
     # Security context
     run_as_user: int = 65532
     run_as_group: int = 65532
     run_as_non_root: bool = True
     seccomp_profile_type: str = "RuntimeDefault"
 
-    # Sidecar configuration
-    sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest"
-    sidecar_port: int = 8080
+    # Runner HTTP API port
+    runner_port: int = 8080
 
     # Network isolation mode - disables network-dependent features (e.g., Go module proxy)
     network_isolated: bool = False
@@ -133,17 +126,10 @@ class PoolConfig:
     language: str
     image: str
     pool_size: int = 0  # 0 = use Jobs instead of pool
-    sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest"
 
     # Resource limits (can override defaults)
     cpu_limit: str | None = None
     memory_limit: str | None = None
-
-    # Sidecar resource limits (CRITICAL: user code runs in sidecar's cgroup via nsenter)
-    sidecar_cpu_limit: str = "500m"
-    sidecar_memory_limit: str = "512Mi"
-    sidecar_cpu_request: str = "100m"
-    sidecar_memory_request: str = "256Mi"
 
     # Image pull policy (Always, IfNotPresent, Never)
     image_pull_policy: str = "Always"
@@ -197,8 +183,8 @@ class JobHandle:
     completed_at: datetime | None = None
 
     @property
-    def sidecar_url(self) -> str | None:
-        """Get the URL for the sidecar HTTP API."""
+    def runner_url(self) -> str | None:
+        """Get the URL for the runner HTTP API."""
         if self.pod_ip:
             return f"http://{self.pod_ip}:8080"
         return None

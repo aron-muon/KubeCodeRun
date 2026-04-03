@@ -333,7 +333,7 @@ class CodeExecutionRunner:
             logger.error("Failed to record execution metrics", error=str(e))
 
     async def _detect_generated_files(self, handle: PodHandle) -> list[dict[str, Any]]:
-        """Detect files generated during execution via sidecar HTTP API."""
+        """Detect files generated during execution via runner HTTP API."""
         if not handle or not handle.pod_ip:
             return []
 
@@ -341,7 +341,7 @@ class CodeExecutionRunner:
             import httpx
 
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(f"{handle.sidecar_url}/files")
+                response = await client.get(f"{handle.runner_url}/files")
                 if response.status_code == 200:
                     data = response.json()
                     files = data.get("files", [])
@@ -365,7 +365,7 @@ class CodeExecutionRunner:
                     return generated_files
         except Exception as e:
             logger.warning(
-                "Failed to detect generated files via sidecar",
+                "Failed to detect generated files via runner",
                 pod_name=handle.name,
                 error=str(e),
             )

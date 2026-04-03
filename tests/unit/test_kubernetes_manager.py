@@ -54,7 +54,7 @@ def sample_pod_handle():
         pod_ip="10.0.0.1",
         session_id="session-123",
         language="python",
-        sidecar_port=8080,
+        runner_port=8080,
     )
 
 

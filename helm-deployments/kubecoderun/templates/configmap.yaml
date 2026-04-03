@@ -26,13 +26,6 @@ data:
   K8S_NAMESPACE: {{ include "kubecoderun.executionNamespace" . | quote }}
   K8S_SERVICE_ACCOUNT: {{ include "kubecoderun.executorServiceAccountName" . | quote }}
   {{- $imageTag := .Values.execution.imageTag | default .Chart.AppVersion }}
-  {{- $sidecarTag := .Values.execution.sidecar.tag | default .Chart.AppVersion }}
-  K8S_SIDECAR_IMAGE: "{{ .Values.execution.sidecar.repository }}:{{ $sidecarTag }}"
-  K8S_SIDECAR_PORT: {{ .Values.execution.sidecar.port | quote }}
-  K8S_SIDECAR_CPU_LIMIT: {{ .Values.execution.sidecar.resources.limits.cpu | quote }}
-  K8S_SIDECAR_MEMORY_LIMIT: {{ .Values.execution.sidecar.resources.limits.memory | quote }}
-  K8S_SIDECAR_CPU_REQUEST: {{ .Values.execution.sidecar.resources.requests.cpu | quote }}
-  K8S_SIDECAR_MEMORY_REQUEST: {{ .Values.execution.sidecar.resources.requests.memory | quote }}
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
   K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
@@ -100,12 +93,11 @@ data:
   {{- $defaultImage = printf "%s-%s:%s" $registry "d" $defaultTag }}
   LANG_IMAGE_D: {{ .Values.execution.languages.d.image | default $defaultImage | quote }}
 
-  # Per-language resource limits (falls back to sidecar defaults)
-  # These control user code execution resources (code runs in sidecar's cgroup)
-  {{- $defaultCpuLimit := .Values.execution.sidecar.resources.limits.cpu }}
-  {{- $defaultMemoryLimit := .Values.execution.sidecar.resources.limits.memory }}
-  {{- $defaultCpuRequest := .Values.execution.sidecar.resources.requests.cpu }}
-  {{- $defaultMemoryRequest := .Values.execution.sidecar.resources.requests.memory }}
+  # Per-language resource limits (falls back to execution.resources defaults)
+  {{- $defaultCpuLimit := .Values.execution.resources.limits.cpu }}
+  {{- $defaultMemoryLimit := .Values.execution.resources.limits.memory }}
+  {{- $defaultCpuRequest := .Values.execution.resources.requests.cpu }}
+  {{- $defaultMemoryRequest := .Values.execution.resources.requests.memory }}
   {{- with .Values.execution.languages.python.resources }}
   LANG_CPU_LIMIT_PY: {{ .limits.cpu | default $defaultCpuLimit | quote }}
   LANG_MEMORY_LIMIT_PY: {{ .limits.memory | default $defaultMemoryLimit | quote }}

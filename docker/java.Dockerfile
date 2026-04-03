@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Java execution environment with Docker Hardened Images.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
@@ -82,4 +85,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "TMPDIR=/tmp", \
     "CLASSPATH=/mnt/data:/opt/java/lib/*", \
     "JAVA_OPTS=-Xmx512m -Xms128m"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

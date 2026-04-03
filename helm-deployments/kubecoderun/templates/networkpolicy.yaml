@@ -16,14 +16,14 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow ingress from API pods only (for sidecar communication)
+    # Allow ingress from API pods only (for runner communication)
     - from:
         - podSelector:
             matchLabels:
               {{- include "kubecoderun.selectorLabels" . | nindent 14 }}
       ports:
         - protocol: TCP
-          port: {{ .Values.execution.sidecar.port }}
+          port: {{ .Values.execution.runner.port }}
   {{- if .Values.execution.networkPolicy.denyEgress }}
   # Deny all egress by default (no internet access)
   egress: []

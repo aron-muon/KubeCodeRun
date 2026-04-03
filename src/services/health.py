@@ -348,7 +348,6 @@ class HealthCheckService:
             details = {
                 "namespace": namespace,
                 "pool_enabled": settings.pod_pool_enabled,
-                "sidecar_image": settings.k8s_sidecar_image,
                 "total_languages_configured": len(pool_stats),
                 "pool_stats": pool_stats,
             }

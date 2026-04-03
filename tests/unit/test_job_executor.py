@@ -26,12 +26,10 @@ def pod_spec():
         language="python",
         session_id="session-123",
         namespace="test-namespace",
-        sidecar_image="sidecar:latest",
         cpu_limit="1",
         memory_limit="512Mi",
         cpu_request="100m",
         memory_request="128Mi",
-        sidecar_port=8080,
     )
 
 
@@ -62,7 +60,6 @@ class TestJobExecutorInit:
             assert executor.namespace == "default"
             assert executor.ttl_seconds_after_finished == 60
             assert executor.active_deadline_seconds == 300
-            assert executor.sidecar_image == "aronmuon/kubecoderun-sidecar:latest"
 
     def test_init_with_custom_values(self):
         """Test initialization with custom values."""
@@ -70,13 +67,11 @@ class TestJobExecutorInit:
             namespace="custom-ns",
             ttl_seconds_after_finished=120,
             active_deadline_seconds=600,
-            sidecar_image="custom/sidecar:v1",
         )
 
         assert executor.namespace == "custom-ns"
         assert executor.ttl_seconds_after_finished == 120
         assert executor.active_deadline_seconds == 600
-        assert executor.sidecar_image == "custom/sidecar:v1"
 
 
 class TestGenerateJobName:
@@ -204,7 +199,7 @@ class TestWaitForPodReady:
         mock_pod.status.pod_ip = "10.0.0.1"
         mock_pod.status.phase = "Running"
         mock_container_status = MagicMock()
-        mock_container_status.name = "sidecar"
+        mock_container_status.name = "main"
         mock_container_status.ready = True
         mock_pod.status.container_statuses = [mock_container_status]
 
@@ -292,16 +287,16 @@ class TestExecute:
         assert "Job pod not ready" in result.stderr
 
     @pytest.mark.asyncio
-    async def test_execute_no_sidecar_url(self, job_executor, job_handle):
-        """Test execution without sidecar URL."""
-        # Set pod_ip but mock sidecar_url to return None
+    async def test_execute_no_runner_url(self, job_executor, job_handle):
+        """Test execution without runner URL."""
+        # Set pod_ip but mock runner_url to return None
         job_handle.pod_ip = "10.0.0.1"
 
-        with patch.object(type(job_handle), "sidecar_url", new_callable=lambda: property(lambda self: None)):
+        with patch.object(type(job_handle), "runner_url", new_callable=lambda: property(lambda self: None)):
             result = await job_executor.execute(job_handle, "print('test')")
 
         assert result.exit_code == 1
-        assert "sidecar URL" in result.stderr
+        assert "runner URL" in result.stderr
 
     @pytest.mark.asyncio
     async def test_execute_with_files(self, job_executor, job_handle):
@@ -346,8 +341,8 @@ class TestExecute:
         assert result.exit_code == 0
 
     @pytest.mark.asyncio
-    async def test_execute_sidecar_error(self, job_executor, job_handle):
-        """Test execution with sidecar error."""
+    async def test_execute_runner_error(self, job_executor, job_handle):
+        """Test execution with runner error."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -358,7 +353,7 @@ class TestExecute:
             result = await job_executor.execute(job_handle, "print('test')")
 
         assert result.exit_code == 1
-        assert "Sidecar error" in result.stderr
+        assert "Runner error" in result.stderr
 
     @pytest.mark.asyncio
     async def test_execute_timeout(self, job_executor, job_handle):

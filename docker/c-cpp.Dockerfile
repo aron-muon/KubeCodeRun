@@ -2,6 +2,9 @@
 # C/C++ execution environment with Docker Hardened Images.
 # Uses -dev variant because compilers and dev libraries must be available at runtime.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 FROM dhi.io/debian-base:trixie-debian13-dev
 
 ARG BUILD_DATE
@@ -53,4 +56,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "CC=gcc", \
     "CXX=g++", \
     "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

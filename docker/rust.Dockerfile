@@ -3,6 +3,9 @@
 #
 # Pre-compiled crates from rust-Cargo.toml are available without recompilation.
 # CARGO_NET_OFFLINE=true prevents runtime downloads (security hardening).
+
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
 # Pure Rust crates NOT in rust-Cargo.toml will fail to compile.
 
 ################################
@@ -89,4 +92,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "CARGO_TARGET_DIR=/usr/local/cargo/target", \
     "CARGO_NET_OFFLINE=true", \
     "RUSTUP_HOME=/usr/local/rustup"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

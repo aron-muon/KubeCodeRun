@@ -176,7 +176,6 @@ def create_pod_manifest(
     name: str,
     namespace: str,
     main_image: str,
-    sidecar_image: str,
     language: str,
     labels: dict,
     annotations: dict = None,
@@ -185,22 +184,20 @@ def create_pod_manifest(
     cpu_request: str = "100m",
     memory_request: str = "128Mi",
     run_as_user: int = 65532,
-    sidecar_port: int = 8080,
+    runner_port: int = 8080,
     image_pull_policy: str = "Always",
-    sidecar_cpu_limit: str = "500m",
-    sidecar_memory_limit: str = "512Mi",
-    sidecar_cpu_request: str = "100m",
-    sidecar_memory_request: str = "256Mi",
     seccomp_profile_type: str = "RuntimeDefault",
     network_isolated: bool = False,
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
+    The pod runs a single container with an embedded runner binary
+    that serves HTTP on the runner port.
+
     Args:
         name: Pod name
         namespace: Kubernetes namespace
-        main_image: Image for the main (language) container
-        sidecar_image: Image for the sidecar container
+        main_image: Image for the main container (includes embedded runner)
         language: Programming language
         labels: Pod labels
         annotations: Pod annotations
@@ -208,9 +205,11 @@ def create_pod_manifest(
         memory_limit: Memory limit
         cpu_request: CPU request
         memory_request: Memory request
-        run_as_user: UID to run containers as
-        sidecar_port: Port for sidecar HTTP API
+        run_as_user: UID to run the container as
+        runner_port: Port for the embedded runner HTTP API
+        image_pull_policy: Image pull policy
         seccomp_profile_type: Seccomp profile type (RuntimeDefault or Unconfined)
+        network_isolated: Whether to disable network-dependent features
 
     Returns:
         V1Pod manifest ready for creation.
@@ -229,7 +228,7 @@ def create_pod_manifest(
         mount_path="/mnt/data",
     )
 
-    # Security context for main container
+    # Security context for the main container
     security_context = client.V1SecurityContext(
         run_as_user=run_as_user,
         run_as_group=run_as_user,
@@ -238,84 +237,36 @@ def create_pod_manifest(
         capabilities=client.V1Capabilities(drop=["ALL"]),
     )
 
-    # Security context for sidecar - needs elevated privileges for nsenter
-    #
-    # The sidecar uses nsenter to execute code in the main container's mount namespace.
-    # nsenter requires these capabilities:
-    # - SYS_PTRACE: access /proc/<pid>/ns/ of other processes
-    # - SYS_ADMIN: call setns() to enter namespaces
-    # - SYS_CHROOT: required for mount namespace operations
-    #
-    # For non-root users, Linux capabilities only populate the bounding set, not
-    # effective/permitted sets. To make capabilities usable, the sidecar Docker image
-    # uses setcap on the nsenter binary:
-    #   setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
-    #
-    # The pod spec must still:
-    # - Add capabilities to the bounding set (capabilities.add)
-    # - Allow privilege escalation (for file capabilities to be honored)
-    #
-    # This approach allows running as non-root while still having nsenter work.
-    sidecar_security_context = client.V1SecurityContext(
-        run_as_user=run_as_user,
-        run_as_group=run_as_user,
-        run_as_non_root=True,
-        allow_privilege_escalation=True,  # Required for file capabilities
-        capabilities=client.V1Capabilities(
-            add=["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"],
-            drop=["ALL"],
-        ),
-    )
-
     # Resource requirements
     resources = client.V1ResourceRequirements(
         limits={"cpu": cpu_limit, "memory": memory_limit},
         requests={"cpu": cpu_request, "memory": memory_request},
     )
 
-    # Main container (language runtime)
+    # Main container (language runtime + embedded runner)
     main_container = client.V1Container(
         name="main",
         image=main_image,
         image_pull_policy=image_pull_policy,
+        ports=[client.V1ContainerPort(container_port=runner_port, name="http")],
         volume_mounts=[shared_mount],
         security_context=security_context,
         resources=resources,
         env=[
-            client.V1EnvVar(name="PYTHONUNBUFFERED", value="1"),
-            client.V1EnvVar(name="HOME", value="/mnt/data"),
-        ],
-    )
-
-    # Sidecar container (HTTP API)
-    sidecar_container = client.V1Container(
-        name="sidecar",
-        image=sidecar_image,
-        image_pull_policy=image_pull_policy,
-        ports=[client.V1ContainerPort(container_port=sidecar_port, name="http")],
-        volume_mounts=[shared_mount],
-        security_context=sidecar_security_context,
-        resources=client.V1ResourceRequirements(
-            # CRITICAL: User code runs in the sidecar's cgroup via nsenter (Issue #32)
-            # These limits apply to user code execution, not just the sidecar process
-            limits={"cpu": sidecar_cpu_limit, "memory": sidecar_memory_limit},
-            requests={"cpu": sidecar_cpu_request, "memory": sidecar_memory_request},
-        ),
-        env=[
             client.V1EnvVar(name="LANGUAGE", value=language),
             client.V1EnvVar(name="WORKING_DIR", value="/mnt/data"),
-            client.V1EnvVar(name="SIDECAR_PORT", value=str(sidecar_port)),
             client.V1EnvVar(name="NETWORK_ISOLATED", value=str(network_isolated).lower()),
+            client.V1EnvVar(name="RUNNER_PORT", value=str(runner_port)),
         ],
         readiness_probe=client.V1Probe(
-            http_get=client.V1HTTPGetAction(path="/ready", port=sidecar_port),
-            initial_delay_seconds=5,
+            http_get=client.V1HTTPGetAction(path="/ready", port=runner_port),
+            initial_delay_seconds=2,
             period_seconds=3,
             timeout_seconds=5,
             failure_threshold=5,
         ),
         liveness_probe=client.V1Probe(
-            http_get=client.V1HTTPGetAction(path="/health", port=sidecar_port),
+            http_get=client.V1HTTPGetAction(path="/health", port=runner_port),
             initial_delay_seconds=5,
             period_seconds=10,
             timeout_seconds=5,
@@ -325,23 +276,14 @@ def create_pod_manifest(
 
     # Pod spec
     pod_spec = client.V1PodSpec(
-        containers=[main_container, sidecar_container],
+        containers=[main_container],
         volumes=[shared_volume],
         restart_policy="Never",
         termination_grace_period_seconds=10,
-        # Share process namespace so sidecar can use nsenter to execute in main container
-        share_process_namespace=True,
         security_context=client.V1PodSecurityContext(
-            # Note: We don't set run_as_user at pod level; each container
-            # sets its own security context. Both run as non-root UID 65532.
-            # The sidecar uses file capabilities (setcap) on nsenter for privileges.
             fs_group=run_as_user,
-            # Apply seccomp profile to block dangerous syscalls
-            # while preserving nsenter functionality for the sidecar
             seccomp_profile=client.V1SeccompProfile(type=seccomp_profile_type),
         ),
-        # Prevent scheduling on same node as other execution pods
-        # (optional, can be configured via affinity)
     )
 
     # Pod metadata
@@ -364,7 +306,6 @@ def create_job_manifest(
     name: str,
     namespace: str,
     main_image: str,
-    sidecar_image: str,
     language: str,
     labels: dict,
     ttl_seconds_after_finished: int = 60,
@@ -380,7 +321,6 @@ def create_job_manifest(
         name: Job name
         namespace: Kubernetes namespace
         main_image: Image for the main container
-        sidecar_image: Image for the sidecar container
         language: Programming language
         labels: Job labels
         ttl_seconds_after_finished: TTL for completed jobs
@@ -394,7 +334,6 @@ def create_job_manifest(
         name=f"{name}-pod",
         namespace=namespace,
         main_image=main_image,
-        sidecar_image=sidecar_image,
         language=language,
         labels=labels,
         **kwargs,

@@ -25,7 +25,6 @@ def pool_config():
         language="python",
         image="python:3.11",
         pool_size=2,
-        sidecar_image="sidecar:latest",
         cpu_limit="1",
         memory_limit="512Mi",
     )
@@ -294,7 +293,7 @@ class TestPodPoolWaitForPodReady:
         mock_pod.status.pod_ip = "10.0.0.1"
         mock_pod.status.phase = "Running"
         mock_container_status = MagicMock()
-        mock_container_status.name = "sidecar"
+        mock_container_status.name = "main"
         mock_container_status.ready = True
         mock_pod.status.container_statuses = [mock_container_status]
         mock_core_api.read_namespaced_pod.return_value = mock_pod
@@ -484,8 +483,8 @@ class TestPodPoolExecute:
         assert mock_client.post.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_execute_sidecar_error(self, pod_pool, pod_handle):
-        """Test execution with sidecar error."""
+    async def test_execute_runner_error(self, pod_pool, pod_handle):
+        """Test execution with runner error."""
         mock_client = AsyncMock()
         mock_response = MagicMock()
         mock_response.status_code = 500
@@ -495,7 +494,7 @@ class TestPodPoolExecute:
             result = await pod_pool.execute(pod_handle, "print('test')")
 
         assert result.exit_code == 1
-        assert "Sidecar error" in result.stderr
+        assert "Runner error" in result.stderr
 
     @pytest.mark.asyncio
     async def test_execute_timeout(self, pod_pool, pod_handle):
@@ -786,22 +785,22 @@ class TestPodPoolWaitForPodReadyExtended:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_wait_for_pod_ready_sidecar_not_ready(self, pod_pool, pod_handle):
-        """Test waiting when sidecar container not ready."""
+    async def test_wait_for_pod_ready_main_not_ready(self, pod_pool, pod_handle):
+        """Test waiting when main container not ready."""
         mock_core_api = MagicMock()
         mock_pod = MagicMock()
         mock_pod.status.pod_ip = "10.0.0.1"
         mock_pod.status.phase = "Running"
         mock_container_status = MagicMock()
-        mock_container_status.name = "main"  # Not the sidecar
-        mock_container_status.ready = True
+        mock_container_status.name = "main"
+        mock_container_status.ready = False
         mock_pod.status.container_statuses = [mock_container_status]
         mock_core_api.read_namespaced_pod.return_value = mock_pod
 
         with patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api):
             result = await pod_pool._wait_for_pod_ready(pod_handle, timeout=1)
 
-        # Should timeout since sidecar is not ready
+        # Should timeout since main container is not ready
         assert result is False
 
 
@@ -1103,47 +1102,27 @@ class TestPodPoolExecuteExtended:
 class TestPoolConfigResources:
     """Tests for PoolConfig per-language resource configuration."""
 
-    def test_pool_config_default_sidecar_resources(self):
-        """Test PoolConfig has default sidecar resource values."""
+    def test_pool_config_default_resources(self):
+        """Test PoolConfig has default resource values."""
         config = PoolConfig(
             language="python",
             image="python:3.12",
             pool_size=5,
         )
-        assert config.sidecar_cpu_limit == "500m"
-        assert config.sidecar_memory_limit == "512Mi"
-        assert config.sidecar_cpu_request == "100m"
-        assert config.sidecar_memory_request == "256Mi"
+        assert config.cpu_limit is None
+        assert config.memory_limit is None
 
-    def test_pool_config_custom_sidecar_resources(self):
-        """Test PoolConfig accepts custom sidecar resource values."""
+    def test_pool_config_custom_resources(self):
+        """Test PoolConfig accepts custom resource values."""
         config = PoolConfig(
             language="go",
             image="golang:1.22",
             pool_size=2,
-            sidecar_cpu_limit="2",
-            sidecar_memory_limit="1Gi",
-            sidecar_cpu_request="500m",
-            sidecar_memory_request="512Mi",
+            cpu_limit="2",
+            memory_limit="1Gi",
         )
-        assert config.sidecar_cpu_limit == "2"
-        assert config.sidecar_memory_limit == "1Gi"
-        assert config.sidecar_cpu_request == "500m"
-        assert config.sidecar_memory_request == "512Mi"
-
-    def test_pool_config_partial_sidecar_resource_override(self):
-        """Test PoolConfig allows partial sidecar resource overrides."""
-        config = PoolConfig(
-            language="java",
-            image="openjdk:21",
-            pool_size=1,
-            sidecar_cpu_limit="4",  # Only override CPU limit
-            # Other values use defaults
-        )
-        assert config.sidecar_cpu_limit == "4"
-        assert config.sidecar_memory_limit == "512Mi"  # Default
-        assert config.sidecar_cpu_request == "100m"  # Default
-        assert config.sidecar_memory_request == "256Mi"  # Default
+        assert config.cpu_limit == "2"
+        assert config.memory_limit == "1Gi"
 
 
 class TestSettingsPerLanguageResources:
@@ -1158,8 +1137,6 @@ class TestSettingsPerLanguageResources:
         env_vars = {
             "LANG_CPU_LIMIT_GO": "2",
             "LANG_MEMORY_LIMIT_GO": "1Gi",
-            "LANG_CPU_REQUEST_GO": "500m",
-            "LANG_MEMORY_REQUEST_GO": "512Mi",
         }
 
         with patch.dict(os.environ, env_vars, clear=False):
@@ -1167,13 +1144,11 @@ class TestSettingsPerLanguageResources:
             configs = settings.get_pool_configs()
 
         go_config = next(c for c in configs if c.language == "go")
-        assert go_config.sidecar_cpu_limit == "2"
-        assert go_config.sidecar_memory_limit == "1Gi"
-        assert go_config.sidecar_cpu_request == "500m"
-        assert go_config.sidecar_memory_request == "512Mi"
+        assert go_config.cpu_limit == "2"
+        assert go_config.memory_limit == "1Gi"
 
-    def test_get_pool_configs_falls_back_to_global_sidecar_defaults(self):
-        """Test get_pool_configs falls back to sidecar defaults when no env vars."""
+    def test_get_pool_configs_falls_back_to_global_defaults(self):
+        """Test get_pool_configs falls back to global defaults when no env vars."""
         import os
 
         from src.config import Settings
@@ -1182,29 +1157,21 @@ class TestSettingsPerLanguageResources:
         env_vars_to_clear = [
             "LANG_CPU_LIMIT_PY",
             "LANG_MEMORY_LIMIT_PY",
-            "LANG_CPU_REQUEST_PY",
-            "LANG_MEMORY_REQUEST_PY",
         ]
-        clean_env = {k: "" for k in env_vars_to_clear}
 
-        with patch.dict(os.environ, clean_env, clear=False):
-            # Force empty values to trigger fallback
+        with patch.dict(os.environ, {}, clear=False):
             for key in env_vars_to_clear:
                 os.environ.pop(key, None)
 
             settings = Settings(
-                k8s_sidecar_cpu_limit="750m",
-                k8s_sidecar_memory_limit="768Mi",
-                k8s_sidecar_cpu_request="200m",
-                k8s_sidecar_memory_request="384Mi",
+                k8s_cpu_limit="750m",
+                k8s_memory_limit="768Mi",
             )
             configs = settings.get_pool_configs()
 
         py_config = next(c for c in configs if c.language == "py")
-        assert py_config.sidecar_cpu_limit == "750m"
-        assert py_config.sidecar_memory_limit == "768Mi"
-        assert py_config.sidecar_cpu_request == "200m"
-        assert py_config.sidecar_memory_request == "384Mi"
+        assert py_config.cpu_limit == "750m"
+        assert py_config.memory_limit == "768Mi"
 
     def test_get_pool_configs_different_resources_per_language(self):
         """Test get_pool_configs supports different resources for each language."""
@@ -1230,13 +1197,13 @@ class TestSettingsPerLanguageResources:
         rs_config = next(c for c in configs if c.language == "rs")
 
         # Python - smaller resources
-        assert py_config.sidecar_cpu_limit == "500m"
-        assert py_config.sidecar_memory_limit == "512Mi"
+        assert py_config.cpu_limit == "500m"
+        assert py_config.memory_limit == "512Mi"
 
         # Go - medium resources
-        assert go_config.sidecar_cpu_limit == "2"
-        assert go_config.sidecar_memory_limit == "2Gi"
+        assert go_config.cpu_limit == "2"
+        assert go_config.memory_limit == "2Gi"
 
         # Rust - larger resources
-        assert rs_config.sidecar_cpu_limit == "4"
-        assert rs_config.sidecar_memory_limit == "4Gi"
+        assert rs_config.cpu_limit == "4"
+        assert rs_config.memory_limit == "4Gi"

@@ -178,16 +178,12 @@ class PodPool:
             name=pod_name,
             namespace=self.namespace,
             main_image=self.config.image,
-            sidecar_image=self.config.sidecar_image,
             language=self.language,
             labels=labels,
             cpu_limit=self.config.cpu_limit or "1",
             memory_limit=self.config.memory_limit or "512Mi",
             image_pull_policy=self.config.image_pull_policy,
-            sidecar_cpu_limit=self.config.sidecar_cpu_limit,
-            sidecar_memory_limit=self.config.sidecar_memory_limit,
-            sidecar_cpu_request=self.config.sidecar_cpu_request,
-            sidecar_memory_request=self.config.sidecar_memory_request,
+            runner_port=8080,
             seccomp_profile_type=self.config.seccomp_profile_type,
             network_isolated=self.config.network_isolated,
         )
@@ -268,8 +264,8 @@ class PodPool:
 
                 if pod.status.phase == "Running":
                     if pod.status.container_statuses:
-                        sidecar_ready = any(cs.name == "sidecar" and cs.ready for cs in pod.status.container_statuses)
-                        if sidecar_ready:
+                        main_ready = any(cs.name == "main" and cs.ready for cs in pod.status.container_statuses)
+                        if main_ready:
                             return True
 
                 elif pod.status.phase in ("Failed", "Succeeded"):
@@ -367,7 +363,7 @@ class PodPool:
 
                 for pooled_pod in pods_to_check:
                     try:
-                        url = pooled_pod.handle.sidecar_url
+                        url = pooled_pod.handle.runner_url
                         response = await client.get(
                             f"{url}/health",
                             timeout=5,
@@ -533,14 +529,14 @@ class PodPool:
             )
 
         client = await self._get_http_client()
-        sidecar_url = handle.sidecar_url
+        runner_url = handle.runner_url
 
         # Upload files if provided
         if files:
             for file_data in files:
                 try:
                     await client.post(
-                        f"{sidecar_url}/files",
+                        f"{runner_url}/files",
                         files={"files": (file_data.filename, file_data.content)},
                         timeout=30,
                     )
@@ -564,7 +560,7 @@ class PodPool:
                 request_data["capture_state"] = True
 
             response = await client.post(
-                f"{sidecar_url}/execute",
+                f"{runner_url}/execute",
                 json=request_data,
                 timeout=timeout + 10,
             )
@@ -583,7 +579,7 @@ class PodPool:
                 return ExecutionResult(
                     exit_code=1,
                     stdout="",
-                    stderr=f"Sidecar error: {response.status_code}",
+                    stderr=f"Runner error: {response.status_code}",
                     execution_time_ms=0,
                 )
 

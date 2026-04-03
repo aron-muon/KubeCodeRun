@@ -2,6 +2,9 @@
 # Node.js execution environment with BuildKit optimizations.
 # Uses Docker Hardened Images (DHI) for security.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
@@ -72,8 +75,10 @@ COPY --from=runtime-deps /usr/bin/git /usr/bin/git
 COPY --from=runtime-deps /usr/lib/git-core /usr/lib/git-core
 
 # Copy /usr/bin/env for npm package shebangs and ENTRYPOINT
-# Copy sleep for the default CMD (keep container alive for sidecar)
-COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+COPY --from=runtime-deps /usr/bin/env /usr/bin/
+
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
 
 # Copy TypeScript runner script for shell-less execution
 COPY scripts/ts-runner.js /opt/scripts/ts-runner.js
@@ -96,4 +101,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "TMPDIR=/tmp", \
     "NODE_ENV=sandbox", \
     "NODE_PATH=/opt/node/lib/node_modules"]
-CMD ["sleep", "infinity"]
+CMD ["/usr/local/bin/runner"]

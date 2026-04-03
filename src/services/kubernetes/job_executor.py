@@ -33,7 +33,7 @@ class JobExecutor:
     """Executes code using Kubernetes Jobs.
 
     Creates a Job for each execution request, waits for pod readiness,
-    executes code via the sidecar HTTP API, and cleans up.
+    executes code via the runner HTTP API, and cleans up.
     """
 
     def __init__(
@@ -41,7 +41,6 @@ class JobExecutor:
         namespace: str | None = None,
         ttl_seconds_after_finished: int = 60,
         active_deadline_seconds: int = 300,
-        sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest",
     ):
         """Initialize the Job executor.
 
@@ -49,16 +48,14 @@ class JobExecutor:
             namespace: Kubernetes namespace for jobs
             ttl_seconds_after_finished: TTL for completed jobs
             active_deadline_seconds: Maximum execution time
-            sidecar_image: Sidecar container image
         """
         self.namespace = namespace or get_current_namespace()
         self.ttl_seconds_after_finished = ttl_seconds_after_finished
         self.active_deadline_seconds = active_deadline_seconds
-        self.sidecar_image = sidecar_image
         self._http_client: httpx.AsyncClient | None = None
 
     async def _get_http_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client for sidecar communication."""
+        """Get or create HTTP client for runner communication."""
         if self._http_client is None or self._http_client.is_closed:
             self._http_client = httpx.AsyncClient(timeout=30.0)
         return self._http_client
@@ -110,7 +107,6 @@ class JobExecutor:
             name=job_name,
             namespace=namespace,
             main_image=spec.image,
-            sidecar_image=spec.sidecar_image or self.sidecar_image,
             language=spec.language,
             labels=labels,
             cpu_limit=spec.cpu_limit,
@@ -118,11 +114,7 @@ class JobExecutor:
             cpu_request=spec.cpu_request,
             memory_request=spec.memory_request,
             run_as_user=spec.run_as_user,
-            sidecar_port=spec.sidecar_port,
-            sidecar_cpu_limit=spec.sidecar_cpu_limit,
-            sidecar_memory_limit=spec.sidecar_memory_limit,
-            sidecar_cpu_request=spec.sidecar_cpu_request,
-            sidecar_memory_request=spec.sidecar_memory_request,
+            runner_port=spec.runner_port,
             seccomp_profile_type=spec.seccomp_profile_type,
             network_isolated=spec.network_isolated,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
@@ -201,10 +193,8 @@ class JobExecutor:
                     if pod.status.phase == "Running":
                         # Check container readiness
                         if pod.status.container_statuses:
-                            sidecar_ready = any(
-                                cs.name == "sidecar" and cs.ready for cs in pod.status.container_statuses
-                            )
-                            if sidecar_ready:
+                            main_ready = any(cs.name == "main" and cs.ready for cs in pod.status.container_statuses)
+                            if main_ready:
                                 job.status = "running"
                                 logger.info(
                                     "Job pod ready",
@@ -270,12 +260,12 @@ class JobExecutor:
                 execution_time_ms=0,
             )
 
-        sidecar_url = job.sidecar_url
-        if not sidecar_url:
+        runner_url = job.runner_url
+        if not runner_url:
             return ExecutionResult(
                 exit_code=1,
                 stdout="",
-                stderr="Job sidecar URL not available",
+                stderr="Job runner URL not available",
                 execution_time_ms=0,
             )
 
@@ -283,7 +273,7 @@ class JobExecutor:
 
         # Upload files if provided
         if files:
-            await self._upload_files(client, sidecar_url, files)
+            await self._upload_files(client, runner_url, files)
 
         # Execute code
         try:
@@ -299,13 +289,13 @@ class JobExecutor:
 
             logger.debug(
                 "Sending execute request",
-                sidecar_url=sidecar_url,
+                runner_url=runner_url,
                 code_len=len(code),
                 timeout=timeout,
             )
 
             response = await client.post(
-                f"{sidecar_url}/execute",
+                f"{runner_url}/execute",
                 json=request_data,
                 timeout=timeout + 10,  # Extra time for network
             )
@@ -324,7 +314,7 @@ class JobExecutor:
                 return ExecutionResult(
                     exit_code=1,
                     stdout="",
-                    stderr=f"Sidecar error: {response.status_code} - {response.text}",
+                    stderr=f"Runner error: {response.status_code} - {response.text}",
                     execution_time_ms=0,
                 )
 
@@ -351,7 +341,7 @@ class JobExecutor:
     async def _upload_files(
         self,
         client: httpx.AsyncClient,
-        sidecar_url: str,
+        runner_url: str,
         files: list[FileData],
     ):
         """Upload files to the pod."""
@@ -359,7 +349,7 @@ class JobExecutor:
             try:
                 files_payload = {"files": (file_data.filename, file_data.content)}
                 await client.post(
-                    f"{sidecar_url}/files",
+                    f"{runner_url}/files",
                     files=files_payload,
                     timeout=30,
                 )
@@ -451,7 +441,7 @@ class JobExecutor:
                 job_name=job.name,
                 pod_name=job.pod_name,
                 pod_ip=job.pod_ip,
-                sidecar_url=job.sidecar_url,
+                runner_url=job.runner_url,
             )
 
             # Execute code

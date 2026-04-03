@@ -406,7 +406,6 @@ class TestCheckKubernetes:
 
         with patch("src.services.health.settings") as mock_settings:
             mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = "sidecar:latest"
 
             result = await service.check_kubernetes()
 

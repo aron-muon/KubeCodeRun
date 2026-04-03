@@ -153,10 +153,6 @@ class ConfigValidator:
         try:
             # Check if Kubernetes settings are configured
             if settings.pod_pool_enabled:
-                # Validate sidecar image is set
-                if not settings.k8s_sidecar_image:
-                    self.warnings.append("Kubernetes sidecar image not configured")
-
                 # Validate resource limits are reasonable
                 if settings.k8s_memory_limit:
                     # Parse memory limit (e.g., "512Mi", "1Gi")

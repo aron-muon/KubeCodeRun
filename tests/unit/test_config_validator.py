@@ -338,27 +338,12 @@ class TestValidateKubernetesConfig:
         assert len(validator.errors) == 0
         assert len(validator.warnings) == 0
 
-    def test_kubernetes_no_sidecar_image(self):
-        """Test warning when sidecar image not set."""
-        validator = ConfigValidator()
-
-        with patch("src.utils.config_validator.settings") as mock_settings:
-            mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = ""
-            mock_settings.k8s_memory_limit = "512Mi"
-            mock_settings.k8s_image_registry = "docker.io"
-
-            validator._validate_kubernetes_config()
-
-        assert any("sidecar image" in w for w in validator.warnings)
-
     def test_kubernetes_low_memory(self):
         """Test warning when memory limit is too low."""
         validator = ConfigValidator()
 
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = "my-sidecar:latest"
             mock_settings.k8s_memory_limit = "32Mi"
             mock_settings.k8s_image_registry = "docker.io"
 
@@ -372,7 +357,6 @@ class TestValidateKubernetesConfig:
 
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = "my-sidecar:latest"
             mock_settings.k8s_memory_limit = "2Gi"
             mock_settings.k8s_image_registry = "docker.io"
 
@@ -387,7 +371,6 @@ class TestValidateKubernetesConfig:
 
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = "my-sidecar:latest"
             mock_settings.k8s_memory_limit = "512Mi"
             mock_settings.k8s_image_registry = ""
 
@@ -401,7 +384,6 @@ class TestValidateKubernetesConfig:
 
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.pod_pool_enabled = True
-            mock_settings.k8s_sidecar_image = "my-sidecar:latest"
             mock_settings.k8s_memory_limit = "invalid"
             mock_settings.k8s_image_registry = "docker.io"
 

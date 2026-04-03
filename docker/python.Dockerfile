@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Python execution environment with Docker Hardened Images.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
@@ -137,9 +140,11 @@ COPY --from=runtime-deps /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/
 COPY --from=builder /opt/python/lib/python3.14/site-packages /opt/python/lib/python3.14/site-packages
 COPY --from=builder /opt/python/bin /opt/python/bin
 
-# Copy /usr/bin/env for sidecar's /usr/bin/env -i execution pattern
-# Copy sleep for the default CMD (keep container alive for sidecar)
-COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+# Copy /usr/bin/env for ENTRYPOINT
+COPY --from=runtime-deps /usr/bin/env /usr/bin/
+
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
 
 # Create data directory - DHI images run as non-root (UID 65532) by default
 COPY --from=runtime-deps /mnt/data /mnt/data
@@ -155,4 +160,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "PYTHONDONTWRITEBYTECODE=1", \
     "PYTHONPATH=/mnt/data", \
     "MPLCONFIGDIR=/tmp/matplotlib"]
-CMD ["sleep", "infinity"]
+CMD ["/usr/local/bin/runner"]

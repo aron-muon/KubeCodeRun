@@ -118,15 +118,6 @@ class Settings(BaseSettings):
         default="kubecoderun-executor",
         description="Service account for execution pods",
     )
-    k8s_sidecar_image: str = Field(
-        default="aronmuon/kubecoderun-sidecar:latest",
-        description="Sidecar container image for pod communication",
-    )
-    k8s_sidecar_port: int = Field(default=8080, ge=1, le=65535, description="Sidecar HTTP API port")
-    k8s_sidecar_cpu_limit: str = Field(default="500m", description="Sidecar CPU limit (user code inherits this)")
-    k8s_sidecar_memory_limit: str = Field(default="512Mi", description="Sidecar memory limit (user code inherits this)")
-    k8s_sidecar_cpu_request: str = Field(default="100m", description="Sidecar CPU request")
-    k8s_sidecar_memory_request: str = Field(default="256Mi", description="Sidecar memory request")
     k8s_cpu_limit: str = Field(default="1", description="CPU limit for execution pods")
     k8s_memory_limit: str = Field(default="512Mi", description="Memory limit for execution pods")
     k8s_cpu_request: str = Field(default="100m", description="CPU request for execution pods")
@@ -556,12 +547,6 @@ class Settings(BaseSettings):
         return KubernetesConfig(
             namespace=self.k8s_namespace,
             service_account=self.k8s_service_account,
-            sidecar_image=self.k8s_sidecar_image,
-            sidecar_port=self.k8s_sidecar_port,
-            sidecar_cpu_limit=self.k8s_sidecar_cpu_limit,
-            sidecar_memory_limit=self.k8s_sidecar_memory_limit,
-            sidecar_cpu_request=self.k8s_sidecar_cpu_request,
-            sidecar_memory_request=self.k8s_sidecar_memory_request,
             cpu_limit=self.k8s_cpu_limit,
             memory_limit=self.k8s_memory_limit,
             cpu_request=self.k8s_cpu_request,
@@ -609,24 +594,17 @@ class Settings(BaseSettings):
             image = os.getenv(f"LANG_IMAGE_{lang_upper}") or self.kubernetes.get_image_for_language(lang)
 
             # Per-language resource limits (LANG_CPU_LIMIT_<LANG>, etc.)
-            # Falls back to global sidecar defaults
-            sidecar_cpu_limit = os.getenv(f"LANG_CPU_LIMIT_{lang_upper}") or self.k8s_sidecar_cpu_limit
-            sidecar_memory_limit = os.getenv(f"LANG_MEMORY_LIMIT_{lang_upper}") or self.k8s_sidecar_memory_limit
-            sidecar_cpu_request = os.getenv(f"LANG_CPU_REQUEST_{lang_upper}") or self.k8s_sidecar_cpu_request
-            sidecar_memory_request = os.getenv(f"LANG_MEMORY_REQUEST_{lang_upper}") or self.k8s_sidecar_memory_request
+            # Falls back to global container defaults
+            cpu_limit = os.getenv(f"LANG_CPU_LIMIT_{lang_upper}") or self.k8s_cpu_limit
+            memory_limit = os.getenv(f"LANG_MEMORY_LIMIT_{lang_upper}") or self.k8s_memory_limit
 
             configs.append(
                 PoolConfig(
                     language=lang,
                     image=image,
                     pool_size=pool_size,
-                    sidecar_image=self.k8s_sidecar_image,
-                    cpu_limit=self.k8s_cpu_limit,
-                    memory_limit=self.k8s_memory_limit,
-                    sidecar_cpu_limit=sidecar_cpu_limit,
-                    sidecar_memory_limit=sidecar_memory_limit,
-                    sidecar_cpu_request=sidecar_cpu_request,
-                    sidecar_memory_request=sidecar_memory_request,
+                    cpu_limit=cpu_limit,
+                    memory_limit=memory_limit,
                     image_pull_policy=self.k8s_image_pull_policy,
                     seccomp_profile_type=self.k8s_seccomp_profile_type,
                     network_isolated=self.enable_network_isolation,

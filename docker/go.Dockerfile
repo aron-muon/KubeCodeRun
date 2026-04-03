@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1
 # Go execution environment using Docker Hardened Images.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 ################################
 # Stage 1: Build and download dependencies
 FROM dhi.io/golang:1.26-debian13-dev AS builder
@@ -53,8 +56,11 @@ COPY --from=builder --chown=65532:65532 /go/pkg/mod /go/pkg/mod
 # Copy data directory with correct ownership
 COPY --from=runtime-deps /mnt/data /mnt/data
 
-# Copy env for ENTRYPOINT, sleep for default CMD
-COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+# Copy env for ENTRYPOINT
+COPY --from=runtime-deps /usr/bin/env /usr/bin/
+
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
 
 WORKDIR /mnt/data
 
@@ -68,4 +74,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "GOSUMDB=sum.golang.org", \
     "GOCACHE=/mnt/data/go-build", \
     "GOMODCACHE=/go/pkg/mod"]
-CMD ["sleep", "infinity"]
+CMD ["/usr/local/bin/runner"]

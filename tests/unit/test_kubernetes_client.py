@@ -326,7 +326,6 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
         )
@@ -334,7 +333,7 @@ class TestCreatePodManifest:
         assert pod.metadata.name == "test-pod"
         assert pod.metadata.namespace == "test-ns"
         assert pod.metadata.labels["app"] == "test"
-        assert len(pod.spec.containers) == 2
+        assert len(pod.spec.containers) == 1
 
     def test_create_pod_manifest_with_annotations(self):
         """Test creating pod manifest with annotations."""
@@ -342,7 +341,6 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
             annotations={"custom": "annotation"},
@@ -350,20 +348,18 @@ class TestCreatePodManifest:
 
         assert pod.metadata.annotations["custom"] == "annotation"
 
-    def test_create_pod_manifest_containers(self):
-        """Test pod manifest has main and sidecar containers."""
+    def test_create_pod_manifest_single_container(self):
+        """Test pod manifest has a single main container."""
         pod = client.create_pod_manifest(
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
         )
 
         container_names = [c.name for c in pod.spec.containers]
-        assert "main" in container_names
-        assert "sidecar" in container_names
+        assert container_names == ["main"]
 
     def test_create_pod_manifest_resource_limits(self):
         """Test pod manifest has correct resource limits."""
@@ -371,14 +367,13 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
             cpu_limit="2",
             memory_limit="1Gi",
         )
 
-        main_container = next(c for c in pod.spec.containers if c.name == "main")
+        main_container = pod.spec.containers[0]
         assert main_container.resources.limits["cpu"] == "2"
         assert main_container.resources.limits["memory"] == "1Gi"
 
@@ -388,7 +383,6 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
         )
@@ -396,10 +390,10 @@ class TestCreatePodManifest:
         volume_names = [v.name for v in pod.spec.volumes]
         assert "shared-data" in volume_names
 
-        # Check both containers mount it
-        for container in pod.spec.containers:
-            mount_names = [m.name for m in container.volume_mounts]
-            assert "shared-data" in mount_names
+        # Check the main container mounts it
+        main_container = pod.spec.containers[0]
+        mount_names = [m.name for m in main_container.volume_mounts]
+        assert "shared-data" in mount_names
 
     def test_create_pod_manifest_security_context(self):
         """Test pod manifest has security context."""
@@ -407,15 +401,16 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
             run_as_user=1001,
         )
 
-        main_container = next(c for c in pod.spec.containers if c.name == "main")
+        main_container = pod.spec.containers[0]
         assert main_container.security_context.run_as_user == 1001
         assert main_container.security_context.run_as_non_root is True
+        assert main_container.security_context.allow_privilege_escalation is False
+        assert main_container.security_context.capabilities.drop == ["ALL"]
 
     def test_create_pod_manifest_seccomp_profile_default(self):
         """Test pod manifest has RuntimeDefault seccomp profile by default."""
@@ -423,7 +418,6 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
         )
@@ -437,7 +431,6 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
             seccomp_profile_type="Unconfined",
@@ -452,7 +445,6 @@ class TestCreatePodManifest:
                 name="test-pod",
                 namespace="test-ns",
                 main_image="python:3.12",
-                sidecar_image="sidecar:latest",
                 language="python",
                 labels={"app": "test"},
                 seccomp_profile_type=profile_type,
@@ -466,14 +458,13 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
             network_isolated=False,
         )
 
-        sidecar = next(c for c in pod.spec.containers if c.name == "sidecar")
-        env_dict = {e.name: e.value for e in sidecar.env}
+        main_container = pod.spec.containers[0]
+        env_dict = {e.name: e.value for e in main_container.env}
         assert "NETWORK_ISOLATED" in env_dict
         assert env_dict["NETWORK_ISOLATED"] == "false"
 
@@ -483,14 +474,13 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="go:1.22",
-            sidecar_image="sidecar:latest",
             language="go",
             labels={"app": "test"},
             network_isolated=True,
         )
 
-        sidecar = next(c for c in pod.spec.containers if c.name == "sidecar")
-        env_dict = {e.name: e.value for e in sidecar.env}
+        main_container = pod.spec.containers[0]
+        env_dict = {e.name: e.value for e in main_container.env}
         assert "NETWORK_ISOLATED" in env_dict
         assert env_dict["NETWORK_ISOLATED"] == "true"
 
@@ -500,12 +490,11 @@ class TestCreatePodManifest:
             name="test-pod",
             namespace="test-ns",
             main_image="python:3.12",
-            sidecar_image="sidecar:latest",
             language="python",
             labels={"app": "test"},
         )
 
-        sidecar = next(c for c in pod.spec.containers if c.name == "sidecar")
-        env_dict = {e.name: e.value for e in sidecar.env}
+        main_container = pod.spec.containers[0]
+        env_dict = {e.name: e.value for e in main_container.env}
         assert "NETWORK_ISOLATED" in env_dict
         assert env_dict["NETWORK_ISOLATED"] == "false"

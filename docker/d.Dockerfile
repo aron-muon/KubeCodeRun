@@ -2,6 +2,9 @@
 # D execution environment with Docker Hardened Images.
 # Uses -dev variant because compilers must be available at runtime.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 FROM dhi.io/debian-base:trixie-debian13-dev
 
 ARG BUILD_DATE
@@ -35,4 +38,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
     "TMPDIR=/tmp"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

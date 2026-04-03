@@ -25,7 +25,6 @@ def pool_config():
         language="python",
         image="python:3.11",
         pool_size=3,
-        sidecar_image="sidecar:latest",
     )
 
 
