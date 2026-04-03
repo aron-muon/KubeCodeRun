@@ -38,7 +38,7 @@ WORKDIR /mnt/data
 
 USER 65532
 
-# Sanitized environment via env -i (required for sidecar runtime env detection)
+# Sanitized environment via env -i
 ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \

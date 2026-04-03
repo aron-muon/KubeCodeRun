@@ -52,14 +52,14 @@ var languages = map[string]LangSpec{
 	"dlang": {File: "code.d", Run: "ldc2 {file} -of=/tmp/code && /tmp/code"},
 }
 
-// ExecuteRequest matches the sidecar's request schema.
+// ExecuteRequest is the JSON request body for POST /execute.
 type ExecuteRequest struct {
 	Code       string `json:"code"`
 	Timeout    int    `json:"timeout"`
 	WorkingDir string `json:"working_dir"`
 }
 
-// ExecuteResponse matches the sidecar's response schema.
+// ExecuteResponse is the JSON response body for POST /execute.
 type ExecuteResponse struct {
 	ExitCode        int      `json:"exit_code"`
 	Stdout          string   `json:"stdout"`

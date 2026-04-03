@@ -64,7 +64,7 @@ The dashboard requires the master API key for authentication.
 ## Features
 
 - **Multi-language Support**: Execute code in 12 languages - Python, JavaScript, TypeScript, Go, Java, C, C++, PHP, Rust, R, Fortran, and D
-- **Sub-100ms Python Execution**: Warm pod pools with HTTP sidecar achieve ~50-100ms latency
+- **Sub-100ms Python Execution**: Warm pod pools with embedded runner achieve ~50-100ms latency
 - **Pod Pool**: Pre-warmed Kubernetes pods provide fast acquisition (vs 3-10s cold start with Jobs)
 - **High Concurrency**: Kubernetes-native scaling supporting high concurrent requests
 - **Secure Execution**: Isolated Kubernetes pods with comprehensive resource limits and network policies
@@ -88,7 +88,7 @@ Key features include:
 
 - **Warm Pod Pools**: Pre-warmed Kubernetes pods for hot-path languages (Python, JS)
 - **Kubernetes Jobs**: Fallback for cold-path languages (Go, Rust, etc.)
-- **HTTP Sidecar Pattern**: Communication with pods via lightweight HTTP API
+- **Embedded Runner**: Communication with pods via lightweight Go HTTP binary
 - **Stateless Execution**: Each execution is isolated and ephemeral
 - **Session Persistence**: Optional state persistence for Python sessions
 
@@ -142,9 +142,9 @@ For comprehensive testing details, see [TESTING.md](docs/TESTING.md).
 
 - All code execution happens in isolated Kubernetes pods
 - Network policies deny all egress by default
-- Both containers run as non-root (`runAsNonRoot: true`, `runAsUser: 65532`)
-- Sidecar uses file capabilities (`setcap`) to grant `nsenter` binary-specific privileges without running as root
-- Resource limits enforced via Kubernetes (CPU, memory, ephemeral storage)
+- Container runs as non-root (`runAsNonRoot: true`, `runAsUser: 65532`)
+- Zero elevated privileges: no capabilities, no `allowPrivilegeEscalation`, compatible with hardened runtimes
+- Resource limits enforced via Kubernetes (CPU, memory, ephemeral storage) and apply directly to user code
 - Pods destroyed immediately after execution (ephemeral)
 - RBAC restricts API pod permissions to pod/job management only
 - API key authentication protects all endpoints

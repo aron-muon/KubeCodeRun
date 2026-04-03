@@ -41,7 +41,7 @@ Requests flow through `ExecutionOrchestrator` → `KubernetesManager`, which rou
 - **Pod Pool** (poolSize > 0): ~50-100ms latency for Python/JavaScript via pre-warmed pods
 - **Job Executor** (poolSize = 0): 3-10s cold start for Go, Rust, etc.
 
-Each pod uses a two-container sidecar pattern: a main container (language runtime) and an HTTP sidecar that executes code in the main container's namespace via `nsenter` with file capabilities for non-root execution.
+Each pod runs a single container with the language runtime and an embedded Go binary called "runner" that serves HTTP on :8080 and executes code via subprocess. The runner binary is copied into each language image at build time (`COPY --from=runner /runner /usr/local/bin/runner`). No sidecar, no `nsenter`, no elevated privileges.
 
 ### Key Service Layers
 
@@ -62,13 +62,15 @@ Each pod uses a two-container sidecar pattern: a main container (language runtim
 - `src/services/kubernetes/manager.py` - Main Kubernetes integration point
 - `src/services/kubernetes/pool.py` - Warm pod pool management per language
 - `src/services/execution/runner.py` - Primary code execution service
-- `docker/sidecar/main.py` - HTTP sidecar server for pod communication
+- `docker/runner/main.go` - HTTP runner server entry point (Go)
+- `docker/runner/executor.go` - Language execution commands (single source of truth)
+- `docker/runner/files.go` - File handling for the runner
 - `helm-deployments/kubecoderun/templates/` - Kubernetes Helm chart templates
 
 ## Language-Specific Notes
 
 - **Python**: Supports state persistence across executions via cloudpickle + lz4 compression
-- **TypeScript**: Uses two-step compilation (`tsc` + `node`) instead of ts-node due to stdout capture issues with nsenter
+- **TypeScript**: Uses two-step compilation (`tsc` + `node`) instead of ts-node
 
 ## Testing Notes
 

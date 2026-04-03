@@ -31,8 +31,8 @@ KubeCodeRun is a secure API for executing code in isolated Kubernetes pods. It u
                             ┌─────────────────────────────────────────────┐
                             │              Execution Pods                  │
                             │  ┌─────────────────────────────────────┐    │
-                            │  │  Main Container    │  HTTP Sidecar  │    │
-                            │  │  (Language Runtime)│  (Executor)    │    │
+                            │  │  Single Container                   │    │
+                            │  │  (Language Runtime + Runner Binary) │    │
                             │  └─────────────────────────────────────┘    │
                             └─────────────────────────────────────────────┘
 ```
@@ -46,85 +46,71 @@ KubeCodeRun is a secure API for executing code in isolated Kubernetes pods. It u
 
 The warm pool approach achieves ~85% reduction in P99 latency compared to cold-start execution.
 
-## Pod Design: Two-Container Sidecar Pattern
+## Pod Design: Single Container with Embedded Runner
 
-Each execution pod contains two containers that share process namespaces, enabling the sidecar to execute code using the main container's runtime environment.
+Each execution pod runs a single container that includes both the language runtime and an embedded Go binary called "runner". The runner serves HTTP on port 8080 and executes code via subprocess. No sidecar, no shared process namespace, no `nsenter`, and no elevated privileges are required.
 
-### 1. Main Container (Language Runtime)
+### Container Layout
 - Runs the language runtime (Python, Node.js, Go, etc.)
 - Provides the execution environment (compilers, interpreters, libraries)
-- Shares `/mnt/data` volume with sidecar
-- Runs a sleep loop to keep the container alive
+- Includes the runner binary at `/usr/local/bin/runner` (copied via multi-stage build)
+- Uses `/mnt/data` as the working directory
 
-### 2. HTTP Sidecar (Executor)
-- Lightweight FastAPI server (~50MB)
-- Exposes REST API for code execution
-- Uses `nsenter` to execute code in the main container's namespace
+### Runner Binary (Executor)
+- Lightweight Go HTTP server (~10MB static binary)
+- Exposes REST API for code execution on port 8080
+- Executes code via subprocess in the same container
 - Handles file transfers and state management
+- Single source of truth for language execution commands (`docker/runner/executor.go`)
 
-**Sidecar API Endpoints:**
+**Runner API Endpoints:**
 ```
 POST /execute     - Execute code with optional state
-POST /files       - Upload files to shared volume
+POST /files       - Upload files to working directory
 GET  /files       - List files in working directory
 GET  /files/{name} - Download file content
 GET  /health      - Health check
 ```
 
-### Namespace Sharing with nsenter
+### How the Runner Works
 
-The pod uses `shareProcessNamespace: true`, allowing containers to see each other's processes. The sidecar uses Linux `nsenter` to execute code in the main container's mount namespace:
+The runner binary is embedded into each language container image via a multi-stage Docker build:
+
+```dockerfile
+COPY --from=runner /runner /usr/local/bin/runner
+```
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Execution Pod                          │
-│  shareProcessNamespace: true                                │
 │                                                             │
-│  ┌─────────────────────┐    ┌─────────────────────────────┐│
-│  │   Main Container    │    │      Sidecar Container      ││
-│  │                     │    │                             ││
-│  │  • Python/Node/Go   │◄───│  • Receives HTTP request    ││
-│  │  • sleep infinity   │    │  • Writes code to /mnt/data ││
-│  │  • PID 1 visible    │    │  • nsenter -m -t <PID> --wdns=/mnt/data sh ││
-│  │    to sidecar       │    │  • Returns stdout/stderr    ││
-│  └─────────────────────┘    └─────────────────────────────┘│
-│           │                            │                    │
-│           └────────────────────────────┘                    │
-│                   Shared /mnt/data volume                   │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │              Single Container                        │   │
+│  │                                                     │   │
+│  │  • Language runtime (Python/Node/Go/...)            │   │
+│  │  • Runner binary serves HTTP on :8080               │   │
+│  │  • Receives request → writes code to /mnt/data      │   │
+│  │  • Executes via subprocess → captures stdout/stderr │   │
+│  │  • Returns results via HTTP response                │   │
+│  │                                                     │   │
+│  │  Working directory: /mnt/data                       │   │
+│  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-**How nsenter works:**
-1. Sidecar finds the main container's PID (typically PID 7 after pause container)
-2. Uses `nsenter -m -t <PID>` to enter the mount namespace
-3. Sets the working directory to `/mnt/data` so relative paths write to the shared volume
+**Execution flow:**
+1. Runner receives an HTTP request with code to execute
+2. Writes code to a temporary file in `/mnt/data`
+3. Executes the appropriate language command via subprocess (e.g., `python3 file.py`)
 4. Captures stdout/stderr and returns via HTTP
 
-**nsenter Privilege Model:**
+**Advantages over the previous sidecar pattern:**
+- **Zero elevated privileges**: No `SYS_PTRACE`, `SYS_ADMIN`, `SYS_CHROOT` capabilities, no `allowPrivilegeEscalation`, no `shareProcessNamespace`
+- **Correct resource limits**: Container resource limits (CPU, memory) apply directly to user code since everything runs in a single cgroup
+- **Simpler pod spec**: Single container, no shared volumes between containers
+- **Compatible with hardened runtimes**: Works with any Kubernetes runtime (gVisor, Kata Containers, etc.)
 
-The sidecar runs as non-root (UID 65532) but requires Linux capabilities to use `nsenter`. Since capabilities for non-root users only populate the *bounding set* (not effective/permitted), we use **file capabilities** via `setcap` on the nsenter binary:
-
-```dockerfile
-# In sidecar Dockerfile
-RUN setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
-```
-
-This allows the non-root user to gain the required capabilities when executing nsenter, without running as root. The pod spec still requires `allowPrivilegeEscalation: true` for file capabilities to be honored. See [SECURITY.md](SECURITY.md) for full details.
-
-**Per-Language Environment Setup:**
-
-Since `nsenter -m` only enters the mount namespace (not the environment), the sidecar explicitly sets up PATH and environment variables for each language:
-
-| Language | Key Environment Variables |
-|----------|--------------------------|
-| Python | `PATH=/usr/local/bin:/usr/bin:/bin`, `PYTHONUNBUFFERED=1` |
-| Node.js | `PATH=/usr/local/bin:...`, `NODE_PATH=/usr/local/lib/node_modules` |
-| Go | `PATH=/usr/local/go/bin:...`, `GOCACHE=/mnt/data/go-build` |
-| Rust | `PATH=/usr/local/cargo/bin:...`, `CARGO_HOME=/usr/local/cargo` |
-| Java | `PATH=/opt/java/openjdk/bin:...`, `CLASSPATH=/mnt/data` |
-| TypeScript | Same as Node.js, uses `tsc` + `node` (not ts-node) |
-
-**TypeScript Note:** TypeScript uses a two-step compilation (`tsc file.ts && node file.js`) instead of `ts-node` because ts-node has stdout capture issues when executed via nsenter.
+**TypeScript Note:** TypeScript uses a two-step compilation (`tsc file.ts && node file.js`) instead of `ts-node`.
 
 ## Core Components
 
@@ -184,9 +170,9 @@ Since `nsenter -m` only enters the mount namespace (not the environment), the si
        └── JobExecutor.execute()
    │
    ▼
-5. HTTP Sidecar
+5. Runner Binary
    ├── POST /execute
-   ├── Run code in main container
+   ├── Run code via subprocess
    └── Return stdout/stderr/files
    │
    ▼
@@ -253,7 +239,6 @@ POD_POOL_EXHAUSTION_TRIGGER=true   # Trigger immediate replenishment when exhaus
 
 ```python
 K8S_NAMESPACE=kubecoderun
-K8S_SIDECAR_IMAGE=aronmuon/kubecoderun-sidecar:latest
 K8S_IMAGE_REGISTRY=aronmuon/kubecoderun
 K8S_IMAGE_TAG=latest
 K8S_CPU_LIMIT=1
@@ -273,10 +258,10 @@ Each execution pod is isolated via:
    - `runAsNonRoot: true`
    - `runAsUser: 65532`
    - Resource limits enforced
-   - Sidecar uses file capabilities (`setcap`) on nsenter binary for required privileges
+   - Zero elevated privileges (no capabilities, no `allowPrivilegeEscalation`)
 3. **Ephemeral Storage**: Pods destroyed after execution
-4. **Non-root Execution**: Both containers run as UID 65532
-5. **Binary-specific Capabilities**: Only the `nsenter` binary has elevated capabilities; other processes cannot gain them
+4. **Non-root Execution**: Container runs as UID 65532
+5. **Hardened Runtime Compatible**: No special capabilities required, works with gVisor, Kata Containers, etc.
 
 ### RBAC Requirements
 
@@ -337,10 +322,11 @@ src/
 docker/
 ├── api/                   # API server container
 │   └── Dockerfile
-├── sidecar/               # HTTP sidecar container
-│   ├── main.py            # FastAPI sidecar server
-│   ├── Dockerfile
-│   └── requirements.txt
+├── runner/                # Embedded runner binary (Go)
+│   ├── main.go            # HTTP server entry point
+│   ├── executor.go        # Language execution commands
+│   ├── files.go           # File handling
+│   └── Dockerfile         # Builds the runner binary
 └── *.Dockerfile           # Language execution environments
 
 helm-deployments/

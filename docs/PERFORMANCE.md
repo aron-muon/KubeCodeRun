@@ -6,7 +6,7 @@ This document provides performance benchmarks, tuning recommendations, and monit
 
 ### Baseline Metrics (With Optimizations)
 
-The following metrics represent typical performance with all optimizations enabled (pod pooling, HTTP sidecar):
+The following metrics represent typical performance with all optimizations enabled (pod pooling, embedded runner):
 
 | Metric                         | Value      | Notes                            |
 | ------------------------------ | ---------- | -------------------------------- |
@@ -40,8 +40,8 @@ Request → Create Job → Pod Scheduled → Start → Execute → Cleanup
          Total: ~3-10s
 
 With Pool:
-Request → Acquire from Pool → Execute via Sidecar → Destroy → (Background: Replenish)
-         [~10-50ms]           [~50-100ms]           [~50ms]
+Request → Acquire from Pool → Execute via Runner → Destroy → (Background: Replenish)
+         [~10-50ms]           [~50-100ms]          [~50ms]
          Total: ~100-200ms
 ```
 
@@ -60,21 +60,21 @@ POD_POOL_REPLENISH_INTERVAL=2       # Seconds between replenishment checks
 POD_POOL_EXHAUSTION_TRIGGER=true    # Immediate replenish when pool exhausted
 ```
 
-### 2. HTTP Sidecar Communication
+### 2. HTTP Runner Communication
 
-Each execution pod has an HTTP sidecar that handles communication:
+Each execution pod has an embedded Go runner binary that handles communication:
 
 ```
 Request Flow:
-API → HTTP POST to Sidecar → Sidecar executes code → Response
-      [~5-10ms]              [~50-100ms]              [~5ms]
+API → HTTP POST to Runner → Runner executes code → Response
+      [~5-10ms]             [~50-100ms]             [~5ms]
       Total: ~60-115ms
 ```
 
-**Sidecar Endpoints:**
+**Runner Endpoints:**
 
 - `POST /execute` - Execute code with optional state
-- `POST /files` - Upload files to shared volume
+- `POST /files` - Upload files to working directory
 - `GET /files` - List/download generated files
 - `GET /health` - Health check
 
@@ -158,7 +158,7 @@ Authentication              ~1ms
 Session lookup              ~2ms
 State load (if exists)      ~3ms
 Pod acquire from pool       ~10-50ms
-HTTP sidecar communication  ~5ms
+HTTP runner communication    ~5ms
 Code execution              ~50ms
 State save                  ~3ms
 Response building           ~2ms

@@ -175,7 +175,6 @@ Kubernetes is used for secure code execution in isolated pods.
 | Variable               | Default                                      | Description                              |
 | ---------------------- | -------------------------------------------- | ---------------------------------------- |
 | `K8S_NAMESPACE`        | `""` (uses API's namespace)                  | Namespace for execution pods             |
-| `K8S_SIDECAR_IMAGE`    | `aronmuon/kubecoderun-sidecar:latest` | HTTP sidecar image for pod communication |
 | `K8S_IMAGE_REGISTRY`   | `aronmuon/kubecoderun`              | Registry prefix for language images      |
 | `K8S_IMAGE_TAG`        | `latest`                                     | Image tag for language images            |
 | `K8S_CPU_LIMIT`        | `1`                                          | CPU limit per execution pod              |
@@ -185,12 +184,12 @@ Kubernetes is used for secure code execution in isolated pods.
 
 **Security Notes:**
 
-- Both containers run with `runAsNonRoot: true` and `runAsUser: 65532`
-- The sidecar uses file capabilities (`setcap`) on the `nsenter` binary to allow non-root users to enter namespaces
-- Required pod capabilities (SYS_PTRACE, SYS_ADMIN, SYS_CHROOT) must be in the bounding set with `allowPrivilegeEscalation: true`
+- The container runs with `runAsNonRoot: true` and `runAsUser: 65532`
+- Zero elevated privileges: no capabilities added, `allowPrivilegeEscalation: false`
+- Resource limits apply directly to user code (single container, single cgroup)
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
-- See [SECURITY.md](SECURITY.md) for detailed explanation of the nsenter privilege model
+- See [SECURITY.md](SECURITY.md) for the full security model
 
 ### Resource Limits
 

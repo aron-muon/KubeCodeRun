@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       api: ${{ steps.filter.outputs.api }}
-      sidecar: ${{ steps.filter.outputs.sidecar }}
+      runner: ${{ steps.filter.outputs.runner }}
       python: ${{ steps.filter.outputs.python }}
       javascript: ${{ steps.filter.outputs.javascript }}
       go: ${{ steps.filter.outputs.go }}
@@ -79,8 +79,8 @@ jobs:
               - 'docker/api/Dockerfile'
               - 'pyproject.toml'
               - 'uv.lock'
-            sidecar:
-              - 'docker/sidecar/**'
+            runner:
+              - 'docker/runner/**'
             python:
               - 'docker/python.Dockerfile'
             javascript:
@@ -137,26 +137,27 @@ jobs:
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
 
-  sidecar:
+  runner:
     needs: changes
     if: |
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.sidecar == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
-      dockerfile: docker/sidecar/Dockerfile
-      context: docker/sidecar
+      image_name: kubecoderun-runner
+      dockerfile: docker/runner/Dockerfile
+      context: docker/runner
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}
       version: ${{ needs.changes.outputs.version }}
 
   python:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.python == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.python == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -168,10 +169,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   javascript:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -183,10 +185,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   typescript:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.javascript == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -198,10 +201,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   go:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.go == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.go == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -213,10 +217,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   java:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.java == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.java == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -228,10 +233,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   c-cpp:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.c-cpp == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.c-cpp == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -243,10 +249,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   php:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.php == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.php == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -258,10 +265,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   rust:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.rust == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.rust == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -273,10 +281,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   r:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.r == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.r == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -288,10 +297,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   fortran:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.fortran == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.fortran == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -303,10 +313,11 @@ jobs:
       version: ${{ needs.changes.outputs.version }}
 
   d:
-    needs: changes
+    needs: [changes, runner]
     if: |
+      !failure() && !cancelled() &&
       needs.changes.outputs.is_cross_repo_pr != 'true' &&
-      (needs.changes.outputs.d == 'true' || needs.changes.outputs.force_all == 'true')
+      (needs.changes.outputs.d == 'true' || needs.changes.outputs.runner == 'true' || needs.changes.outputs.force_all == 'true')
     uses: ./.github/workflows/docker-build-reusable.yml
     secrets: inherit
     with:
@@ -334,17 +345,17 @@ jobs:
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
 
-  retag-sidecar:
+  retag-runner:
     needs: changes
     if: |
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
-      needs.changes.outputs.sidecar != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
     with:
-      image_name: kubecoderun-sidecar
+      image_name: kubecoderun-runner
       new_tag: ${{ needs.changes.outputs.image_tag }}
       previous_tag: ${{ needs.changes.outputs.previous_tag }}
 
@@ -354,6 +365,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.python != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -368,6 +380,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.javascript != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -382,6 +395,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.javascript != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -396,6 +410,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.go != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -410,6 +425,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.java != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -424,6 +440,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.c-cpp != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -438,6 +455,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.php != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -452,6 +470,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.rust != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -466,6 +485,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.r != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -480,6 +500,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.fortran != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit
@@ -494,6 +515,7 @@ jobs:
       needs.changes.outputs.is_release == 'true' &&
       needs.changes.outputs.previous_tag != '' &&
       needs.changes.outputs.d != 'true' &&
+      needs.changes.outputs.runner != 'true' &&
       needs.changes.outputs.force_all != 'true'
     uses: ./.github/workflows/docker-retag-reusable.yml
     secrets: inherit

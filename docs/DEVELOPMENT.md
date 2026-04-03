@@ -97,9 +97,12 @@ just test-cov
 
 ## Building Container Images
 
-The API requires language-specific execution images and the HTTP sidecar image.
+The API requires language-specific execution images. Each language image embeds the runner binary via a multi-stage Docker build (`COPY --from=runner /runner /usr/local/bin/runner`).
 
 ```bash
+# Build the runner binary first (used as a build stage by language images)
+docker build -t kubecoderun/runner:latest docker/runner/
+
 # Build individual language images (from project root)
 docker build -f docker/python.Dockerfile -t kubecoderun/python:latest .
 docker build -f docker/nodejs.Dockerfile -t kubecoderun/nodejs:latest .
@@ -111,9 +114,6 @@ docker build -f docker/c-cpp.Dockerfile -t kubecoderun/c-cpp:latest .
 docker build -f docker/r.Dockerfile -t kubecoderun/r:latest .
 docker build -f docker/fortran.Dockerfile -t kubecoderun/fortran:latest .
 docker build -f docker/d.Dockerfile -t kubecoderun/d:latest .
-
-# Build the HTTP sidecar image
-docker build -t kubecoderun/sidecar:latest docker/sidecar/
 ```
 
 For more details on Kubernetes pod management, see [ARCHITECTURE.md](ARCHITECTURE.md).

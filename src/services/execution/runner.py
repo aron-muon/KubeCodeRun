@@ -1,7 +1,7 @@
 """Code execution runner - core execution logic.
 
 This module provides the CodeExecutionRunner that coordinates code execution
-using Kubernetes pods with HTTP sidecar communication.
+using Kubernetes pods with HTTP runner communication.
 """
 
 import asyncio
@@ -34,7 +34,7 @@ class CodeExecutionRunner:
     This runner uses KubernetesManager which:
     - Uses warm pod pools for hot-path languages (Python, JS)
     - Uses Kubernetes Jobs for cold-path languages (Go, Rust)
-    - Communicates with pods via HTTP sidecar
+    - Communicates with pods via HTTP runner
     """
 
     def __init__(self, kubernetes_manager: KubernetesManager = None):

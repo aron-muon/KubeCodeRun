@@ -546,7 +546,7 @@ class ExecutionOrchestrator:
         return generated
 
     async def _get_file_from_container(self, container: Any, file_path: str) -> bytes:
-        """Get file content from the execution pod via sidecar HTTP API.
+        """Get file content from the execution pod via runner HTTP API.
 
         Args:
             container: PodHandle object (passed directly, no session lookup needed)

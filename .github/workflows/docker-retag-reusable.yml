@@ -6,7 +6,7 @@ on:
       image_name:
         required: true
         type: string
-        description: 'Image name (e.g., kubecoderun-sidecar)'
+        description: 'Image name (e.g., kubecoderun-runner)'
       new_tag:
         required: true
         type: string
