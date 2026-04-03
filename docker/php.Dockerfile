@@ -1,9 +1,6 @@
 # syntax=docker/dockerfile:1
 # PHP execution environment with Docker Hardened Images.
 
-ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
-FROM ${RUNNER_IMAGE} AS runner
-
 # PHP version configuration - single source of truth
 # These must be declared before any FROM to be available in all stages.
 ARG PHP_VERSION=8.5.3
