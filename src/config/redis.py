@@ -1,6 +1,8 @@
 """Redis configuration."""
 
-from pydantic import Field
+from urllib.parse import urlparse
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +18,27 @@ class RedisConfig(BaseSettings):
     host: str = Field(default="localhost", alias="redis_host")
     port: int = Field(default=6379, ge=1, le=65535, alias="redis_port")
     password: str | None = Field(default=None, alias="redis_password")
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def _sanitize_host(cls, v: str) -> str:
+        """Extract hostname from accidental URL in REDIS_HOST.
+
+        Users sometimes set REDIS_HOST=redis://hostname:6380 or
+        REDIS_HOST=rediss://hostname instead of just the hostname.
+        """
+        if isinstance(v, str) and v.startswith(("redis://", "rediss://")):
+            parsed = urlparse(v)
+            return parsed.hostname or "localhost"
+        return v
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def _empty_to_none(cls, v: str | None) -> str | None:
+        """Treat empty string as None (Helm/ConfigMap renders '' not null)."""
+        if isinstance(v, str) and v.strip() == "":
+            return None
+        return v
     db: int = Field(default=0, ge=0, le=15, alias="redis_db")
     url: str | None = Field(default=None, alias="redis_url")
     max_connections: int = Field(default=20, ge=1, alias="redis_max_connections")
