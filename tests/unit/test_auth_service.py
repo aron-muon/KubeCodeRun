@@ -35,7 +35,9 @@ def mock_redis_client():
 @pytest.fixture
 def auth_service(mock_redis_client):
     """Create an authentication service instance."""
-    return AuthenticationService(mock_redis_client)
+    with patch("src.core.pool.redis_pool") as mock_pool:
+        mock_pool.key_prefix = ""
+        return AuthenticationService(mock_redis_client)
 
 
 @pytest.fixture
@@ -63,7 +65,9 @@ class TestAuthenticationServiceInit:
 
     def test_init_without_redis(self):
         """Test initialization without Redis client."""
-        service = AuthenticationService(None)
+        with patch("src.core.pool.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            service = AuthenticationService(None)
 
         assert service.redis_client is None
 
@@ -372,7 +376,9 @@ class TestLogAuthenticationAttempt:
     @pytest.mark.asyncio
     async def test_log_failed_attempt_no_redis(self):
         """Test logging failed attempt without Redis."""
-        service = AuthenticationService(None)
+        with patch("src.core.pool.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            service = AuthenticationService(None)
         request_info = {"client_ip": "127.0.0.1", "endpoint": "/api/v1/exec"}
 
         # Should not raise
@@ -385,7 +391,9 @@ class TestCheckRateLimit:
     @pytest.mark.asyncio
     async def test_check_rate_limit_no_redis(self):
         """Test rate limit check without Redis."""
-        service = AuthenticationService(None)
+        with patch("src.core.pool.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            service = AuthenticationService(None)
 
         result = await service.check_rate_limit("127.0.0.1")
 
@@ -434,7 +442,9 @@ class TestGetAuthenticationStats:
     @pytest.mark.asyncio
     async def test_get_stats_no_redis(self):
         """Test getting stats without Redis."""
-        service = AuthenticationService(None)
+        with patch("src.core.pool.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            service = AuthenticationService(None)
 
         result = await service.get_authentication_stats()
 

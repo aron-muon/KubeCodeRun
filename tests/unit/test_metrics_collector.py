@@ -679,7 +679,7 @@ class TestLoadMetricsFromRedis:
         # Should not raise
         await collector._load_metrics_from_redis()
 
-        collector._redis_client.get.assert_called_once_with("metrics:current")
+        collector._redis_client.get.assert_called_once_with(f"{collector._key_prefix}metrics:current")
 
     @pytest.mark.asyncio
     async def test_load_handles_error(self):

@@ -31,13 +31,6 @@ logger = structlog.get_logger(__name__)
 class ApiKeyManagerService:
     """Manages API keys stored in Redis."""
 
-    # Redis key prefixes
-    RECORD_PREFIX = "api_keys:records:"
-    VALID_CACHE_PREFIX = "api_keys:valid:"
-    USAGE_PREFIX = "api_keys:usage:"
-    INDEX_KEY = "api_keys:index"
-    ENV_KEYS_INDEX = "api_keys:env_index"  # Separate index for env keys
-
     # Cache TTL
     VALIDATION_CACHE_TTL = 300  # 5 minutes
 
@@ -48,6 +41,12 @@ class ApiKeyManagerService:
             redis_client: Optional Redis client, uses shared pool if not provided
         """
         self._redis = redis_client
+        p = redis_pool.key_prefix
+        self.RECORD_PREFIX = f"{p}api_keys:records:"
+        self.VALID_CACHE_PREFIX = f"{p}api_keys:valid:"
+        self.USAGE_PREFIX = f"{p}api_keys:usage:"
+        self.INDEX_KEY = f"{p}api_keys:index"
+        self.ENV_KEYS_INDEX = f"{p}api_keys:env_index"
 
     @property
     def redis(self) -> redis.Redis:
@@ -131,7 +130,7 @@ class ApiKeyManagerService:
             )
 
             # Store in Redis
-            pipe = self.redis.pipeline(transaction=True)
+            pipe = self.redis.pipeline(transaction=False)
             pipe.hset(record_key, mapping=record.to_redis_hash())
             pipe.sadd(self.ENV_KEYS_INDEX, key_hash)
             await pipe.execute()
@@ -239,7 +238,7 @@ class ApiKeyManagerService:
 
         # Store in Redis
         record_key = f"{self.RECORD_PREFIX}{key_hash}"
-        pipe = self.redis.pipeline(transaction=True)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.hset(record_key, mapping=record.to_redis_hash())
         pipe.sadd(self.INDEX_KEY, key_hash)
         await pipe.execute()
@@ -359,7 +358,7 @@ class ApiKeyManagerService:
             return False
 
         # Delete from Redis
-        pipe = self.redis.pipeline(transaction=True)
+        pipe = self.redis.pipeline(transaction=False)
         pipe.delete(record_key)
         pipe.srem(self.INDEX_KEY, key_hash)
         pipe.delete(f"{self.VALID_CACHE_PREFIX}{self._short_hash(key_hash)}")

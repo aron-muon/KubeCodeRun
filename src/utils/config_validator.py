@@ -96,16 +96,49 @@ class ConfigValidator:
     def _validate_redis_connection(self):
         """Validate Redis connection."""
         try:
-            # Use Redis URL from settings
-            client = redis.from_url(
-                settings.get_redis_url(),
-                socket_timeout=settings.redis_socket_timeout,
-                socket_connect_timeout=settings.redis_socket_connect_timeout,
-                max_connections=settings.redis_max_connections,
-            )
+            mode = settings.redis_mode
+            ssl_kwargs = settings.redis.get_ssl_kwargs()
 
-            # Test connection
-            client.ping()
+            if mode == "cluster":
+                from redis.cluster import RedisCluster as SyncCluster
+
+                nodes = settings.redis.parse_nodes(settings.redis_cluster_nodes)
+                if not nodes:
+                    self.errors.append("REDIS_CLUSTER_NODES required for cluster mode")
+                    return
+                client = SyncCluster(
+                    host=nodes[0][0],
+                    port=nodes[0][1],
+                    decode_responses=True,
+                    socket_timeout=settings.redis_socket_timeout,
+                    **ssl_kwargs,
+                )
+                client.ping()
+                client.close()
+            elif mode == "sentinel":
+                from redis.sentinel import Sentinel as SyncSentinel
+
+                nodes = settings.redis.parse_nodes(settings.redis_sentinel_nodes)
+                if not nodes:
+                    self.errors.append("REDIS_SENTINEL_NODES required for sentinel mode")
+                    return
+                sentinel = SyncSentinel(nodes, socket_timeout=settings.redis_socket_timeout, **ssl_kwargs)
+                master = sentinel.master_for(
+                    settings.redis_sentinel_master,
+                    db=settings.redis_sentinel_db,
+                    socket_timeout=settings.redis_socket_timeout,
+                )
+                master.ping()
+                master.close()
+            else:
+                client = redis.from_url(
+                    settings.get_redis_url(),
+                    socket_timeout=settings.redis_socket_timeout,
+                    socket_connect_timeout=settings.redis_socket_connect_timeout,
+                    **ssl_kwargs,
+                )
+                client.ping()
+                client.close()
 
         except redis.ConnectionError as e:
             # Treat as warning in development mode to allow startup without Redis

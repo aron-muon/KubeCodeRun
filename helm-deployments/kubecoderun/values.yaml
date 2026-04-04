@@ -111,6 +111,33 @@ redis:
   socketTimeout: 5
   socketConnectTimeout: 5
 
+  # Redis deployment mode: standalone, cluster, or sentinel
+  mode: standalone
+  # Key prefix for multi-tenant Redis (e.g. "kcr:")
+  keyPrefix: ""
+
+  # TLS/SSL Configuration
+  ssl:
+    enabled: false
+    caCerts: ""           # Path to CA certificate
+    certReqs: "required"  # required, optional, none
+    certFile: ""          # Client certificate (for mTLS)
+    keyFile: ""           # Client key (for mTLS)
+    checkHostname: true
+
+  # Cluster mode configuration
+  cluster:
+    # Comma-separated startup nodes (e.g. "redis-0:6379,redis-1:6379,redis-2:6379")
+    nodes: ""
+
+  # Sentinel mode configuration
+  sentinel:
+    # Comma-separated sentinel nodes (e.g. "sentinel-0:26379,sentinel-1:26379,sentinel-2:26379")
+    nodes: ""
+    master: "mymaster"
+    password: ""  # Password for sentinel nodes (stored in Secret)
+    db: 0
+
 minio:
   # Reference an existing Kubernetes Secret containing S3 credentials
   # When set, the accessKey/secretKey fields below are ignored

@@ -35,6 +35,9 @@ class AuthenticationService:
         self.redis_client = redis_client
         self._cache_ttl = 300  # 5 minutes cache for API key validation
         self._api_key_manager = None
+        from ..core.pool import redis_pool
+
+        self._prefix = redis_pool.key_prefix
 
     @property
     def api_key_manager(self):
@@ -194,7 +197,7 @@ class AuthenticationService:
         if not success and self.redis_client:
             try:
                 client_ip = request_info.get("client_ip", "unknown")
-                fail_key = f"auth_failures:{client_ip}"
+                fail_key = f"{self._prefix}auth_failures:{client_ip}"
                 await self.redis_client.incr(fail_key)
                 await self.redis_client.expire(fail_key, 3600)  # 1 hour window
             except Exception as e:
@@ -231,7 +234,7 @@ class AuthenticationService:
 
         try:
             # Get recent authentication failures
-            pattern = "auth_failures:*"
+            pattern = f"{self._prefix}auth_failures:*"
             keys = []
             async for key in self.redis_client.scan_iter(match=pattern):
                 keys.append(key.decode())

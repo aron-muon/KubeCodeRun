@@ -96,6 +96,21 @@ class Settings(BaseSettings):
     redis_max_connections: int = Field(default=20, ge=1)
     redis_socket_timeout: int = Field(default=5, ge=1)
     redis_socket_connect_timeout: int = Field(default=5, ge=1)
+    redis_mode: str = Field(default="standalone", description="Redis mode: standalone, cluster, or sentinel")
+    redis_key_prefix: str = Field(default="", description="Key prefix for multi-tenant Redis")
+    redis_ssl: bool = Field(default=False, description="Enable Redis TLS/SSL")
+    redis_ssl_ca_certs: str | None = Field(default=None, description="Path to CA certificate")
+    redis_ssl_certfile: str | None = Field(default=None, description="Path to client certificate")
+    redis_ssl_keyfile: str | None = Field(default=None, description="Path to client key")
+    redis_ssl_cert_reqs: str = Field(
+        default="required", description="Certificate verification: required, optional, none"
+    )
+    redis_ssl_check_hostname: bool = Field(default=True, description="Verify hostname in certificate")
+    redis_cluster_nodes: str = Field(default="", description="Cluster startup nodes (comma-separated host:port)")
+    redis_sentinel_nodes: str = Field(default="", description="Sentinel nodes (comma-separated host:port)")
+    redis_sentinel_master: str = Field(default="mymaster", description="Sentinel master service name")
+    redis_sentinel_password: str | None = Field(default=None, description="Password for sentinel nodes")
+    redis_sentinel_db: int = Field(default=0, ge=0, le=15, description="Database for sentinel-managed instance")
 
     # MinIO/S3 Configuration
     minio_endpoint: str = Field(default="localhost:9000")
@@ -486,6 +501,19 @@ class Settings(BaseSettings):
             redis_max_connections=self.redis_max_connections,
             redis_socket_timeout=self.redis_socket_timeout,
             redis_socket_connect_timeout=self.redis_socket_connect_timeout,
+            redis_mode=self.redis_mode,
+            redis_key_prefix=self.redis_key_prefix,
+            redis_ssl=self.redis_ssl,
+            redis_ssl_ca_certs=self.redis_ssl_ca_certs,
+            redis_ssl_certfile=self.redis_ssl_certfile,
+            redis_ssl_keyfile=self.redis_ssl_keyfile,
+            redis_ssl_cert_reqs=self.redis_ssl_cert_reqs,
+            redis_ssl_check_hostname=self.redis_ssl_check_hostname,
+            redis_cluster_nodes=self.redis_cluster_nodes,
+            redis_sentinel_nodes=self.redis_sentinel_nodes,
+            redis_sentinel_master=self.redis_sentinel_master,
+            redis_sentinel_password=self.redis_sentinel_password,
+            redis_sentinel_db=self.redis_sentinel_db,
         )
 
     @property

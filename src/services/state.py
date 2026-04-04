@@ -39,12 +39,6 @@ class StateService:
     Only used for Python sessions where state persistence is enabled.
     """
 
-    # Redis key prefixes
-    KEY_PREFIX = "session:state:"
-    HASH_KEY_PREFIX = "session:state:hash:"
-    META_KEY_PREFIX = "session:state:meta:"
-    UPLOAD_MARKER_PREFIX = "session:state:uploaded:"
-
     def __init__(self, redis_client: redis.Redis | None = None):
         """Initialize the state service.
 
@@ -52,6 +46,11 @@ class StateService:
             redis_client: Optional Redis client, uses shared pool if not provided
         """
         self.redis = redis_client or redis_pool.get_client()
+        p = redis_pool.key_prefix
+        self.KEY_PREFIX = f"{p}session:state:"
+        self.HASH_KEY_PREFIX = f"{p}session:state:hash:"
+        self.META_KEY_PREFIX = f"{p}session:state:meta:"
+        self.UPLOAD_MARKER_PREFIX = f"{p}session:state:uploaded:"
 
     def _state_key(self, session_id: str) -> str:
         """Generate Redis key for session state."""
@@ -134,7 +133,7 @@ class StateService:
             now = datetime.now(UTC)
 
             # Use pipeline for atomic operations
-            pipe = self.redis.pipeline(transaction=True)
+            pipe = self.redis.pipeline(transaction=False)
 
             # Save state
             pipe.setex(self._state_key(session_id), ttl_seconds, state_b64)
@@ -273,29 +272,16 @@ class StateService:
 
         results: list[str] = []
         try:
-            # Scan for state keys
-            cursor = 0
             pattern = f"{self.KEY_PREFIX}*"
-
-            while len(results) < limit:
-                cursor, keys = await self.redis.scan(cursor=cursor, match=pattern, count=100)
-
-                for key in keys:
-                    if len(results) >= limit:
-                        break
-
-                    # Get TTL for each key
-                    ttl = await self.redis.ttl(key)
-                    if ttl > 0 and ttl <= ttl_threshold:
-                        # Get size
-                        size = await self.redis.strlen(key)
-                        # Extract session_id from key
-                        session_id = key.decode() if isinstance(key, bytes) else key
-                        session_id = session_id.replace(self.KEY_PREFIX, "")
-                        results.append((session_id, ttl, size))
-
-                if cursor == 0:
+            async for key in self.redis.scan_iter(match=pattern, count=100):
+                if len(results) >= limit:
                     break
+                ttl = await self.redis.ttl(key)
+                if ttl > 0 and ttl <= ttl_threshold:
+                    size = await self.redis.strlen(key)
+                    session_id = key.decode() if isinstance(key, bytes) else key
+                    session_id = session_id.replace(self.KEY_PREFIX, "")
+                    results.append((session_id, ttl, size))
 
             logger.debug(
                 "Found states for archival",

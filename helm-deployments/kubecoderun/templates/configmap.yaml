@@ -309,6 +309,30 @@ data:
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
   REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
   REDIS_SOCKET_CONNECT_TIMEOUT: {{ .Values.redis.socketConnectTimeout | quote }}
+  REDIS_MODE: {{ .Values.redis.mode | quote }}
+  {{- if .Values.redis.keyPrefix }}
+  REDIS_KEY_PREFIX: {{ .Values.redis.keyPrefix | quote }}
+  {{- end }}
+  REDIS_SSL: {{ .Values.redis.ssl.enabled | quote }}
+  {{- if .Values.redis.ssl.caCerts }}
+  REDIS_SSL_CA_CERTS: {{ .Values.redis.ssl.caCerts | quote }}
+  {{- end }}
+  REDIS_SSL_CERT_REQS: {{ .Values.redis.ssl.certReqs | quote }}
+  {{- if .Values.redis.ssl.certFile }}
+  REDIS_SSL_CERTFILE: {{ .Values.redis.ssl.certFile | quote }}
+  {{- end }}
+  {{- if .Values.redis.ssl.keyFile }}
+  REDIS_SSL_KEYFILE: {{ .Values.redis.ssl.keyFile | quote }}
+  {{- end }}
+  REDIS_SSL_CHECK_HOSTNAME: {{ .Values.redis.ssl.checkHostname | quote }}
+  {{- if eq .Values.redis.mode "cluster" }}
+  REDIS_CLUSTER_NODES: {{ .Values.redis.cluster.nodes | quote }}
+  {{- end }}
+  {{- if eq .Values.redis.mode "sentinel" }}
+  REDIS_SENTINEL_NODES: {{ .Values.redis.sentinel.nodes | quote }}
+  REDIS_SENTINEL_MASTER: {{ .Values.redis.sentinel.master | quote }}
+  REDIS_SENTINEL_DB: {{ .Values.redis.sentinel.db | quote }}
+  {{- end }}
 
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}

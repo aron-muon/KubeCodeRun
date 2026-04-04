@@ -151,7 +151,10 @@ class HealthCheckService:
             await self._redis_client.ping()
 
             # Test read/write operations
-            test_key = "health_check:test"
+            from ..core.pool import redis_pool
+
+            _prefix = redis_pool.key_prefix
+            test_key = f"{_prefix}health_check:test"
             test_value = f"test_{int(time.time())}"
 
             await self._redis_client.set(test_key, test_value, ex=60)
@@ -163,6 +166,9 @@ class HealthCheckService:
 
             # Get Redis info
             info = await self._redis_client.info()
+            # RedisCluster returns {node_name: info_dict, ...}
+            if isinstance(info, dict) and info and all(isinstance(v, dict) for v in info.values()):
+                info = next(iter(info.values()))
 
             response_time = (time.time() - start_time) * 1000
 

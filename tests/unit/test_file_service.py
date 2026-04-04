@@ -45,11 +45,12 @@ def file_service(mock_minio_client, mock_redis_client):
         mock_minio_config = MagicMock()
         mock_minio_config.create_client.return_value = mock_minio_client
         mock_settings.minio = mock_minio_config
-        mock_settings.get_redis_url.return_value = "redis://localhost:6379"
         mock_settings.minio_bucket = "test-bucket"
         mock_settings.get_session_ttl_minutes.return_value = 60
 
-        with patch("src.services.file.redis.from_url", return_value=mock_redis_client):
+        with patch("src.services.file.redis_pool") as mock_pool:
+            mock_pool.get_client.return_value = mock_redis_client
+            mock_pool.key_prefix = ""
             from src.services.file import FileService
 
             service = FileService()

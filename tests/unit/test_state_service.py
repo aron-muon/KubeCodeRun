@@ -30,6 +30,7 @@ def state_service(mock_redis_client):
     """Create StateService with mocked Redis."""
     with patch("src.services.state.redis_pool") as mock_pool:
         mock_pool.get_client.return_value = mock_redis_client
+        mock_pool.key_prefix = ""
         service = StateService(redis_client=mock_redis_client)
         return service
 
@@ -483,7 +484,12 @@ class TestGetStatesForArchival:
     @pytest.mark.asyncio
     async def test_get_states_for_archival_finds_states(self, state_service, mock_redis_client):
         """Test finding states ready for archival."""
-        mock_redis_client.scan.return_value = (0, [b"session:state:session-1", b"session:state:session-2"])
+
+        async def mock_scan_iter(**kwargs):
+            for key in [b"session:state:session-1", b"session:state:session-2"]:
+                yield key
+
+        mock_redis_client.scan_iter = mock_scan_iter
         mock_redis_client.ttl.side_effect = [100, 200]
         mock_redis_client.strlen.side_effect = [1024, 2048]
 
@@ -497,7 +503,12 @@ class TestGetStatesForArchival:
     @pytest.mark.asyncio
     async def test_get_states_for_archival_empty(self, state_service, mock_redis_client):
         """Test when no states are ready for archival."""
-        mock_redis_client.scan.return_value = (0, [])
+
+        async def mock_scan_iter(**kwargs):
+            for _ in []:  # empty async generator
+                yield
+
+        mock_redis_client.scan_iter = mock_scan_iter
 
         with patch("src.services.state.settings") as mock_settings:
             mock_settings.state_ttl_seconds = 7200
@@ -509,7 +520,12 @@ class TestGetStatesForArchival:
     @pytest.mark.asyncio
     async def test_get_states_for_archival_handles_error(self, state_service, mock_redis_client):
         """Test get_states_for_archival handles Redis errors."""
-        mock_redis_client.scan.side_effect = Exception("Redis error")
+
+        async def mock_scan_iter(**kwargs):
+            raise Exception("Redis error")
+            yield  # noqa: F841 - makes this an async generator
+
+        mock_redis_client.scan_iter = mock_scan_iter
 
         with patch("src.services.state.settings") as mock_settings:
             mock_settings.state_ttl_seconds = 7200

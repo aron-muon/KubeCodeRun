@@ -36,6 +36,7 @@ class SessionService(SessionServiceInterface):
         self._execution_service = execution_service
         self._file_service = file_service
         self._redis_available = False
+        self._prefix = redis_pool.key_prefix
         logger.info("Redis client created", url=settings.get_redis_url().split("@")[-1])
 
     async def _check_redis_connectivity(self) -> bool:
@@ -122,15 +123,15 @@ class SessionService(SessionServiceInterface):
 
     def _session_key(self, session_id: str) -> str:
         """Generate Redis key for session data."""
-        return f"sessions:{session_id}"
+        return f"{self._prefix}sessions:{session_id}"
 
     def _session_index_key(self) -> str:
         """Generate Redis key for session index."""
-        return "sessions:index"
+        return f"{self._prefix}sessions:index"
 
     def _entity_sessions_key(self, entity_id: str) -> str:
         """Generate Redis key for entity-based session grouping."""
-        return f"entity_sessions:{entity_id}"
+        return f"{self._prefix}entity_sessions:{entity_id}"
 
     async def create_session(self, request: SessionCreate) -> Session:
         """Create a new code execution session."""
@@ -175,8 +176,8 @@ class SessionService(SessionServiceInterface):
         # Extract entity_id from metadata if provided
         entity_id = request.metadata.get("entity_id") if request.metadata else None
 
-        # Use Redis transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
+        # Use Redis pipeline for atomicity
+        pipe = self.redis.pipeline(transaction=False)
         try:
             # Store session data
             pipe.hset(session_key, mapping=session_data)
@@ -194,8 +195,6 @@ class SessionService(SessionServiceInterface):
         except Exception as e:
             logger.error("Redis pipeline execution failed", session_id=session_id, error=str(e))
             raise
-        finally:
-            await pipe.reset()
 
         logger.info(
             "Session created",
@@ -319,21 +318,18 @@ class SessionService(SessionServiceInterface):
                 )
                 # Continue with session deletion even if file cleanup fails
 
-        # Use transaction to ensure atomicity
-        pipe = await self.redis.pipeline(transaction=True)
-        try:
-            # Remove session data
-            pipe.delete(session_key)
-            # Remove from session index
-            pipe.srem(self._session_index_key(), session_id)
+        # Use pipeline to ensure atomicity
+        pipe = self.redis.pipeline(transaction=False)
+        # Remove session data
+        pipe.delete(session_key)
+        # Remove from session index
+        pipe.srem(self._session_index_key(), session_id)
 
-            # Remove from entity-based grouping if entity_id exists
-            if entity_id:
-                pipe.srem(self._entity_sessions_key(entity_id), session_id)
+        # Remove from entity-based grouping if entity_id exists
+        if entity_id:
+            pipe.srem(self._entity_sessions_key(entity_id), session_id)
 
-            result = await pipe.execute()
-        finally:
-            await pipe.reset()
+        result = await pipe.execute()
 
         deleted = result[0] > 0  # First command result (delete)
 

@@ -6,11 +6,11 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 # Third-party imports
-import redis.asyncio as redis
 import structlog
 from minio.error import S3Error
 
 from ..config import settings
+from ..core.pool import redis_pool
 from ..models import FileInfo, FileUploadRequest
 from ..utils.id_generator import generate_file_id
 
@@ -29,8 +29,9 @@ class FileService(FileServiceInterface):
         # which handles IAM vs static credentials automatically
         self.minio_client = settings.minio.create_client()
 
-        # Initialize Redis client
-        self.redis_client = redis.from_url(settings.get_redis_url(), decode_responses=True)
+        # Use shared Redis connection pool
+        self.redis_client = redis_pool.get_client()
+        self._prefix = redis_pool.key_prefix
 
         self.bucket_name = settings.minio_bucket
 
@@ -55,11 +56,11 @@ class FileService(FileServiceInterface):
 
     def _get_file_metadata_key(self, session_id: str, file_id: str) -> str:
         """Generate Redis key for file metadata."""
-        return f"files:{session_id}:{file_id}"
+        return f"{self._prefix}files:{session_id}:{file_id}"
 
     def _get_session_files_key(self, session_id: str) -> str:
         """Generate Redis key for session file list."""
-        return f"session_files:{session_id}"
+        return f"{self._prefix}session_files:{session_id}"
 
     async def _store_file_metadata(self, session_id: str, file_id: str, metadata: dict[str, Any]) -> None:
         """Store file metadata in Redis."""
@@ -543,7 +544,7 @@ class FileService(FileServiceInterface):
         """
         try:
             # Fetch the current set of active session IDs from Redis
-            active_session_ids = await self.redis_client.smembers("sessions:index")
+            active_session_ids = await self.redis_client.smembers(f"{self._prefix}sessions:index")
             active_session_ids = active_session_ids or set()
 
             # Guard 1: if index is empty, skip to avoid accidental bulk deletes
@@ -610,7 +611,7 @@ class FileService(FileServiceInterface):
                 # Double-check via Redis existence in case index is stale
                 if object_session_id not in checked_missing_sessions:
                     try:
-                        exists = await self.redis_client.exists(f"sessions:{object_session_id}")
+                        exists = await self.redis_client.exists(f"{self._prefix}sessions:{object_session_id}")
                         checked_missing_sessions[object_session_id] = bool(exists)
                     except Exception as e:
                         logger.error(

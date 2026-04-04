@@ -76,6 +76,7 @@ class MetricsCollector:
     def __init__(self):
         """Initialize metrics collector."""
         self._redis_client: redis.Redis | None = None
+        self._key_prefix = ""
         self._metrics_buffer: deque = deque(maxlen=10000)  # Buffer for recent metrics
         self._counters: dict[str, float] = defaultdict(float)
         self._gauges: dict[str, float] = {}
@@ -115,6 +116,7 @@ class MetricsCollector:
             from ..core.pool import redis_pool
 
             self._redis_client = redis_pool.get_client()
+            self._key_prefix = redis_pool.key_prefix
 
             # Test Redis connection with timeout
             await asyncio.wait_for(self._redis_client.ping(), timeout=3.0)
@@ -392,7 +394,7 @@ class MetricsCollector:
 
             # Store in Redis with TTL
             await self._redis_client.setex(
-                "metrics:current",
+                f"{self._key_prefix}metrics:current",
                 86400,
                 str(metrics_data),  # 24 hours TTL
             )
@@ -400,7 +402,7 @@ class MetricsCollector:
             # Store historical data (keep last 24 hours)
             hour_key = datetime.now(UTC).strftime("%Y-%m-%d-%H")
             await self._redis_client.setex(
-                f"metrics:hourly:{hour_key}",
+                f"{self._key_prefix}metrics:hourly:{hour_key}",
                 86400 * 7,  # 7 days TTL for hourly data
                 str(metrics_data),
             )
@@ -417,7 +419,7 @@ class MetricsCollector:
 
         try:
             # Load current metrics
-            current_data = await self._redis_client.get("metrics:current")
+            current_data = await self._redis_client.get(f"{self._key_prefix}metrics:current")
             if current_data:
                 # In a full implementation, we would parse and restore the metrics
                 # For now, just log that we found existing data

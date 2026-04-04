@@ -45,7 +45,9 @@ def mock_redis():
 @pytest.fixture
 def api_key_manager(mock_redis):
     """Create an API key manager with mocked Redis."""
-    return ApiKeyManagerService(redis_client=mock_redis)
+    with patch("src.services.api_key_manager.redis_pool") as mock_pool:
+        mock_pool.key_prefix = ""
+        return ApiKeyManagerService(redis_client=mock_redis)
 
 
 class TestApiKeyManagerInit:

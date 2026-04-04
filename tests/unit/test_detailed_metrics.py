@@ -37,7 +37,9 @@ def mock_redis():
 @pytest.fixture
 def detailed_metrics_service(mock_redis):
     """Create a detailed metrics service with mocked Redis."""
-    return DetailedMetricsService(redis_client=mock_redis)
+    with patch("src.services.detailed_metrics.redis_pool") as mock_pool:
+        mock_pool.key_prefix = ""
+        return DetailedMetricsService(redis_client=mock_redis)
 
 
 @pytest.fixture

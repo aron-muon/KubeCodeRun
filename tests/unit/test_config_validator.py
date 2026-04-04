@@ -193,8 +193,13 @@ class TestValidateRedisConnection:
         mock_client = MagicMock()
         mock_client.ping.return_value = True
 
+        mock_redis_cfg = MagicMock()
+        mock_redis_cfg.get_ssl_kwargs.return_value = {}
+
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.get_redis_url.return_value = "redis://localhost:6379"
+            mock_settings.redis_mode = "standalone"
+            mock_settings.redis = mock_redis_cfg
             mock_settings.redis_socket_timeout = 5
             mock_settings.redis_socket_connect_timeout = 5
             mock_settings.redis_max_connections = 10
@@ -208,8 +213,13 @@ class TestValidateRedisConnection:
         """Test Redis connection error in debug mode."""
         validator = ConfigValidator()
 
+        mock_redis_cfg = MagicMock()
+        mock_redis_cfg.get_ssl_kwargs.return_value = {}
+
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.get_redis_url.return_value = "redis://localhost:6379"
+            mock_settings.redis_mode = "standalone"
+            mock_settings.redis = mock_redis_cfg
             mock_settings.redis_socket_timeout = 5
             mock_settings.redis_socket_connect_timeout = 5
             mock_settings.redis_max_connections = 10
@@ -227,8 +237,13 @@ class TestValidateRedisConnection:
         """Test Redis connection error in production mode."""
         validator = ConfigValidator()
 
+        mock_redis_cfg = MagicMock()
+        mock_redis_cfg.get_ssl_kwargs.return_value = {}
+
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.get_redis_url.return_value = "redis://localhost:6379"
+            mock_settings.redis_mode = "standalone"
+            mock_settings.redis = mock_redis_cfg
             mock_settings.redis_socket_timeout = 5
             mock_settings.redis_socket_connect_timeout = 5
             mock_settings.redis_max_connections = 10
@@ -250,8 +265,13 @@ class TestValidateRedisConnection:
         """
         validator = ConfigValidator()
 
+        mock_redis_cfg = MagicMock()
+        mock_redis_cfg.get_ssl_kwargs.return_value = {}
+
         with patch("src.utils.config_validator.settings") as mock_settings:
             mock_settings.get_redis_url.return_value = "redis://localhost:6379"
+            mock_settings.redis_mode = "standalone"
+            mock_settings.redis = mock_redis_cfg
             mock_settings.redis_socket_timeout = 5
             mock_settings.redis_socket_connect_timeout = 5
             mock_settings.redis_max_connections = 10

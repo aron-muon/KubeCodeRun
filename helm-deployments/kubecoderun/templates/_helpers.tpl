@@ -81,16 +81,17 @@ Execution namespace
 Redis URL
 */}}
 {{- define "kubecoderun.redisUrl" -}}
+{{- $scheme := ternary "rediss" "redis" .Values.redis.ssl.enabled }}
 {{- if .Values.redis.url }}
 {{- .Values.redis.url }}
 {{- else if .Values.redis.host }}
 {{- if .Values.redis.password }}
-{{- printf "redis://:%s@%s:%d/%d" .Values.redis.password .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
+{{- printf "%s://:%s@%s:%d/%d" $scheme .Values.redis.password .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
 {{- else }}
-{{- printf "redis://%s:%d/%d" .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
+{{- printf "%s://%s:%d/%d" $scheme .Values.redis.host (int .Values.redis.port) (int .Values.redis.db) }}
 {{- end }}
 {{- else }}
-{{- "redis://redis:6379/0" }}
+{{- printf "%s://redis:6379/0" $scheme }}
 {{- end }}
 {{- end }}
 
@@ -102,7 +103,7 @@ Returns true if any of the following conditions are met:
 - minio.existingSecret is not set AND minio.useIAM is false (S3 credentials needed)
 */}}
 {{- define "kubecoderun.needsHelmSecret" -}}
-{{- if or (not .Values.api.existingSecret) (not .Values.redis.existingSecret) (and (not .Values.minio.existingSecret) (not .Values.minio.useIAM)) }}
+{{- if or (not .Values.api.existingSecret) (not .Values.redis.existingSecret) (and (not .Values.minio.existingSecret) (not .Values.minio.useIAM)) (and (eq .Values.redis.mode "sentinel") .Values.redis.sentinel.password) }}
 {{- true }}
 {{- end }}
 {{- end }}

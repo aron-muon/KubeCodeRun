@@ -24,17 +24,18 @@ def mock_redis():
     pipeline_mock.delete = MagicMock()
     pipeline_mock.srem = MagicMock()
     pipeline_mock.execute = AsyncMock(return_value=[True, True, True])
-    pipeline_mock.reset = AsyncMock()
 
-    # Make pipeline() return the pipeline mock when awaited
-    redis_mock.pipeline = AsyncMock(return_value=pipeline_mock)
+    # pipeline() is now a sync call returning the pipeline mock
+    redis_mock.pipeline = MagicMock(return_value=pipeline_mock)
     return redis_mock
 
 
 @pytest.fixture
 def session_service(mock_redis):
     """Create a session service with mocked Redis."""
-    return SessionService(redis_client=mock_redis)
+    with patch("src.services.session.redis_pool") as mock_pool:
+        mock_pool.key_prefix = ""
+        return SessionService(redis_client=mock_redis)
 
 
 @pytest.mark.asyncio
@@ -526,10 +527,12 @@ class TestDeleteSessionWithServices:
         mock_execution_service = MagicMock()
         mock_execution_service.cleanup_session = AsyncMock()
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            execution_service=mock_execution_service,
-        )
+        with patch("src.services.session.redis_pool") as mock_pool:
+            mock_pool.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                execution_service=mock_execution_service,
+            )
 
         mock_redis.hgetall.return_value = {}
         pipeline_mock = mock_redis.pipeline.return_value
@@ -545,10 +548,12 @@ class TestDeleteSessionWithServices:
         mock_file_service = MagicMock()
         mock_file_service.cleanup_session_files = AsyncMock(return_value=5)
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            file_service=mock_file_service,
-        )
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                file_service=mock_file_service,
+            )
 
         mock_redis.hgetall.return_value = {}
         pipeline_mock = mock_redis.pipeline.return_value
@@ -564,10 +569,12 @@ class TestDeleteSessionWithServices:
         mock_execution_service = MagicMock()
         mock_execution_service.cleanup_session = AsyncMock(side_effect=Exception("Cleanup failed"))
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            execution_service=mock_execution_service,
-        )
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                execution_service=mock_execution_service,
+            )
 
         mock_redis.hgetall.return_value = {}
         pipeline_mock = mock_redis.pipeline.return_value
@@ -583,10 +590,12 @@ class TestDeleteSessionWithServices:
         mock_file_service = MagicMock()
         mock_file_service.cleanup_session_files = AsyncMock(side_effect=Exception("Cleanup failed"))
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            file_service=mock_file_service,
-        )
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                file_service=mock_file_service,
+            )
 
         mock_redis.hgetall.return_value = {}
         pipeline_mock = mock_redis.pipeline.return_value
@@ -606,10 +615,12 @@ class TestCleanupExpiredSessions:
         mock_file_service = MagicMock()
         mock_file_service.cleanup_session_files = AsyncMock(return_value=2)
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            file_service=mock_file_service,
-        )
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                file_service=mock_file_service,
+            )
 
         session_ids = ["orphaned-session"]
         mock_redis.smembers.return_value = session_ids
@@ -627,10 +638,12 @@ class TestCleanupExpiredSessions:
         mock_file_service = MagicMock()
         mock_file_service.cleanup_session_files = AsyncMock(side_effect=Exception("File error"))
 
-        session_service = SessionService(
-            redis_client=mock_redis,
-            file_service=mock_file_service,
-        )
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(
+                redis_client=mock_redis,
+                file_service=mock_file_service,
+            )
 
         session_ids = ["orphaned-session"]
         mock_redis.smembers.return_value = session_ids
@@ -827,7 +840,9 @@ class TestCleanupLoopExtended:
     @pytest.mark.asyncio
     async def test_cleanup_loop_redis_not_available(self, mock_redis):
         """Test cleanup loop when Redis is not available."""
-        session_service = SessionService(redis_client=mock_redis)
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(redis_client=mock_redis)
         session_service._redis_available = False
 
         # Mock ping to fail
@@ -851,7 +866,9 @@ class TestCleanupLoopExtended:
         mock_file_service = AsyncMock()
         mock_file_service.cleanup_orphan_objects = AsyncMock(return_value=5)
 
-        session_service = SessionService(redis_client=mock_redis, file_service=mock_file_service)
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(redis_client=mock_redis, file_service=mock_file_service)
         session_service._redis_available = True
 
         # Mock smembers to return empty (no expired sessions)
@@ -881,7 +898,9 @@ class TestCleanupLoopExtended:
         mock_file_service = AsyncMock()
         mock_file_service.cleanup_orphan_objects = AsyncMock(side_effect=Exception("MinIO error"))
 
-        session_service = SessionService(redis_client=mock_redis, file_service=mock_file_service)
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(redis_client=mock_redis, file_service=mock_file_service)
         session_service._redis_available = True
 
         mock_redis.smembers = AsyncMock(return_value=[])
@@ -905,7 +924,9 @@ class TestCleanupLoopExtended:
     @pytest.mark.asyncio
     async def test_cleanup_loop_cleanup_error(self, mock_redis):
         """Test cleanup loop handles cleanup errors."""
-        session_service = SessionService(redis_client=mock_redis)
+        with patch("src.services.session.redis_pool") as _mp:
+            _mp.key_prefix = ""
+            session_service = SessionService(redis_client=mock_redis)
         session_service._redis_available = True
 
         iteration = 0
