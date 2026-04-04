@@ -39,6 +39,7 @@ class RedisConfig(BaseSettings):
         if isinstance(v, str) and v.strip() == "":
             return None
         return v
+
     db: int = Field(default=0, ge=0, le=15, alias="redis_db")
     url: str | None = Field(default=None, alias="redis_url")
     max_connections: int = Field(default=20, ge=1, alias="redis_max_connections")
