@@ -191,6 +191,7 @@ def create_pod_manifest(
     runtime_class_name: str = "",
     pod_node_selector: str = "",
     pod_tolerations: str = "",
+    image_pull_secrets: str = "",
 ) -> client.V1Pod:
     """Create a Pod manifest for code execution.
 
@@ -297,6 +298,11 @@ def create_pod_manifest(
         runtime_class_name=runtime_class_name or None,
         node_selector=node_selector,
         tolerations=tolerations,
+        image_pull_secrets=[
+            client.V1LocalObjectReference(name=s.strip())
+            for s in image_pull_secrets.split(",")
+            if s.strip()
+        ] or None,
     )
 
     # Pod metadata

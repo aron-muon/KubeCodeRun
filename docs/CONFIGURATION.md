@@ -177,6 +177,7 @@ Kubernetes is used for secure code execution in isolated pods.
 | `K8S_NAMESPACE`        | `""` (uses API's namespace)                  | Namespace for execution pods             |
 | `K8S_IMAGE_REGISTRY`   | `aronmuon/kubecoderun`              | Registry prefix for language images      |
 | `K8S_IMAGE_TAG`        | `latest`                                     | Image tag for language images            |
+| `K8S_IMAGE_PULL_SECRETS` | `""`                                       | Comma-separated K8s secret names for private registries |
 | `K8S_CPU_LIMIT`        | `1`                                          | CPU limit per execution pod              |
 | `K8S_MEMORY_LIMIT`     | `512Mi`                                      | Memory limit per execution pod           |
 | `K8S_CPU_REQUEST`      | `100m`                                       | CPU request per execution pod            |

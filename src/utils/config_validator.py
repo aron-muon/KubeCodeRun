@@ -102,17 +102,29 @@ class ConfigValidator:
             if mode == "cluster":
                 from redis.cluster import RedisCluster as SyncCluster
 
-                nodes = settings.redis.parse_nodes(settings.redis_cluster_nodes)
-                if not nodes:
-                    self.errors.append("REDIS_CLUSTER_NODES required for cluster mode")
-                    return
-                client = SyncCluster(
-                    host=nodes[0][0],
-                    port=nodes[0][1],
-                    decode_responses=True,
-                    socket_timeout=settings.redis_socket_timeout,
-                    **ssl_kwargs,
-                )
+                if settings.redis.url:
+                    client = SyncCluster.from_url(
+                        settings.redis.url,
+                        decode_responses=True,
+                        socket_timeout=settings.redis_socket_timeout,
+                        ssl=settings.redis.ssl,
+                        **ssl_kwargs,
+                    )
+                else:
+                    nodes = settings.redis.parse_nodes(settings.redis_cluster_nodes)
+                    if not nodes:
+                        self.errors.append(
+                            "REDIS_CLUSTER_NODES or REDIS_URL required for cluster mode"
+                        )
+                        return
+                    client = SyncCluster(
+                        host=nodes[0][0],
+                        port=nodes[0][1],
+                        decode_responses=True,
+                        socket_timeout=settings.redis_socket_timeout,
+                        ssl=settings.redis.ssl,
+                        **ssl_kwargs,
+                    )
                 client.ping()
                 client.close()
             elif mode == "sentinel":

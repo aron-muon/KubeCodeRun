@@ -189,6 +189,7 @@ class PodPool:
             runtime_class_name=self.config.runtime_class_name,
             pod_node_selector=self.config.pod_node_selector,
             pod_tolerations=self.config.pod_tolerations,
+            image_pull_secrets=self.config.image_pull_secrets,
         )
 
         try:

@@ -68,18 +68,30 @@ class RedisConfig(BaseSettings):
     sentinel_db: int = Field(default=0, alias="redis_sentinel_db")
 
     def get_url(self) -> str:
-        """Get Redis connection URL."""
+        """Get Redis connection URL.
+
+        Returns a ``rediss://`` URL when SSL is enabled so that redis-py 7.x
+        selects ``SSLConnection`` automatically (the ``ssl=True`` kwarg is no
+        longer accepted by ``AbstractConnection.__init__()``).
+        """
         if self.url:
             return self.url
+        scheme = "rediss" if self.ssl else "redis"
         password_part = f":{self.password}@" if self.password else ""
-        return f"redis://{password_part}{self.host}:{self.port}/{self.db}"
+        return f"{scheme}://{password_part}{self.host}:{self.port}/{self.db}"
 
     def get_ssl_kwargs(self) -> dict:
-        """Get SSL kwargs for Redis client creation."""
+        """Get SSL kwargs for Redis client creation.
+
+        Note: In redis-py 7.x the ``ssl=True`` keyword is no longer accepted by
+        ``AbstractConnection.__init__()``.  SSL is instead enabled by using the
+        ``rediss://`` URL scheme (see ``get_url()``).  The ssl_* parameters below
+        are still accepted by ``SSLConnection`` which is automatically selected
+        when the ``rediss://`` scheme is used.
+        """
         if not self.ssl:
             return {}
         return {
-            "ssl": True,
             "ssl_ca_certs": self.ssl_ca_certs,
             "ssl_certfile": self.ssl_certfile,
             "ssl_keyfile": self.ssl_keyfile,

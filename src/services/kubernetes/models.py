@@ -123,6 +123,9 @@ class PodSpec:
     pod_node_selector: str = ""  # JSON-encoded dict
     pod_tolerations: str = ""  # JSON-encoded list
 
+    # Image pull secrets for private registries
+    image_pull_secrets: str = ""  # Comma-separated secret names
+
 
 @dataclass
 class PoolConfig:
@@ -149,6 +152,9 @@ class PoolConfig:
     runtime_class_name: str = ""
     pod_node_selector: str = ""  # JSON-encoded dict
     pod_tolerations: str = ""  # JSON-encoded list
+
+    # Image pull secrets for private registries
+    image_pull_secrets: str = ""  # Comma-separated secret names
 
     @property
     def uses_pool(self) -> bool:

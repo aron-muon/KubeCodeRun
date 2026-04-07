@@ -198,6 +198,10 @@ execution:
   imageTag: ""
   # Image pull policy for execution pods (IfNotPresent, Always, Never)
   imagePullPolicy: "IfNotPresent"
+  # Image pull secrets for execution pods (for private registries)
+  # These are applied to dynamically created execution pods/jobs, not the API deployment.
+  # Example: ["docker-privaterepo", "another-secret"]
+  imagePullSecrets: []
 
   # Service account for execution pods (with pod/job create permissions)
   serviceAccount:

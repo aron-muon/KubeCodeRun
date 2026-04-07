@@ -1,8 +1,10 @@
 # Keep build contexts minimal and deterministic.
 
-# Python artifacts (sidecar)
+# Python artifacts
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
 
 # Editor/OS
 .DS_Store
@@ -13,13 +15,44 @@ Thumbs.db
 
 # Git
 .git/
+.gitignore
 
-# Local env/IDE files (if present)
+# Local env/IDE files
 .env
 .env.*
 .vscode/
 .idea/
 
+# Documentation
+docs/
+*.md
+
+# Tests
+tests/
+*_test.go
+
+# Scripts (not needed in language images, except ts-runner.js used by nodejs image)
+scripts/
+!scripts/ts-runner.js
+
 # Keep sidecar & API code out of language images
 sidecar/
 api/
+
+# Helm / deployment
+helm-deployments/
+
+# Dashboard (not needed in language images)
+dashboard/
+
+# Build artifacts
+htmlcov/
+.coverage
+.pytest_cache/
+*.log
+logs/
+
+# Temporary files
+*.tmp
+data/
+temp/

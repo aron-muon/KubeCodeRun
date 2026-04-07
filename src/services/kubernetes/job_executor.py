@@ -120,6 +120,7 @@ class JobExecutor:
             runtime_class_name=spec.runtime_class_name,
             pod_node_selector=spec.pod_node_selector,
             pod_tolerations=spec.pod_tolerations,
+            image_pull_secrets=spec.image_pull_secrets,
             ttl_seconds_after_finished=self.ttl_seconds_after_finished,
             active_deadline_seconds=self.active_deadline_seconds,
         )

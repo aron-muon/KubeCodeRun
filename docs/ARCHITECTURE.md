@@ -241,6 +241,7 @@ POD_POOL_EXHAUSTION_TRIGGER=true   # Trigger immediate replenishment when exhaus
 K8S_NAMESPACE=kubecoderun
 K8S_IMAGE_REGISTRY=aronmuon/kubecoderun
 K8S_IMAGE_TAG=latest
+K8S_IMAGE_PULL_SECRETS=docker-privaterepo  # Comma-separated secret names for private registries
 K8S_CPU_LIMIT=1
 K8S_MEMORY_LIMIT=512Mi
 K8S_CPU_REQUEST=100m

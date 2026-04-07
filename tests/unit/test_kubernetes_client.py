@@ -464,3 +464,76 @@ class TestCreatePodManifest:
 
         main_container = pod.spec.containers[0]
         assert main_container.env is None
+
+    def test_create_pod_manifest_no_image_pull_secrets_by_default(self):
+        """Test pod manifest has no imagePullSecrets by default."""
+        pod = client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            language="python",
+            labels={"app": "test"},
+        )
+
+        assert pod.spec.image_pull_secrets is None
+
+    def test_create_pod_manifest_single_image_pull_secret(self):
+        """Test pod manifest with a single imagePullSecret."""
+        pod = client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            language="python",
+            labels={"app": "test"},
+            image_pull_secrets="docker-privaterepo",
+        )
+
+        assert pod.spec.image_pull_secrets is not None
+        assert len(pod.spec.image_pull_secrets) == 1
+        assert pod.spec.image_pull_secrets[0].name == "docker-privaterepo"
+
+    def test_create_pod_manifest_multiple_image_pull_secrets(self):
+        """Test pod manifest with multiple comma-separated imagePullSecrets."""
+        pod = client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            language="python",
+            labels={"app": "test"},
+            image_pull_secrets="docker-privaterepo,ghcr-secret,ecr-creds",
+        )
+
+        assert pod.spec.image_pull_secrets is not None
+        assert len(pod.spec.image_pull_secrets) == 3
+        assert pod.spec.image_pull_secrets[0].name == "docker-privaterepo"
+        assert pod.spec.image_pull_secrets[1].name == "ghcr-secret"
+        assert pod.spec.image_pull_secrets[2].name == "ecr-creds"
+
+    def test_create_pod_manifest_image_pull_secrets_trims_whitespace(self):
+        """Test that whitespace in image pull secrets is trimmed."""
+        pod = client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            language="python",
+            labels={"app": "test"},
+            image_pull_secrets=" docker-privaterepo , ghcr-secret ",
+        )
+
+        assert pod.spec.image_pull_secrets is not None
+        assert len(pod.spec.image_pull_secrets) == 2
+        assert pod.spec.image_pull_secrets[0].name == "docker-privaterepo"
+        assert pod.spec.image_pull_secrets[1].name == "ghcr-secret"
+
+    def test_create_pod_manifest_empty_image_pull_secrets(self):
+        """Test that empty string results in no imagePullSecrets."""
+        pod = client.create_pod_manifest(
+            name="test-pod",
+            namespace="test-ns",
+            main_image="python:3.12",
+            language="python",
+            labels={"app": "test"},
+            image_pull_secrets="",
+        )
+
+        assert pod.spec.image_pull_secrets is None

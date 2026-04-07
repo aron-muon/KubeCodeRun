@@ -185,10 +185,17 @@ build_image() {
 
     local build_output
     local exit_code=0
+    local build_date
+    build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local vcs_ref
+    vcs_ref=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
     # shellcheck disable=SC2086
     build_output=$(docker build \
         $NO_CACHE \
+        --build-arg VERSION="$TAG" \
+        --build-arg BUILD_DATE="$build_date" \
+        --build-arg VCS_REF="$vcs_ref" \
         -t "$full_name" \
         -f "$DOCKER_DIR/$dockerfile" \
         "$context_path" 2>&1) || exit_code=$?
@@ -271,9 +278,16 @@ build_single_image() {
             echo ""
 
             # Build with output directly to terminal
+            local build_date
+            build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            local vcs_ref
+            vcs_ref=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
             # shellcheck disable=SC2086
             docker build \
                 $NO_CACHE \
+                --build-arg VERSION="$TAG" \
+                --build-arg BUILD_DATE="$build_date" \
+                --build-arg VCS_REF="$vcs_ref" \
                 -t "$full_name" \
                 -f "$DOCKER_DIR/$dockerfile" \
                 "$context_path"

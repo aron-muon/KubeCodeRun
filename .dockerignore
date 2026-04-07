@@ -61,13 +61,32 @@ docs/
 *.md
 !README.md
 
-# Docker
-Dockerfile*
+# Docker (language images not needed in API image)
+docker/python.Dockerfile
+docker/nodejs.Dockerfile
+docker/go.Dockerfile
+docker/java.Dockerfile
+docker/c-cpp.Dockerfile
+docker/rust.Dockerfile
+docker/php.Dockerfile
+docker/r.Dockerfile
+docker/fortran.Dockerfile
+docker/d.Dockerfile
+docker/runner/
+docker/requirements/
+docker/scripts/
+docker/.dockerignore
 docker-compose*.yml
 .dockerignore
 
-# Deployment
-deploy.sh
+# Helm / deployment
+helm-deployments/
+
+# Scripts (not needed in API image)
+scripts/
+
+# Tests
+tests/
 
 # Data directories
 data/
@@ -79,4 +98,15 @@ node_modules/
 
 # Temporary files
 *.tmp
+
+# Misc
+LICENSE
+CONTRIBUTING.md
+SECURITY.md
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+justfile
+ruff.toml
+ty.toml
 *.temp

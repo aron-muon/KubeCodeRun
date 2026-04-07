@@ -163,6 +163,10 @@ class Settings(BaseSettings):
         default="Always",
         description="Image pull policy for execution pods (Always, IfNotPresent, Never)",
     )
+    k8s_image_pull_secrets: str = Field(
+        default="",
+        description="Comma-separated list of Kubernetes secret names for pulling execution pod images from private registries",
+    )
     k8s_runtime_class_name: str = Field(
         default="",
         description="RuntimeClassName for execution pods (e.g. gvisor, kata). Empty = cluster default.",
@@ -654,6 +658,7 @@ class Settings(BaseSettings):
                     runtime_class_name=self.k8s_runtime_class_name,
                     pod_node_selector=self.k8s_pod_node_selector,
                     pod_tolerations=self.k8s_pod_tolerations,
+                    image_pull_secrets=self.k8s_image_pull_secrets,
                 )
             )
 
@@ -672,11 +677,17 @@ class Settings(BaseSettings):
         return Path(self.ssl_cert_file).exists() and Path(self.ssl_key_file).exists()
 
     def get_redis_url(self) -> str:
-        """Get Redis connection URL."""
+        """Get Redis connection URL.
+
+        Returns a ``rediss://`` URL when SSL is enabled so that redis-py 7.x
+        selects ``SSLConnection`` automatically (the ``ssl=True`` kwarg is no
+        longer accepted by ``AbstractConnection.__init__()``).
+        """
         if self.redis_url:
             return self.redis_url
+        scheme = "rediss" if self.redis_ssl else "redis"
         password_part = f":{self.redis_password}@" if self.redis_password else ""
-        return f"redis://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"{scheme}://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     def get_valid_api_keys(self) -> list[str]:
         """Get all valid API keys including the primary key."""

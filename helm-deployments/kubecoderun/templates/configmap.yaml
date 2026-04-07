@@ -29,6 +29,9 @@ data:
   K8S_IMAGE_REGISTRY: {{ .Values.execution.imageRegistry | quote }}
   K8S_IMAGE_TAG: {{ $imageTag | quote }}
   K8S_IMAGE_PULL_POLICY: {{ .Values.execution.imagePullPolicy | quote }}
+  {{- if .Values.execution.imagePullSecrets }}
+  K8S_IMAGE_PULL_SECRETS: {{ join "," .Values.execution.imagePullSecrets | quote }}
+  {{- end }}
   K8S_CPU_LIMIT: {{ .Values.execution.resources.limits.cpu | quote }}
   K8S_MEMORY_LIMIT: {{ .Values.execution.resources.limits.memory | quote }}
   K8S_CPU_REQUEST: {{ .Values.execution.resources.requests.cpu | quote }}

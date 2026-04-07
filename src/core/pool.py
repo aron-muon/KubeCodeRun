@@ -63,6 +63,7 @@ class RedisPool:
                         max_connections=cfg.max_connections,
                         socket_timeout=float(cfg.socket_timeout),
                         socket_connect_timeout=float(cfg.socket_connect_timeout),
+                        ssl=cfg.ssl,
                         **ssl_kwargs,
                     )
                 else:

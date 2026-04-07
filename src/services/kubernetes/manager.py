@@ -50,6 +50,7 @@ class KubernetesManager:
         runtime_class_name: str = "",
         pod_node_selector: str = "",
         pod_tolerations: str = "",
+        image_pull_secrets: str = "",
     ):
         """Initialize the Kubernetes manager.
 
@@ -76,6 +77,7 @@ class KubernetesManager:
         self.runtime_class_name = runtime_class_name
         self.pod_node_selector = pod_node_selector
         self.pod_tolerations = pod_tolerations
+        self.image_pull_secrets = image_pull_secrets
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
@@ -287,6 +289,7 @@ class KubernetesManager:
                 runtime_class_name=self.runtime_class_name,
                 pod_node_selector=self.pod_node_selector,
                 pod_tolerations=self.pod_tolerations,
+                image_pull_secrets=self.image_pull_secrets,
             )
 
             result = await self._job_executor.execute_with_job(
