@@ -200,3 +200,4 @@ config/local.py
 
 # Hatch auto-generated version file
 _version.py
+src/utils/config_validator.py

@@ -113,9 +113,7 @@ class ConfigValidator:
                 else:
                     nodes = settings.redis.parse_nodes(settings.redis_cluster_nodes)
                     if not nodes:
-                        self.errors.append(
-                            "REDIS_CLUSTER_NODES or REDIS_URL required for cluster mode"
-                        )
+                        self.errors.append("REDIS_CLUSTER_NODES or REDIS_URL required for cluster mode")
                         return
                     client = SyncCluster(
                         host=nodes[0][0],
