@@ -214,6 +214,10 @@ def create_pod_manifest(
         image_pull_policy: Image pull policy
         seccomp_profile_type: Seccomp profile type (RuntimeDefault or Unconfined)
         network_isolated: Whether to disable network-dependent features
+        runtime_class_name: Optional RuntimeClassName for pod sandboxing (e.g. gvisor, kata)
+        pod_node_selector: JSON-encoded node selector labels
+        pod_tolerations: JSON-encoded list of tolerations
+        image_pull_secrets: Comma-separated secret names for pulling from private registries
 
     Returns:
         V1Pod manifest ready for creation.

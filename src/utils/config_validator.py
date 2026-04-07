@@ -107,7 +107,6 @@ class ConfigValidator:
                         settings.redis.url,
                         decode_responses=True,
                         socket_timeout=settings.redis_socket_timeout,
-                        ssl=settings.redis.ssl,
                         **ssl_kwargs,
                     )
                 else:
@@ -120,7 +119,6 @@ class ConfigValidator:
                         port=nodes[0][1],
                         decode_responses=True,
                         socket_timeout=settings.redis_socket_timeout,
-                        ssl=settings.redis.ssl,
                         **ssl_kwargs,
                     )
                 client.ping()
