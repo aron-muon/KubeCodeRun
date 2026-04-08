@@ -15,7 +15,7 @@ from unidecode import unidecode
 # Local application imports
 from ..config import settings
 from ..dependencies import FileServiceDep, SessionServiceDep
-from ..models.session import SessionCreate
+from ..models.session import SessionCreate, SessionStatus
 from ..services.execution.output import OutputProcessor
 
 logger = structlog.get_logger(__name__)
@@ -207,14 +207,24 @@ async def list_files(
             # lastModified when the session is still active.  LibreChat
             # treats files older than 23 hours as inactive and triggers
             # a re-upload cycle.  Since get_session() refreshes
-            # last_activity in Redis but returns the pre-refresh model,
-            # we use datetime.now(UTC) after a successful lookup so the
-            # response always reflects the just-refreshed activity time.
+            # last_activity in Redis for active sessions but returns
+            # the pre-refresh model, we use datetime.now(UTC) so the
+            # response reflects the just-refreshed activity time.
+            # Only do this for ACTIVE sessions — idle/terminated ones
+            # should report their actual last_activity.
             session_last_activity = None
             try:
                 session = await session_service.get_session(session_id)
                 if session:
-                    session_last_activity = datetime.now(UTC)
+                    if session.status == SessionStatus.ACTIVE:
+                        session_last_activity = datetime.now(UTC)
+                    elif session.last_activity:
+                        act = session.last_activity
+                        if isinstance(act, str):
+                            act = datetime.fromisoformat(act)
+                        if act.tzinfo is None:
+                            act = act.replace(tzinfo=UTC)
+                        session_last_activity = act
             except Exception as e:
                 logger.warning(
                     "failed_to_fetch_session_last_activity",

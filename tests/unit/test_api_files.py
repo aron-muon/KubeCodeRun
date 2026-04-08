@@ -334,7 +334,10 @@ class TestListFiles:
         a costly re-upload cycle.  Using a fresh timestamp after confirming
         the session exists keeps agent files fresh.
         """
+        from src.models.session import SessionStatus
+
         mock_session = MagicMock()
+        mock_session.status = SessionStatus.ACTIVE
         mock_session_service.get_session = AsyncMock(return_value=mock_session)
 
         # File was created long ago
@@ -353,9 +356,34 @@ class TestListFiles:
             )
 
         assert len(result) == 1
-        expected_last_modified = fixed_now.isoformat().replace("+00:00", "Z")
+        expected_last_modified = fixed_now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
         assert result[0]["lastModified"] == expected_last_modified
         assert "2020" not in result[0]["lastModified"]
+
+    @pytest.mark.asyncio
+    async def test_list_files_summary_uses_last_activity_for_non_active_session(
+        self, mock_file_service, mock_file_info, mock_session_service
+    ):
+        """Test that non-active sessions use session.last_activity, not now()."""
+        from src.models.session import SessionStatus
+
+        mock_session = MagicMock()
+        mock_session.status = SessionStatus.IDLE
+        mock_session.last_activity = datetime(2026, 4, 5, 10, 0, 0, tzinfo=UTC)
+        mock_session_service.get_session = AsyncMock(return_value=mock_session)
+
+        mock_file_info.created_at = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
+        mock_file_service.list_files.return_value = [mock_file_info]
+
+        result = await list_files(
+            session_id="session-123",
+            detail="summary",
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
+
+        assert len(result) == 1
+        assert "2026-04-05" in result[0]["lastModified"]
 
     @pytest.mark.asyncio
     async def test_list_files_error(self, mock_file_service, mock_session_service):
