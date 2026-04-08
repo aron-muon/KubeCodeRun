@@ -324,7 +324,9 @@ class TestListFiles:
         assert "lastModified" in result[0]
 
     @pytest.mark.asyncio
-    async def test_list_files_summary_uses_fresh_timestamp_for_active_session(self, mock_file_service, mock_file_info, mock_session_service):
+    async def test_list_files_summary_uses_fresh_timestamp_for_active_session(
+        self, mock_file_service, mock_file_info, mock_session_service
+    ):
         """Test that summary detail uses a fresh timestamp as lastModified
         when the session is active.
 
