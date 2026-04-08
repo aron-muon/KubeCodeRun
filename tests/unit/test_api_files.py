@@ -324,20 +324,19 @@ class TestListFiles:
         assert "lastModified" in result[0]
 
     @pytest.mark.asyncio
-    async def test_list_files_summary_uses_session_last_activity(self, mock_file_service, mock_file_info, mock_session_service):
-        """Test that summary detail uses session last_activity as lastModified.
+    async def test_list_files_summary_uses_fresh_timestamp_for_active_session(self, mock_file_service, mock_file_info, mock_session_service):
+        """Test that summary detail uses a fresh timestamp as lastModified
+        when the session is active.
 
         LibreChat treats files older than 23 hours as inactive and triggers
-        a costly re-upload cycle.  Using session last_activity keeps agent
-        files fresh as long as the session is in use.
+        a costly re-upload cycle.  Using a fresh timestamp after confirming
+        the session exists keeps agent files fresh.
         """
-        recent_activity = datetime(2026, 4, 8, 12, 0, 0, tzinfo=UTC)
         mock_session = MagicMock()
-        mock_session.last_activity = recent_activity
         mock_session_service.get_session = AsyncMock(return_value=mock_session)
 
         # File was created long ago
-        mock_file_info.created_at = datetime(2026, 4, 1, 0, 0, 0, tzinfo=UTC)
+        mock_file_info.created_at = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
         mock_file_service.list_files.return_value = [mock_file_info]
 
         result = await list_files(
@@ -348,9 +347,11 @@ class TestListFiles:
         )
 
         assert len(result) == 1
-        # lastModified should reflect session activity, not file creation
-        assert "2026-04-08" in result[0]["lastModified"]
-        assert "2026-04-01" not in result[0]["lastModified"]
+        # lastModified should be very recent (not the old file creation date)
+        last_mod = datetime.fromisoformat(result[0]["lastModified"].replace("Z", "+00:00"))
+        age_seconds = (datetime.now(UTC) - last_mod).total_seconds()
+        assert age_seconds < 10, f"lastModified should be recent, but was {age_seconds}s ago"
+        assert "2020" not in result[0]["lastModified"]
 
     @pytest.mark.asyncio
     async def test_list_files_error(self, mock_file_service, mock_session_service):

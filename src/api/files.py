@@ -203,23 +203,24 @@ async def list_files(
             return []
 
         if detail == "summary":
-            # For summary responses, use session last_activity as the
-            # lastModified timestamp.  LibreChat treats files older than
-            # 23 hours as inactive and triggers a re-upload cycle.  Using
-            # last_activity (updated on every execution) keeps agent files
-            # fresh as long as the session is in use.
+            # For summary responses, use a fresh UTC timestamp as
+            # lastModified when the session is still active.  LibreChat
+            # treats files older than 23 hours as inactive and triggers
+            # a re-upload cycle.  Since get_session() refreshes
+            # last_activity in Redis but returns the pre-refresh model,
+            # we use datetime.now(UTC) after a successful lookup so the
+            # response always reflects the just-refreshed activity time.
             session_last_activity = None
             try:
                 session = await session_service.get_session(session_id)
-                if session and session.last_activity:
-                    act = session.last_activity
-                    if isinstance(act, str):
-                        act = datetime.fromisoformat(act)
-                    if act.tzinfo is None:
-                        act = act.replace(tzinfo=UTC)
-                    session_last_activity = act
-            except Exception:
-                pass  # fall back to file created_at
+                if session:
+                    session_last_activity = datetime.now(UTC)
+            except Exception as e:
+                logger.warning(
+                    "failed_to_fetch_session_last_activity",
+                    session_id=session_id,
+                    error=str(e),
+                )
 
             summary_files = []
             for file_info in files:
