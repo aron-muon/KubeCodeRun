@@ -340,19 +340,21 @@ class TestListFiles:
         # File was created long ago
         mock_file_info.created_at = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
         mock_file_service.list_files.return_value = [mock_file_info]
+        fixed_now = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 
-        result = await list_files(
-            session_id="session-123",
-            detail="summary",
-            file_service=mock_file_service,
-            session_service=mock_session_service,
-        )
+        with patch("src.api.files.datetime", wraps=datetime) as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+
+            result = await list_files(
+                session_id="session-123",
+                detail="summary",
+                file_service=mock_file_service,
+                session_service=mock_session_service,
+            )
 
         assert len(result) == 1
-        # lastModified should be very recent (not the old file creation date)
-        last_mod = datetime.fromisoformat(result[0]["lastModified"].replace("Z", "+00:00"))
-        age_seconds = (datetime.now(UTC) - last_mod).total_seconds()
-        assert age_seconds < 10, f"lastModified should be recent, but was {age_seconds}s ago"
+        expected_last_modified = fixed_now.isoformat().replace("+00:00", "Z")
+        assert result[0]["lastModified"] == expected_last_modified
         assert "2020" not in result[0]["lastModified"]
 
     @pytest.mark.asyncio
