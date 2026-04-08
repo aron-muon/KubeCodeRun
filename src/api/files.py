@@ -192,6 +192,7 @@ async def list_files(
         description="Detail level: 'simple' for basic info, otherwise full details",
     ),
     file_service: FileServiceDep = None,
+    session_service: SessionServiceDep = None,
 ):
     """List all files in a session with optional detail parameter - LibreChat compatible."""
     try:
@@ -202,10 +203,27 @@ async def list_files(
             return []
 
         if detail == "summary":
-            # Return minimal summary required by client contract
+            # For summary responses, use session last_activity as the
+            # lastModified timestamp.  LibreChat treats files older than
+            # 23 hours as inactive and triggers a re-upload cycle.  Using
+            # last_activity (updated on every execution) keeps agent files
+            # fresh as long as the session is in use.
+            session_last_activity = None
+            try:
+                session = await session_service.get_session(session_id)
+                if session and session.last_activity:
+                    act = session.last_activity
+                    if isinstance(act, str):
+                        act = datetime.fromisoformat(act)
+                    if act.tzinfo is None:
+                        act = act.replace(tzinfo=UTC)
+                    session_last_activity = act
+            except Exception:
+                pass  # fall back to file created_at
+
             summary_files = []
             for file_info in files:
-                dt = file_info.created_at
+                dt = session_last_activity or file_info.created_at
                 # Ensure UTC with 'Z' and millisecond precision
                 if isinstance(dt, str):
                     try:
