@@ -423,9 +423,18 @@ class JobExecutor:
 
         # Code filenames that should be skipped (same set as runner.py)
         code_filenames = {
-            "code.py", "code.js", "code.ts", "main.go", "code.php",
-            "code.r", "Code.java", "code.c", "code.cpp", "main.rs",
-            "code.f90", "code.d",
+            "code.py",
+            "code.js",
+            "code.ts",
+            "main.go",
+            "code.php",
+            "code.r",
+            "Code.java",
+            "code.c",
+            "code.cpp",
+            "main.rs",
+            "code.f90",
+            "code.d",
         }
 
         uploaded_names = set()
@@ -455,15 +464,18 @@ class JobExecutor:
                 # Download file content
                 try:
                     dl_response = await client.get(
-                        f"{runner_url}/files/{name}", timeout=30,
+                        f"{runner_url}/files/{name}",
+                        timeout=30,
                     )
                     if dl_response.status_code == 200:
-                        collected.append({
-                            "name": name,
-                            "path": f"/mnt/data/{name}",
-                            "size": size,
-                            "content": dl_response.content,
-                        })
+                        collected.append(
+                            {
+                                "name": name,
+                                "path": f"/mnt/data/{name}",
+                                "size": size,
+                                "content": dl_response.content,
+                            }
+                        )
                 except Exception as e:
                     logger.warning(
                         "Failed to download generated file from job",

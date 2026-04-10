@@ -29,20 +29,22 @@ logger = structlog.get_logger(__name__)
 
 # Source filenames written by the runner for each language (must be skipped during file detection).
 # These match the File field in docker/runner/executor.go LangSpec definitions.
-_CODE_FILENAMES = frozenset({
-    "code.py",   # python / py
-    "code.js",   # javascript / js
-    "code.ts",   # typescript / ts
-    "main.go",   # go
-    "code.php",  # php
-    "code.r",    # r
-    "Code.java", # java
-    "code.c",    # c
-    "code.cpp",  # cpp
-    "main.rs",   # rust / rs
-    "code.f90",  # fortran / f90
-    "code.d",    # d / dlang
-})
+_CODE_FILENAMES = frozenset(
+    {
+        "code.py",  # python / py
+        "code.js",  # javascript / js
+        "code.ts",  # typescript / ts
+        "main.go",  # go
+        "code.php",  # php
+        "code.r",  # r
+        "Code.java",  # java
+        "code.c",  # c
+        "code.cpp",  # cpp
+        "main.rs",  # rust / rs
+        "code.f90",  # fortran / f90
+        "code.d",  # d / dlang
+    }
+)
 
 
 class CodeExecutionRunner:
