@@ -66,7 +66,7 @@ class CodeExecutionRunner:
         self._manager_started = False
         self.active_executions: dict[str, CodeExecution] = {}
         self.session_handles: dict[str, PodHandle] = {}
-        self._job_file_contents: dict[str, bytes] = {}  # path -> content for Job-path files
+        self._job_file_contents: dict[tuple[str, str], bytes] = {}  # (session_id, path) -> content
 
     @property
     def kubernetes_manager(self) -> KubernetesManager:
@@ -206,12 +206,14 @@ class CodeExecutionRunner:
                 # Pool path: detect files via runner HTTP API (pod still alive)
                 generated_files = await self._detect_generated_files(handle)
             elif result.generated_files:
-                # Job path: files were already collected before job cleanup
+                # Job path: files were already collected before job cleanup.
+                # Namespace cached file contents by session to avoid collisions
+                # when different executions produce the same in-pod file path.
                 for f in result.generated_files:
                     path = f.get("path", f"/mnt/data/{f.get('name', '')}")
                     content = f.get("content")
                     if content:
-                        self._job_file_contents[path] = content
+                        self._job_file_contents[(session_id, path)] = content
                 generated_files = [
                     {
                         "path": f.get("path", f"/mnt/data/{f.get('name', '')}"),
@@ -411,13 +413,13 @@ class CodeExecutionRunner:
         """
         return self.session_handles.get(session_id)
 
-    def pop_job_file_content(self, file_path: str) -> bytes | None:
+    def pop_job_file_content(self, session_id: str, file_path: str) -> bytes | None:
         """Pop pre-downloaded file content from a Job execution.
 
         Used by the orchestrator when the pod is already gone (Job path).
         Returns None if the file was not pre-downloaded.
         """
-        return self._job_file_contents.pop(file_path, None)
+        return self._job_file_contents.pop((session_id, file_path), None)
 
     async def get_execution(self, execution_id: str) -> CodeExecution | None:
         """Retrieve an execution by ID."""

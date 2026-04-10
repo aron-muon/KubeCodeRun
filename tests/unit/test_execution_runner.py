@@ -544,17 +544,26 @@ class TestPopJobFileContent:
 
     def test_pop_existing_content(self, runner):
         """Test popping pre-downloaded file content."""
-        runner._job_file_contents["/mnt/data/output.png"] = b"PNG data"
+        runner._job_file_contents[("session-123", "/mnt/data/output.png")] = b"PNG data"
 
-        result = runner.pop_job_file_content("/mnt/data/output.png")
+        result = runner.pop_job_file_content("session-123", "/mnt/data/output.png")
 
         assert result == b"PNG data"
-        assert "/mnt/data/output.png" not in runner._job_file_contents
+        assert ("session-123", "/mnt/data/output.png") not in runner._job_file_contents
 
     def test_pop_nonexistent_content(self, runner):
         """Test popping content for non-existent path."""
-        result = runner.pop_job_file_content("/mnt/data/nonexistent.txt")
+        result = runner.pop_job_file_content("session-123", "/mnt/data/nonexistent.txt")
         assert result is None
+
+    def test_pop_wrong_session(self, runner):
+        """Test that files are scoped by session_id."""
+        runner._job_file_contents[("session-A", "/mnt/data/output.png")] = b"PNG data"
+
+        result = runner.pop_job_file_content("session-B", "/mnt/data/output.png")
+
+        assert result is None
+        assert ("session-A", "/mnt/data/output.png") in runner._job_file_contents
 
 
 class TestGetExecution:

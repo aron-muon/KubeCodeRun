@@ -94,7 +94,7 @@ class ExecutionServiceInterface(ABC):
         """List executions for a session."""
         pass
 
-    def pop_job_file_content(self, file_path: str) -> bytes | None:
+    def pop_job_file_content(self, session_id: str, file_path: str) -> bytes | None:
         """Pop pre-downloaded file content from a Job execution.
 
         Returns None by default. Overridden by implementations that support

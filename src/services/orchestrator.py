@@ -65,7 +65,6 @@ class ExecutionContext:
     stdout: str = ""
     stderr: str = ""
     container: Any | None = None  # Container used for execution (avoids session lookup)
-    job_file_contents: dict[str, bytes] | None = None  # Pre-downloaded file contents from Job execution
     # State persistence fields
     initial_state: str | None = None
     new_state: str | None = None
@@ -528,7 +527,7 @@ class ExecutionOrchestrator:
 
             try:
                 # Get file content from container or pre-downloaded Job cache
-                file_content = await self._get_file_from_container(ctx.container, file_path)
+                file_content = await self._get_file_from_container(ctx.container, file_path, session_id=ctx.session_id)
 
                 # Store the file
                 file_id = await self.file_service.store_execution_output_file(ctx.session_id, filename, file_content)
@@ -546,7 +545,7 @@ class ExecutionOrchestrator:
 
         return generated
 
-    async def _get_file_from_container(self, container: Any, file_path: str) -> bytes:
+    async def _get_file_from_container(self, container: Any, file_path: str, session_id: str | None = None) -> bytes:
         """Get file content from the execution pod via runner HTTP API.
 
         For Job-based execution where the pod is already destroyed, falls back
@@ -555,12 +554,14 @@ class ExecutionOrchestrator:
         Args:
             container: PodHandle object (passed directly, no session lookup needed)
             file_path: Path to file inside pod (e.g., /mnt/data/output.png)
+            session_id: Session identifier for scoping Job file cache lookups
         """
         if not container:
             # Job path: check for pre-downloaded content
-            job_content = self.execution_service.pop_job_file_content(file_path)
-            if job_content:
-                return job_content
+            if session_id:
+                job_content = self.execution_service.pop_job_file_content(session_id, file_path)
+                if job_content is not None:
+                    return job_content
             return f"# Pod not found for file: {file_path}\n".encode()
 
         # Extract filename from path

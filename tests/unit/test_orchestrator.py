@@ -949,7 +949,7 @@ class TestGetFileFromContainer:
     @pytest.mark.asyncio
     async def test_get_file_no_container(self, orchestrator):
         """Test getting file when container is None and no job content."""
-        result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt")
+        result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt", session_id="session-123")
 
         assert b"Pod not found" in result
 
@@ -958,10 +958,10 @@ class TestGetFileFromContainer:
         """Test getting file when container is None but job content exists."""
         mock_execution_service.pop_job_file_content = MagicMock(return_value=b"job file data")
 
-        result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt")
+        result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt", session_id="session-123")
 
         assert result == b"job file data"
-        mock_execution_service.pop_job_file_content.assert_called_once_with("/mnt/data/test.txt")
+        mock_execution_service.pop_job_file_content.assert_called_once_with("session-123", "/mnt/data/test.txt")
 
     @pytest.mark.asyncio
     async def test_get_file_success(self, orchestrator, mock_execution_service):

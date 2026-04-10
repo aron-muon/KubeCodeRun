@@ -416,26 +416,11 @@ class JobExecutor:
             List of dicts with keys: name, path, size, content (bytes)
         """
         from ...config import settings
+        from ...services.execution.runner import _CODE_FILENAMES
 
         runner_url = job.runner_url
         if not runner_url:
             return []
-
-        # Code filenames that should be skipped (same set as runner.py)
-        code_filenames = {
-            "code.py",
-            "code.js",
-            "code.ts",
-            "main.go",
-            "code.php",
-            "code.r",
-            "Code.java",
-            "code.c",
-            "code.cpp",
-            "main.rs",
-            "code.f90",
-            "code.d",
-        }
 
         uploaded_names = set()
         if uploaded_files:
@@ -455,7 +440,7 @@ class JobExecutor:
 
             for f in all_files:
                 name = f.get("name", "")
-                if not name or name in code_filenames or name in uploaded_names:
+                if not name or name in _CODE_FILENAMES or name in uploaded_names:
                     continue
                 size = f.get("size", 0)
                 if size <= 0 or size > settings.max_file_size_mb * 1024 * 1024:
