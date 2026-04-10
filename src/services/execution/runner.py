@@ -27,6 +27,23 @@ from .output import OutputProcessor
 
 logger = structlog.get_logger(__name__)
 
+# Source filenames written by the runner for each language (must be skipped during file detection).
+# These match the File field in docker/runner/executor.go LangSpec definitions.
+_CODE_FILENAMES = frozenset({
+    "code.py",   # python / py
+    "code.js",   # javascript / js
+    "code.ts",   # typescript / ts
+    "main.go",   # go
+    "code.php",  # php
+    "code.r",    # r
+    "Code.java", # java
+    "code.c",    # c
+    "code.cpp",  # cpp
+    "main.rs",   # rust / rs
+    "code.f90",  # fortran / f90
+    "code.d",    # d / dlang
+})
+
 
 class CodeExecutionRunner:
     """Core code execution runner using Kubernetes pods.
@@ -47,6 +64,7 @@ class CodeExecutionRunner:
         self._manager_started = False
         self.active_executions: dict[str, CodeExecution] = {}
         self.session_handles: dict[str, PodHandle] = {}
+        self._job_file_contents: dict[str, bytes] = {}  # path -> content for Job-path files
 
     @property
     def kubernetes_manager(self) -> KubernetesManager:
@@ -180,15 +198,26 @@ class CodeExecutionRunner:
             # Process outputs
             outputs = self._process_outputs(result.stdout, result.stderr, end_time)
 
-            # For pod-based execution, check for generated files
+            # Check for generated files
             generated_files = []
             if handle:
-                # Only detect files if code likely generates files
-                should_detect_files = files or any(
-                    kw in request.code for kw in ["open(", "savefig", "to_csv", "write(", ".save("]
-                )
-                if should_detect_files:
-                    generated_files = await self._detect_generated_files(handle)
+                # Pool path: detect files via runner HTTP API (pod still alive)
+                generated_files = await self._detect_generated_files(handle)
+            elif result.generated_files:
+                # Job path: files were already collected before job cleanup
+                for f in result.generated_files:
+                    path = f.get("path", f"/mnt/data/{f.get('name', '')}")
+                    content = f.get("content")
+                    if content:
+                        self._job_file_contents[path] = content
+                generated_files = [
+                    {
+                        "path": f.get("path", f"/mnt/data/{f.get('name', '')}"),
+                        "size": f.get("size", 0),
+                        "mime_type": OutputProcessor.guess_mime_type(f.get("name", "")),
+                    }
+                    for f in result.generated_files
+                ]
 
             mounted_filenames = self._get_mounted_filenames(files)
             filtered_files = self._filter_generated_files(generated_files, mounted_filenames)
@@ -347,9 +376,9 @@ class CodeExecutionRunner:
                     files = data.get("files", [])
                     generated_files = []
                     for f in files:
-                        # Skip code files
+                        # Skip code files (source files written by the runner)
                         name = f.get("name", "")
-                        if name.startswith("code.") or name == "Code.java":
+                        if name in _CODE_FILENAMES:
                             continue
                         if f.get("size", 0) > settings.max_file_size_mb * 1024 * 1024:
                             continue
@@ -379,6 +408,14 @@ class CodeExecutionRunner:
         This method is kept for backward compatibility only.
         """
         return self.session_handles.get(session_id)
+
+    def pop_job_file_content(self, file_path: str) -> bytes | None:
+        """Pop pre-downloaded file content from a Job execution.
+
+        Used by the orchestrator when the pod is already gone (Job path).
+        Returns None if the file was not pre-downloaded.
+        """
+        return self._job_file_contents.pop(file_path, None)
 
     async def get_execution(self, execution_id: str) -> CodeExecution | None:
         """Retrieve an execution by ID."""

@@ -45,6 +45,7 @@ def mock_execution_service():
     service = MagicMock()
     service.execute_code = AsyncMock()
     service.get_container_for_session = AsyncMock(return_value=None)
+    service.pop_job_file_content = MagicMock(return_value=None)
     return service
 
 
@@ -947,10 +948,20 @@ class TestGetFileFromContainer:
 
     @pytest.mark.asyncio
     async def test_get_file_no_container(self, orchestrator):
-        """Test getting file when container is None."""
+        """Test getting file when container is None and no job content."""
         result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt")
 
         assert b"Pod not found" in result
+
+    @pytest.mark.asyncio
+    async def test_get_file_no_container_with_job_content(self, orchestrator, mock_execution_service):
+        """Test getting file when container is None but job content exists."""
+        mock_execution_service.pop_job_file_content = MagicMock(return_value=b"job file data")
+
+        result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt")
+
+        assert result == b"job file data"
+        mock_execution_service.pop_job_file_content.assert_called_once_with("/mnt/data/test.txt")
 
     @pytest.mark.asyncio
     async def test_get_file_success(self, orchestrator, mock_execution_service):
