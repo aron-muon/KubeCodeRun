@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -19,8 +19,16 @@ class MinIOConfig(BaseSettings):
     )
 
     endpoint: str = Field(default="localhost:9000", alias="minio_endpoint")
-    access_key: str | None = Field(default=None, alias="minio_access_key")
-    secret_key: str | None = Field(default=None, alias="minio_secret_key")
+    access_key: str | None = Field(
+        default=None,
+        alias="minio_access_key",
+        validation_alias=AliasChoices("minio_access_key", "aws_access_key_id"),
+    )
+    secret_key: str | None = Field(
+        default=None,
+        alias="minio_secret_key",
+        validation_alias=AliasChoices("minio_secret_key", "aws_secret_access_key"),
+    )
     secure: bool = Field(default=False, alias="minio_secure")
     bucket: str = Field(default="kubecoderun-files", alias="minio_bucket")
     region: str = Field(default="us-east-1", alias="minio_region")

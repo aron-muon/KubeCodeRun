@@ -96,6 +96,10 @@ spec:
                 name: {{ .Values.minio.existingSecret }}
             {{- end }}
             {{- end }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data
@@ -104,6 +108,9 @@ spec:
             - name: secrets-store
               mountPath: /mnt/secrets-store
               readOnly: true
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
         - name: data
@@ -116,6 +123,9 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: {{ include "kubecoderun.fullname" . }}-secrets
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

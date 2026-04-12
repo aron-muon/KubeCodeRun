@@ -93,6 +93,22 @@ nodeSelector: {}
 tolerations: []
 affinity: {}
 
+# Extra environment variables for the API container
+# Useful for mapping secret keys to different env var names
+# Example:
+#   env:
+#     - name: MINIO_ACCESS_KEY
+#       valueFrom:
+#         secretKeyRef:
+#           name: my-bucket-creds
+#           key: AWS_ACCESS_KEY_ID
+env: []
+
+# Extra volumes and volume mounts for the API deployment
+# Useful for mounting CA certificates (e.g. Redis TLS, S3/MinIO TLS)
+extraVolumes: []
+extraVolumeMounts: []
+
 # External Dependencies
 redis:
   # Reference an existing Kubernetes Secret containing REDIS_URL
