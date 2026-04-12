@@ -17,6 +17,7 @@ MINIO_ENV_VARS = [
     "MINIO_BUCKET",
     "MINIO_REGION",
     "MINIO_USE_IAM",
+    "MINIO_CA_CERTS",
 ]
 
 # AWS env vars that are also used as fallbacks for MinIO credentials
@@ -322,6 +323,59 @@ class TestMinIOClientCreation:
                 assert "amazonaws.com" in provider._sts_endpoint
         finally:
             os.unlink(token_file)
+
+    def test_create_client_without_ca_certs(self):
+        """Test client creation without custom CA certs uses default http_client."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = MinIOConfig(
+                minio_endpoint="minio.example.com:9000",
+                minio_access_key="minioadmin",
+                minio_secret_key="minioadmin123",
+                minio_secure=True,
+                minio_use_iam=False,
+            )
+
+            assert config.ca_certs is None
+            assert config._get_http_client() is None
+
+    def test_create_client_with_ca_certs(self):
+        """Test client creation with custom CA certs uses custom urllib3 PoolManager."""
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".crt") as f:
+            f.write("-----BEGIN CERTIFICATE-----\nfake\n-----END CERTIFICATE-----\n")
+            ca_file = f.name
+
+        try:
+            with patch.dict(os.environ, get_clean_env(), clear=True):
+                config = MinIOConfig(
+                    minio_endpoint="minio.example.com:9000",
+                    minio_access_key="minioadmin",
+                    minio_secret_key="minioadmin123",
+                    minio_secure=True,
+                    minio_ca_certs=ca_file,
+                    minio_use_iam=False,
+                )
+
+                assert config.ca_certs == ca_file
+                http_client = config._get_http_client()
+                assert http_client is not None
+        finally:
+            os.unlink(ca_file)
+
+    def test_ca_certs_from_env(self):
+        """Test that MINIO_CA_CERTS is loaded from environment."""
+        clean_env = get_clean_env()
+        clean_env.update(
+            {
+                "MINIO_ENDPOINT": "minio.example.com:9000",
+                "MINIO_ACCESS_KEY": "minioadmin",
+                "MINIO_SECRET_KEY": "minioadmin123",
+                "MINIO_CA_CERTS": "/etc/ssl/certs/custom-ca.crt",
+            }
+        )
+
+        with patch.dict(os.environ, clean_env, clear=True):
+            config = MinIOConfig()
+            assert config.ca_certs == "/etc/ssl/certs/custom-ca.crt"
 
 
 class TestMinIOConfigFromEnvironment:

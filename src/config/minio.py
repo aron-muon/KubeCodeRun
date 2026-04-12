@@ -30,6 +30,7 @@ class MinIOConfig(BaseSettings):
         validation_alias=AliasChoices("minio_secret_key", "aws_secret_access_key"),
     )
     secure: bool = Field(default=False, alias="minio_secure")
+    ca_certs: str | None = Field(default=None, alias="minio_ca_certs")
     bucket: str = Field(default="kubecoderun-files", alias="minio_bucket")
     region: str = Field(default="us-east-1", alias="minio_region")
     use_iam: bool = Field(default=False, alias="minio_use_iam")
@@ -55,6 +56,14 @@ class MinIOConfig(BaseSettings):
 
         return self
 
+    def _get_http_client(self):
+        """Create a custom urllib3 PoolManager when a CA cert is configured."""
+        if not self.ca_certs:
+            return None
+        import urllib3
+
+        return urllib3.PoolManager(cert_reqs="CERT_REQUIRED", ca_certs=self.ca_certs)
+
     def create_client(self) -> "Minio":
         """Create a MinIO client with the appropriate credentials.
 
@@ -64,6 +73,8 @@ class MinIOConfig(BaseSettings):
         import os
 
         from minio import Minio
+
+        http_client = self._get_http_client()
 
         if self.use_iam:
             # Check if running with IRSA (web identity token)
@@ -95,6 +106,7 @@ class MinIOConfig(BaseSettings):
                     ),
                     secure=self.secure,
                     region=self.region,
+                    http_client=http_client,
                 )
             else:
                 # Fall back to IamAwsProvider for EC2 instance profiles
@@ -105,6 +117,7 @@ class MinIOConfig(BaseSettings):
                     credentials=IamAwsProvider(),
                     secure=self.secure,
                     region=self.region,
+                    http_client=http_client,
                 )
         else:
             # Use static credentials
@@ -114,4 +127,5 @@ class MinIOConfig(BaseSettings):
                 secret_key=self.secret_key,
                 secure=self.secure,
                 region=self.region,
+                http_client=http_client,
             )
