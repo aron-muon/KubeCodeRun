@@ -28,11 +28,7 @@ AWS_CREDENTIAL_VARS = [
 
 def get_clean_env():
     """Return environment with MINIO_ and AWS credential vars removed."""
-    return {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith("MINIO_") and k not in AWS_CREDENTIAL_VARS
-    }
+    return {k: v for k, v in os.environ.items() if not k.startswith("MINIO_") and k not in AWS_CREDENTIAL_VARS}
 
 
 class TestMinIOConfigValidation:
