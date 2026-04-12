@@ -1,6 +1,5 @@
 """Redis configuration."""
 
-import ssl as _ssl
 from urllib.parse import urlparse
 
 from pydantic import Field, field_validator
@@ -81,39 +80,12 @@ class RedisConfig(BaseSettings):
         password_part = f":{self.password}@" if self.password else ""
         return f"{scheme}://{password_part}{self.host}:{self.port}/{self.db}"
 
-    def _build_ssl_context(self) -> _ssl.SSLContext:
-        """Build an ``ssl.SSLContext`` from the configured TLS fields.
-
-        When ``ssl_ca_certs`` points to a custom CA file the context loads it
-        explicitly so that self-signed / private-CA certificates are verified
-        correctly.
-        """
-        cert_reqs_map = {
-            "required": _ssl.CERT_REQUIRED,
-            "optional": _ssl.CERT_OPTIONAL,
-            "none": _ssl.CERT_NONE,
-        }
-        cert_reqs = cert_reqs_map.get(self.ssl_cert_reqs, _ssl.CERT_REQUIRED)
-
-        if self.ssl_ca_certs:
-            ctx = _ssl.create_default_context(cafile=self.ssl_ca_certs)
-        else:
-            ctx = _ssl.create_default_context()
-
-        ctx.check_hostname = self.ssl_check_hostname and cert_reqs != _ssl.CERT_NONE
-        ctx.verify_mode = cert_reqs
-
-        if self.ssl_certfile:
-            ctx.load_cert_chain(certfile=self.ssl_certfile, keyfile=self.ssl_keyfile)
-
-        return ctx
-
     def get_ssl_kwargs(self) -> dict:
         """Get SSL kwargs for Redis client creation.
 
-        Builds a proper ``ssl.SSLContext`` and passes it as ``ssl_context`` so
-        that custom CA certificates (self-signed / private CA) are loaded into
-        the context and verified correctly.
+        Returns individual ``ssl_*`` parameters accepted by redis-py 7.x
+        ``SSLConnection``.  Only non-None values are included so that unset
+        fields fall back to redis-py defaults (e.g. system CA bundle).
 
         Note: In redis-py 7.x the ``ssl=True`` keyword is no longer accepted by
         ``AbstractConnection.__init__()``.  SSL is instead enabled by using the
@@ -121,9 +93,17 @@ class RedisConfig(BaseSettings):
         """
         if not self.ssl:
             return {}
-        return {
-            "ssl_context": self._build_ssl_context(),
+        kwargs: dict = {
+            "ssl_cert_reqs": self.ssl_cert_reqs,
+            "ssl_check_hostname": self.ssl_check_hostname,
         }
+        if self.ssl_ca_certs:
+            kwargs["ssl_ca_certs"] = self.ssl_ca_certs
+        if self.ssl_certfile:
+            kwargs["ssl_certfile"] = self.ssl_certfile
+        if self.ssl_keyfile:
+            kwargs["ssl_keyfile"] = self.ssl_keyfile
+        return kwargs
 
     @staticmethod
     def parse_nodes(nodes_str: str) -> list[tuple[str, int]]:

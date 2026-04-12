@@ -1,7 +1,6 @@
 """Tests for Redis configuration."""
 
 import os
-import ssl
 from unittest.mock import patch
 
 from src.config.redis import RedisConfig
@@ -91,7 +90,7 @@ class TestRedisGetUrl:
 
 
 class TestRedisGetSslKwargs:
-    """Test RedisConfig.get_ssl_kwargs() builds SSL context."""
+    """Test RedisConfig.get_ssl_kwargs() returns correct SSL parameters."""
 
     def test_ssl_disabled_returns_empty(self):
         """When SSL is disabled, get_ssl_kwargs() returns empty dict."""
@@ -99,77 +98,91 @@ class TestRedisGetSslKwargs:
             config = RedisConfig(redis_ssl=False)
             assert config.get_ssl_kwargs() == {}
 
-    def test_ssl_enabled_returns_ssl_context(self):
-        """When SSL is enabled, get_ssl_kwargs() returns ssl_context."""
+    def test_ssl_enabled_returns_cert_reqs_and_hostname(self):
+        """When SSL is enabled, always includes cert_reqs and check_hostname."""
         with patch.dict(os.environ, get_clean_env(), clear=True):
             config = RedisConfig(redis_ssl=True)
             kwargs = config.get_ssl_kwargs()
-            assert "ssl_context" in kwargs
-            assert isinstance(kwargs["ssl_context"], ssl.SSLContext)
+            assert kwargs["ssl_cert_reqs"] == "required"
+            assert kwargs["ssl_check_hostname"] is True
 
-    def test_ssl_context_has_default_verify_mode(self):
-        """Default SSL context uses CERT_REQUIRED."""
-        with patch.dict(os.environ, get_clean_env(), clear=True):
-            config = RedisConfig(redis_ssl=True)
-            ctx = config.get_ssl_kwargs()["ssl_context"]
-            assert ctx.verify_mode == ssl.CERT_REQUIRED
-            assert ctx.check_hostname is True
-
-    def test_ssl_context_cert_reqs_none(self):
-        """When cert_reqs is 'none', verification is disabled."""
-        with patch.dict(os.environ, get_clean_env(), clear=True):
-            config = RedisConfig(redis_ssl=True, redis_ssl_cert_reqs="none")
-            ctx = config.get_ssl_kwargs()["ssl_context"]
-            assert ctx.verify_mode == ssl.CERT_NONE
-            assert ctx.check_hostname is False
-
-    def test_ssl_context_cert_reqs_optional(self):
-        """When cert_reqs is 'optional', mode is CERT_OPTIONAL."""
-        with patch.dict(os.environ, get_clean_env(), clear=True):
-            config = RedisConfig(
-                redis_ssl=True,
-                redis_ssl_cert_reqs="optional",
-                redis_ssl_check_hostname=False,
-            )
-            ctx = config.get_ssl_kwargs()["ssl_context"]
-            assert ctx.verify_mode == ssl.CERT_OPTIONAL
-
-    def test_ssl_context_check_hostname_disabled(self):
-        """When check_hostname is False, it is disabled in the context."""
-        with patch.dict(os.environ, get_clean_env(), clear=True):
-            config = RedisConfig(redis_ssl=True, redis_ssl_check_hostname=False)
-            ctx = config.get_ssl_kwargs()["ssl_context"]
-            assert ctx.check_hostname is False
-
-    def test_ssl_context_with_ca_certs(self):
-        """When ssl_ca_certs is set, the context loads the CA file."""
-        import tempfile
-
-        # Create a temporary self-signed CA cert for testing
-        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".pem") as f:
-            # Generate a minimal self-signed cert for test purposes
-            f.write("")  # Empty file won't be loaded, we test the path is used
-            ca_file = f.name
-
-        try:
-            with patch.dict(os.environ, get_clean_env(), clear=True):
-                config = RedisConfig(redis_ssl=True, redis_ssl_ca_certs=ca_file)
-                # _build_ssl_context calls create_default_context(cafile=ca_file)
-                # An empty file will raise an error, which confirms it's being used
-                try:
-                    config._build_ssl_context()
-                except ssl.SSLError:
-                    pass  # Expected - empty file is not a valid cert
-        finally:
-            os.unlink(ca_file)
-
-    def test_ssl_kwargs_no_individual_params(self):
-        """SSL kwargs should only contain ssl_context, not individual params."""
+    def test_ssl_omits_none_ca_certs(self):
+        """When ssl_ca_certs is not set, it is omitted from kwargs."""
         with patch.dict(os.environ, get_clean_env(), clear=True):
             config = RedisConfig(redis_ssl=True)
             kwargs = config.get_ssl_kwargs()
             assert "ssl_ca_certs" not in kwargs
+
+    def test_ssl_includes_ca_certs_when_set(self):
+        """When ssl_ca_certs is set, it is included in kwargs."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(redis_ssl=True, redis_ssl_ca_certs="/etc/ssl/ca.crt")
+            kwargs = config.get_ssl_kwargs()
+            assert kwargs["ssl_ca_certs"] == "/etc/ssl/ca.crt"
+
+    def test_ssl_omits_none_certfile(self):
+        """When ssl_certfile is not set, it is omitted from kwargs."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(redis_ssl=True)
+            kwargs = config.get_ssl_kwargs()
             assert "ssl_certfile" not in kwargs
             assert "ssl_keyfile" not in kwargs
-            assert "ssl_cert_reqs" not in kwargs
-            assert "ssl_check_hostname" not in kwargs
+
+    def test_ssl_includes_client_cert_when_set(self):
+        """When ssl_certfile is set, both cert and key are included."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(
+                redis_ssl=True,
+                redis_ssl_certfile="/etc/ssl/client.crt",
+                redis_ssl_keyfile="/etc/ssl/client.key",
+            )
+            kwargs = config.get_ssl_kwargs()
+            assert kwargs["ssl_certfile"] == "/etc/ssl/client.crt"
+            assert kwargs["ssl_keyfile"] == "/etc/ssl/client.key"
+
+    def test_ssl_cert_reqs_none(self):
+        """When cert_reqs is 'none', it is passed through."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(redis_ssl=True, redis_ssl_cert_reqs="none")
+            kwargs = config.get_ssl_kwargs()
+            assert kwargs["ssl_cert_reqs"] == "none"
+
+    def test_ssl_check_hostname_disabled(self):
+        """When check_hostname is False, it is passed through."""
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(redis_ssl=True, redis_ssl_check_hostname=False)
+            kwargs = config.get_ssl_kwargs()
+            assert kwargs["ssl_check_hostname"] is False
+
+    def test_ssl_kwargs_from_env(self):
+        """SSL kwargs load correctly from environment variables."""
+        clean_env = get_clean_env()
+        clean_env.update(
+            {
+                "REDIS_SSL": "true",
+                "REDIS_SSL_CA_CERTS": "/etc/ssl/redis-ca.pem",
+                "REDIS_SSL_CERT_REQS": "required",
+                "REDIS_SSL_CHECK_HOSTNAME": "true",
+            }
+        )
+        with patch.dict(os.environ, clean_env, clear=True):
+            config = RedisConfig()
+            kwargs = config.get_ssl_kwargs()
+            assert kwargs["ssl_ca_certs"] == "/etc/ssl/redis-ca.pem"
+            assert kwargs["ssl_cert_reqs"] == "required"
+            assert kwargs["ssl_check_hostname"] is True
+
+    def test_ssl_kwargs_accepted_by_connection_pool(self):
+        """Verify kwargs are compatible with redis-py ConnectionPool.from_url()."""
+        import redis.asyncio as redis
+
+        with patch.dict(os.environ, get_clean_env(), clear=True):
+            config = RedisConfig(redis_ssl=True, redis_ssl_ca_certs="/etc/ssl/ca.crt")
+            kwargs = config.get_ssl_kwargs()
+            # Should not raise - validates that kwargs are accepted by redis-py
+            pool = redis.ConnectionPool.from_url(
+                "rediss://localhost:6379/0",
+                decode_responses=True,
+                **kwargs,
+            )
+            assert pool is not None
