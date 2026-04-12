@@ -115,9 +115,10 @@ redis:
   # When set, the url/host/port/password/db fields below are ignored
   # Expected secret key: REDIS_URL (full connection string)
   existingSecret: ""
-  # External Redis URL (required unless existingSecret is set)
-  url: "redis://redis:6379/0"
-  # Or specify individual fields
+  # External Redis URL — set this OR use host/port/password/db fields below.
+  # When empty, the chart builds the URL from host/port/password/db.
+  url: ""
+  # Individual connection fields (used when url is empty)
   host: ""
   port: 6379
   password: ""

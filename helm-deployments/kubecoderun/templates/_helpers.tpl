@@ -103,7 +103,9 @@ Returns true if any of the following conditions are met:
 - minio.existingSecret is not set AND minio.useIAM is false (S3 credentials needed)
 */}}
 {{- define "kubecoderun.needsHelmSecret" -}}
-{{- if or (not .Values.api.existingSecret) (not .Values.redis.existingSecret) (and (not .Values.minio.existingSecret) (not .Values.minio.useIAM)) (and (eq .Values.redis.mode "sentinel") .Values.redis.sentinel.password) }}
+{{- $skipRedisUrl := and .Values.redis.host (not .Values.redis.password) -}}
+{{- $needsRedisUrl := and (not .Values.redis.existingSecret) (not $skipRedisUrl) -}}
+{{- if or (not .Values.api.existingSecret) $needsRedisUrl (and (not .Values.minio.existingSecret) (not .Values.minio.useIAM)) (and (eq .Values.redis.mode "sentinel") .Values.redis.sentinel.password) }}
 {{- true }}
 {{- end }}
 {{- end }}

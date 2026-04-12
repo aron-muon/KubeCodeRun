@@ -308,6 +308,13 @@ data:
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
   WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | toJson | quote }}
 
+  # Redis Connection
+  {{- if .Values.redis.host }}
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  {{- end }}
+  REDIS_PORT: {{ .Values.redis.port | default 6379 | quote }}
+  REDIS_DB: {{ .Values.redis.db | default 0 | quote }}
+
   # Redis Advanced Configuration
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
   REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
@@ -344,6 +351,9 @@ data:
   MINIO_BUCKET: {{ .Values.minio.bucket | quote }}
   {{- end }}
   MINIO_SECURE: {{ .Values.minio.secure | quote }}
+  {{- if .Values.minio.caCerts }}
+  MINIO_CA_CERTS: {{ .Values.minio.caCerts | quote }}
+  {{- end }}
   MINIO_USE_IAM: {{ .Values.minio.useIAM | quote }}
   {{- if .Values.minio.region }}
   AWS_REGION: {{ .Values.minio.region | quote }}
