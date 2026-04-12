@@ -19,10 +19,20 @@ MINIO_ENV_VARS = [
     "MINIO_USE_IAM",
 ]
 
+# AWS env vars that are also used as fallbacks for MinIO credentials
+AWS_CREDENTIAL_VARS = [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+]
+
 
 def get_clean_env():
-    """Return environment with MINIO_ vars removed."""
-    return {k: v for k, v in os.environ.items() if not k.startswith("MINIO_")}
+    """Return environment with MINIO_ and AWS credential vars removed."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("MINIO_") and k not in AWS_CREDENTIAL_VARS
+    }
 
 
 class TestMinIOConfigValidation:
@@ -365,3 +375,41 @@ class TestMinIOConfigFromEnvironment:
             assert config.use_iam is True
             assert config.access_key is None
             assert config.secret_key is None
+
+    def test_loads_from_aws_env_vars_as_fallback(self):
+        """Test that AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are accepted as fallbacks."""
+        clean_env = get_clean_env()
+        clean_env.update(
+            {
+                "MINIO_ENDPOINT": "s3.example.com:9000",
+                "AWS_ACCESS_KEY_ID": "aws-access-key",
+                "AWS_SECRET_ACCESS_KEY": "aws-secret-key-value",
+                "MINIO_USE_IAM": "false",
+            }
+        )
+
+        with patch.dict(os.environ, clean_env, clear=True):
+            config = MinIOConfig()
+
+            assert config.access_key == "aws-access-key"
+            assert config.secret_key == "aws-secret-key-value"
+
+    def test_minio_vars_take_precedence_over_aws_vars(self):
+        """Test that MINIO_* env vars take precedence over AWS_* env vars."""
+        clean_env = get_clean_env()
+        clean_env.update(
+            {
+                "MINIO_ENDPOINT": "minio.example.com:9000",
+                "MINIO_ACCESS_KEY": "minio-key",
+                "MINIO_SECRET_KEY": "minio-secret-value",
+                "AWS_ACCESS_KEY_ID": "aws-key",
+                "AWS_SECRET_ACCESS_KEY": "aws-secret-value",
+                "MINIO_USE_IAM": "false",
+            }
+        )
+
+        with patch.dict(os.environ, clean_env, clear=True):
+            config = MinIOConfig()
+
+            assert config.access_key == "minio-key"
+            assert config.secret_key == "minio-secret-value"
