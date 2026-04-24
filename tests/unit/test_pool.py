@@ -993,25 +993,14 @@ class TestPodPoolExecuteExtended:
 
     @pytest.mark.asyncio
     async def test_execute_with_file_upload_failure(self, pod_pool, pod_handle):
-        """Test execution with file upload failure."""
+        """Upload failures must surface to the caller (issue #57) instead of
+        silently continuing with a pod missing expected inputs."""
         mock_client = AsyncMock()
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "exit_code": 0,
-            "stdout": "OK",
-            "stderr": "",
-            "execution_time_ms": 50,
-        }
-
-        call_count = 0
 
         async def mock_post(url, **kwargs):
-            nonlocal call_count
-            call_count += 1
             if "/files" in url:
                 raise Exception("Upload failed")
-            return mock_response
+            return MagicMock(status_code=200, json=MagicMock(return_value={}))
 
         mock_client.post = mock_post
 
@@ -1020,8 +1009,102 @@ class TestPodPoolExecuteExtended:
         with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
             result = await pod_pool.execute(pod_handle, "print('test')", files=files)
 
-        # Should still try to execute even if file upload fails
-        assert result.exit_code == 0
+        assert result.exit_code == 1
+        assert "test.py" in result.stderr
+        assert "upload" in result.stderr.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_with_file_upload_timeout(self, pod_pool, pod_handle):
+        """Large file uploads that exceed the per-file timeout must fail with
+        an actionable error mentioning the file name (issue #57 root cause
+        for >16 MB datasets)."""
+        import httpx
+
+        mock_client = AsyncMock()
+
+        async def mock_post(url, **kwargs):
+            if "/files" in url:
+                raise httpx.TimeoutException("socket hang up")
+            return MagicMock(status_code=200, json=MagicMock(return_value={}))
+
+        mock_client.post = mock_post
+
+        files = [FileData(filename="big.csv", content=b"x" * (2 * 1024 * 1024))]
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            result = await pod_pool.execute(pod_handle, "print('hi')", files=files)
+
+        assert result.exit_code == 1
+        assert "big.csv" in result.stderr
+        assert "Timed out" in result.stderr
+
+    @pytest.mark.asyncio
+    async def test_execute_with_file_upload_runner_4xx(self, pod_pool, pod_handle):
+        """A 4xx from the runner during file upload must abort the execution
+        with a clear error, not proceed to /execute."""
+        mock_client = AsyncMock()
+
+        async def mock_post(url, **kwargs):
+            if "/files" in url:
+                return MagicMock(status_code=413)
+            return MagicMock(status_code=200, json=MagicMock(return_value={}))
+
+        mock_client.post = mock_post
+
+        files = [FileData(filename="payload.bin", content=b"x" * 100)]
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            result = await pod_pool.execute(pod_handle, "print('hi')", files=files)
+
+        assert result.exit_code == 1
+        assert "413" in result.stderr
+        assert "payload.bin" in result.stderr
+
+    @pytest.mark.asyncio
+    async def test_execute_generic_exception_appends_pod_failure(self, pod_pool, pod_handle):
+        """When the /execute request fails, the stderr should include the
+        pod's terminal reason (e.g. OOMKilled) so users know the pod died."""
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=Exception("socket hang up"))
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            with patch.object(pod_pool, "_inspect_pod_failure", AsyncMock(return_value="OOMKilled")):
+                result = await pod_pool.execute(pod_handle, "x = [0]*10**9")
+
+        assert result.exit_code == 1
+        assert "OOMKilled" in result.stderr
+        assert "socket hang up" in result.stderr
+
+    @pytest.mark.asyncio
+    async def test_inspect_pod_failure_returns_terminated_reason(self, pod_pool, pod_handle):
+        """_inspect_pod_failure should surface container terminated reasons."""
+        fake_terminated = MagicMock(reason="OOMKilled")
+        fake_last_state = MagicMock(terminated=fake_terminated)
+        fake_cs = MagicMock(last_state=fake_last_state, state=MagicMock(waiting=None))
+        fake_pod = MagicMock()
+        fake_pod.status.phase = "Running"
+        fake_pod.status.reason = None
+        fake_pod.status.container_statuses = [fake_cs]
+
+        fake_api = MagicMock()
+        fake_api.read_namespaced_pod = MagicMock(return_value=fake_pod)
+
+        with patch("src.services.kubernetes.pool.get_core_api", return_value=fake_api):
+            reason = await pod_pool._inspect_pod_failure(pod_handle)
+
+        assert reason == "OOMKilled"
+
+    @pytest.mark.asyncio
+    async def test_inspect_pod_failure_handles_missing_pod(self, pod_pool, pod_handle):
+        """A 404 from the Kubernetes API must translate into a helpful string."""
+        fake_api = MagicMock()
+        fake_api.read_namespaced_pod = MagicMock(side_effect=ApiException(status=404))
+
+        with patch("src.services.kubernetes.pool.get_core_api", return_value=fake_api):
+            reason = await pod_pool._inspect_pod_failure(pod_handle)
+
+        assert reason is not None
+        assert "not found" in reason
 
     @pytest.mark.asyncio
     async def test_execute_with_initial_state(self, pod_pool, pod_handle):
