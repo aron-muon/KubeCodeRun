@@ -4,6 +4,7 @@ Provides configured Kubernetes API clients for pod and job management.
 Supports both in-cluster and out-of-cluster (kubeconfig) authentication.
 """
 
+import json
 import os
 from functools import lru_cache
 from typing import Optional, Tuple
@@ -17,6 +18,65 @@ from kubernetes.client import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# Label key prefixes that cannot be overridden by custom pod labels
+_PROTECTED_LABEL_PREFIXES = ("app.kubernetes.io/", "kubecoderun.io/")
+
+
+def build_custom_labels(
+    pod_labels: str,
+    pod_label_language_suffix: str,
+    language: str,
+) -> dict[str, str]:
+    """Build custom labels from JSON-encoded config, applying language suffix where requested.
+
+    Protected label prefixes (app.kubernetes.io/*, kubecoderun.io/*) are silently
+    dropped to prevent accidental override of internal labels.
+
+    Args:
+        pod_labels: JSON-encoded dict of extra labels (may be empty).
+        pod_label_language_suffix: JSON-encoded list of label keys whose
+            values should be suffixed with ``-<language>`` (may be empty).
+        language: Language code as-is (e.g. ``py``, ``js``).
+
+    Returns:
+        Dict of custom labels ready to merge.
+    """
+    if not pod_labels:
+        return {}
+
+    try:
+        labels: dict[str, str] = json.loads(pod_labels)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("Invalid K8S_POD_LABELS JSON, ignoring", raw=pod_labels)
+        return {}
+
+    suffix_keys: list[str] = []
+    if pod_label_language_suffix:
+        try:
+            suffix_keys = json.loads(pod_label_language_suffix)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Invalid K8S_POD_LABEL_LANGUAGE_SUFFIX JSON, ignoring", raw=pod_label_language_suffix)
+
+    # Warn about suffix keys that don't match any label
+    for suffix_key in suffix_keys:
+        if suffix_key not in labels:
+            logger.warning(
+                "K8S_POD_LABEL_LANGUAGE_SUFFIX key not found in K8S_POD_LABELS, ignoring",
+                suffix_key=suffix_key,
+            )
+
+    result: dict[str, str] = {}
+    for key, value in labels.items():
+        if any(key.startswith(prefix) for prefix in _PROTECTED_LABEL_PREFIXES):
+            logger.warning("Custom label blocked: protected prefix", label_key=key)
+            continue
+        if key in suffix_keys:
+            value = f"{value}-{language}"
+        result[key] = value
+
+    return result
+
 
 # Global client instances
 _core_api: CoreV1Api | None = None

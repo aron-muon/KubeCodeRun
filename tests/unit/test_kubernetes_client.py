@@ -537,3 +537,71 @@ class TestCreatePodManifest:
         )
 
         assert pod.spec.image_pull_secrets is None
+
+
+class TestBuildCustomLabels:
+    """Tests for build_custom_labels function."""
+
+    def test_empty_pod_labels_returns_empty(self):
+        result = client.build_custom_labels("", "", "py")
+        assert result == {}
+
+    def test_basic_labels_no_suffix(self):
+        labels_json = '{"team": "platform", "env": "prod"}'
+        result = client.build_custom_labels(labels_json, "", "py")
+        assert result == {"team": "platform", "env": "prod"}
+
+    def test_language_suffix_applied(self):
+        labels_json = '{"workload-name": "KubeCodeRun", "workload-type": "CodeInterpreter"}'
+        suffix_json = '["workload-name"]'
+        result = client.build_custom_labels(labels_json, suffix_json, "py")
+        assert result == {"workload-name": "KubeCodeRun-py", "workload-type": "CodeInterpreter"}
+
+    def test_language_suffix_preserves_casing(self):
+        labels_json = '{"name": "MyApp"}'
+        suffix_json = '["name"]'
+        result = client.build_custom_labels(labels_json, suffix_json, "js")
+        assert result["name"] == "MyApp-js"
+
+    def test_protected_prefix_app_kubernetes_blocked(self):
+        labels_json = '{"app.kubernetes.io/name": "evil", "safe-label": "ok"}'
+        result = client.build_custom_labels(labels_json, "", "py")
+        assert "app.kubernetes.io/name" not in result
+        assert result == {"safe-label": "ok"}
+
+    def test_protected_prefix_kubecoderun_blocked(self):
+        labels_json = '{"kubecoderun.io/language": "hax", "team": "good"}'
+        result = client.build_custom_labels(labels_json, "", "py")
+        assert "kubecoderun.io/language" not in result
+        assert result == {"team": "good"}
+
+    def test_invalid_labels_json_returns_empty(self):
+        result = client.build_custom_labels("not-json", "", "py")
+        assert result == {}
+
+    def test_invalid_suffix_json_still_returns_labels(self):
+        labels_json = '{"team": "platform"}'
+        result = client.build_custom_labels(labels_json, "not-json", "py")
+        assert result == {"team": "platform"}
+
+    def test_suffix_key_not_in_labels_ignored(self):
+        labels_json = '{"team": "platform"}'
+        suffix_json = '["missing-key"]'
+        result = client.build_custom_labels(labels_json, suffix_json, "py")
+        assert result == {"team": "platform"}
+
+    def test_real_world_multi_label_with_suffix(self):
+        labels_json = '{"example.com/workload-type": "CodeRunner", "example.com/workload-name": "MyApp"}'
+        suffix_json = '["example.com/workload-name"]'
+        result = client.build_custom_labels(labels_json, suffix_json, "py")
+        assert result == {
+            "example.com/workload-type": "CodeRunner",
+            "example.com/workload-name": "MyApp-py",
+        }
+
+    def test_suffix_key_not_in_labels_logs_warning(self):
+        labels_json = '{"team": "platform"}'
+        suffix_json = '["nonexistent-key", "team"]'
+        result = client.build_custom_labels(labels_json, suffix_json, "go")
+        assert result == {"team": "platform-go"}
+        assert "nonexistent-key" not in result

@@ -183,6 +183,14 @@ class Settings(BaseSettings):
         default="",
         description='JSON-encoded tolerations for execution pods (e.g. \'[{"key":"sandbox","operator":"Exists","effect":"NoSchedule"}]\')',
     )
+    k8s_pod_labels: str = Field(
+        default="",
+        description='JSON-encoded extra labels for execution pods (e.g. \'{"team":"platform"}\')',
+    )
+    k8s_pod_label_language_suffix: str = Field(
+        default="",
+        description='JSON-encoded list of label keys from K8S_POD_LABELS that get "-<lang>" appended (e.g. \'["workload-name"]\')',
+    )
 
     # Resource Limits - Execution
     max_execution_time: int = Field(default=30, ge=1, le=600)
@@ -663,6 +671,8 @@ class Settings(BaseSettings):
                     pod_node_selector=self.k8s_pod_node_selector,
                     pod_tolerations=self.k8s_pod_tolerations,
                     image_pull_secrets=self.k8s_image_pull_secrets,
+                    pod_labels=self.k8s_pod_labels,
+                    pod_label_language_suffix=self.k8s_pod_label_language_suffix,
                 )
             )
 
