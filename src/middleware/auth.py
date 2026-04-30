@@ -1,5 +1,6 @@
 """Authentication middleware for API key validation."""
 
+import json
 import time
 from typing import Callable, Optional
 
@@ -40,7 +41,15 @@ class AuthenticationMiddleware:
             return
 
         try:
-            await self._authenticate_request(request, scope)
+            # Try header-based extraction first
+            api_key = self._extract_api_key(request)
+
+            # If no key in headers, try JSON body extraction for POST/PUT/PATCH
+            if api_key is None and request.method in ("POST", "PUT", "PATCH"):
+                body_bytes, receive = await self._buffer_body(receive)
+                api_key = self._extract_api_key_from_body(body_bytes)
+
+            await self._authenticate_request(request, scope, api_key=api_key)
         except HTTPException as e:
             response = JSONResponse(
                 status_code=e.status_code,
@@ -66,10 +75,11 @@ class AuthenticationMiddleware:
         """Check if authentication should be skipped."""
         return request.url.path in self.excluded_paths or request.method == "OPTIONS"
 
-    async def _authenticate_request(self, request: Request, scope: dict):
+    async def _authenticate_request(self, request: Request, scope: dict, *, api_key: str | None = None):
         """Handle API key authentication."""
-        # Extract API key
-        api_key = self._extract_api_key(request)
+        # Use provided api_key or extract from headers as fallback
+        if api_key is None:
+            api_key = self._extract_api_key(request)
 
         # Get authentication service
         auth_service = await get_auth_service()
@@ -107,6 +117,55 @@ class AuthenticationMiddleware:
                 return auth_header[7:]
 
         return None
+
+    def _extract_api_key_from_body(self, body: bytes) -> str | None:
+        """Extract API key from JSON request body fields.
+
+        Supports @librechat/agents >=3.1.74 which spreads params into the
+        request body instead of sending the key as a header.
+        """
+        if not body:
+            return None
+        try:
+            data = json.loads(body)
+            if not isinstance(data, dict):
+                return None
+            for field in ("LIBRECHAT_CODE_API_KEY", "api_key", "apiKey"):
+                if key := data.get(field):
+                    if isinstance(key, str) and key.strip():
+                        return key.strip()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+        return None
+
+    async def _buffer_body(self, receive: Callable) -> tuple[bytes, Callable]:
+        """Read and buffer the request body, returning a replay receive callable.
+
+        This ensures the body remains available for downstream handlers after
+        the middleware has inspected it.
+        """
+        body_parts: list[bytes] = []
+        while True:
+            message = await receive()
+            body = message.get("body", b"")
+            if body:
+                body_parts.append(body)
+            if not message.get("more_body", False):
+                break
+
+        full_body = b"".join(body_parts)
+
+        # Create a replay receive that returns the buffered body
+        body_sent = False
+
+        async def replay_receive() -> dict:
+            nonlocal body_sent
+            if not body_sent:
+                body_sent = True
+                return {"type": "http.request", "body": full_body, "more_body": False}
+            return {"type": "http.disconnect"}
+
+        return full_body, replay_receive
 
     def _get_client_ip(self, request: Request) -> str:
         """Get client IP address."""
