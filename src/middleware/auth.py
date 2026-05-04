@@ -12,6 +12,10 @@ from ..services.auth import get_auth_service
 
 logger = structlog.get_logger(__name__)
 
+# Max bytes to buffer when inspecting the request body for an API key.
+# Keeps memory bounded for unauthenticated requests (issue #59 review).
+_MAX_AUTH_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
+
 
 class AuthenticationMiddleware:
     """Middleware for API key authentication.
@@ -45,7 +49,8 @@ class AuthenticationMiddleware:
             api_key = self._extract_api_key(request)
 
             # If no key in headers, try JSON body extraction for POST/PUT/PATCH
-            if api_key is None and request.method in ("POST", "PUT", "PATCH"):
+            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if api_key is None and request.method in ("POST", "PUT", "PATCH") and content_type == "application/json":
                 body_bytes, receive = await self._buffer_body(receive)
                 api_key = self._extract_api_key_from_body(body_bytes)
 
@@ -145,10 +150,14 @@ class AuthenticationMiddleware:
         the middleware has inspected it.
         """
         body_parts: list[bytes] = []
+        total = 0
         while True:
             message = await receive()
             body = message.get("body", b"")
             if body:
+                total += len(body)
+                if total > _MAX_AUTH_BODY_BYTES:
+                    raise HTTPException(status_code=413, detail="Request body too large")
                 body_parts.append(body)
             if not message.get("more_body", False):
                 break

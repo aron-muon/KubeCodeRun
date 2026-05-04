@@ -10,6 +10,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from src.middleware.auth import AuthenticationMiddleware
 from src.middleware.security import SecurityMiddleware
@@ -396,3 +397,130 @@ class TestFullAuthFlowWithBodyKey:
         # receive should NOT have been called (no body buffering for GET)
         mock_receive.assert_not_called()
         mock_app.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_auth_middleware_skips_body_for_non_json_content_type(self, auth_middleware, mock_app):
+        """Test body extraction is skipped for non-JSON content types (e.g. multipart)."""
+        body = json.dumps({"api_key": "body-key"}).encode()
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/exec",
+            "query_string": b"",
+            "headers": [(b"content-type", b"multipart/form-data; boundary=abc")],
+        }
+
+        mock_receive = AsyncMock()
+        mock_send = AsyncMock()
+
+        with patch("src.middleware.auth.get_auth_service") as mock_get_auth:
+            mock_service = AsyncMock()
+            mock_service.check_rate_limit.return_value = True
+            mock_service.validate_api_key.return_value = False
+            mock_get_auth.return_value = mock_service
+
+            await auth_middleware(scope, mock_receive, mock_send)
+
+        # Body should NOT have been buffered (non-JSON content type)
+        mock_receive.assert_not_called()
+        # Should have sent a 401 response (no key found in headers)
+        mock_send.assert_called()
+        for call in mock_send.call_args_list:
+            msg = call[0][0]
+            if msg.get("type") == "http.response.start":
+                assert msg["status"] == 401
+                break
+
+    @pytest.mark.asyncio
+    async def test_security_middleware_skips_body_for_non_json_content_type(self, security_middleware):
+        """Test SecurityMiddleware skips body extraction for non-JSON content types."""
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/exec",
+            "query_string": b"",
+            "headers": [(b"content-type", b"text/plain")],
+        }
+
+        mock_receive = AsyncMock()
+        mock_send = AsyncMock()
+
+        with patch("src.middleware.security.get_auth_service") as mock_get_auth:
+            mock_service = AsyncMock()
+            mock_service.check_rate_limit.return_value = True
+            mock_result = MagicMock()
+            mock_result.is_valid = False
+            mock_result.error_message = "Invalid or missing API key"
+            mock_service.validate_api_key_full.return_value = mock_result
+            mock_get_auth.return_value = mock_service
+
+            await security_middleware(scope, mock_receive, mock_send)
+
+        # Body should NOT have been buffered
+        mock_receive.assert_not_called()
+
+
+class TestBufferBodySizeLimit:
+    """Tests for body size limit enforcement in _buffer_body."""
+
+    @pytest.mark.asyncio
+    async def test_auth_buffer_body_rejects_oversized_payload(self, auth_middleware):
+        """Test _buffer_body raises 413 for payloads exceeding the size limit."""
+        from src.middleware.auth import _MAX_AUTH_BODY_BYTES
+
+        oversized_chunk = b"x" * (_MAX_AUTH_BODY_BYTES + 1)
+
+        async def mock_receive():
+            return {"type": "http.request", "body": oversized_chunk, "more_body": False}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await auth_middleware._buffer_body(mock_receive)
+
+        assert exc_info.value.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_security_buffer_body_rejects_oversized_payload(self, security_middleware):
+        """Test _buffer_body raises 413 for payloads exceeding the size limit."""
+        from src.middleware.security import _MAX_AUTH_BODY_BYTES
+
+        oversized_chunk = b"x" * (_MAX_AUTH_BODY_BYTES + 1)
+
+        async def mock_receive():
+            return {"type": "http.request", "body": oversized_chunk, "more_body": False}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await security_middleware._buffer_body(mock_receive)
+
+        assert exc_info.value.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_auth_buffer_body_rejects_oversized_multi_chunk(self, auth_middleware):
+        """Test _buffer_body rejects multi-chunk payloads that exceed the limit."""
+        from src.middleware.auth import _MAX_AUTH_BODY_BYTES
+
+        chunk_size = _MAX_AUTH_BODY_BYTES // 2 + 1
+        chunks = [
+            {"type": "http.request", "body": b"x" * chunk_size, "more_body": True},
+            {"type": "http.request", "body": b"x" * chunk_size, "more_body": False},
+        ]
+        chunk_iter = iter(chunks)
+
+        async def mock_receive():
+            return next(chunk_iter)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await auth_middleware._buffer_body(mock_receive)
+
+        assert exc_info.value.status_code == 413
+
+    @pytest.mark.asyncio
+    async def test_buffer_body_accepts_payload_within_limit(self, auth_middleware):
+        """Test _buffer_body accepts payloads within the size limit."""
+        body = b'{"api_key": "test-key"}'
+
+        async def mock_receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        result_body, _ = await auth_middleware._buffer_body(mock_receive)
+        assert result_body == body
