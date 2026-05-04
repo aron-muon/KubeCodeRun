@@ -542,6 +542,9 @@ class TestCreatePodManifest:
 class TestBuildCustomLabels:
     """Tests for build_custom_labels function."""
 
+    def setup_method(self):
+        client._parse_and_validate_label_config.cache_clear()
+
     def test_empty_pod_labels_returns_empty(self):
         result = client.build_custom_labels("", "", "py")
         assert result == {}
@@ -599,9 +602,29 @@ class TestBuildCustomLabels:
             "example.com/workload-name": "MyApp-py",
         }
 
-    def test_suffix_key_not_in_labels_logs_warning(self):
+    def test_suffix_key_not_in_labels_logs_warning(self, capsys):
         labels_json = '{"team": "platform"}'
         suffix_json = '["nonexistent-key", "team"]'
         result = client.build_custom_labels(labels_json, suffix_json, "go")
         assert result == {"team": "platform-go"}
         assert "nonexistent-key" not in result
+        captured = capsys.readouterr()
+        assert "nonexistent-key" in captured.out
+
+    def test_non_dict_labels_json_returns_empty(self):
+        result = client.build_custom_labels('["a", "b"]', "", "py")
+        assert result == {}
+
+    def test_non_string_values_labels_json_returns_empty(self):
+        result = client.build_custom_labels('{"team": 123}', "", "py")
+        assert result == {}
+
+    def test_non_list_suffix_json_ignored(self):
+        labels_json = '{"team": "platform"}'
+        result = client.build_custom_labels(labels_json, '{"key": "val"}', "py")
+        assert result == {"team": "platform"}
+
+    def test_non_string_suffix_list_ignored(self):
+        labels_json = '{"team": "platform"}'
+        result = client.build_custom_labels(labels_json, "[1, 2]", "py")
+        assert result == {"team": "platform"}

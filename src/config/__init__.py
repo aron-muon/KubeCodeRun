@@ -616,6 +616,8 @@ class Settings(BaseSettings):
             runtime_class_name=self.k8s_runtime_class_name,
             pod_node_selector=self.k8s_pod_node_selector,
             pod_tolerations=self.k8s_pod_tolerations,
+            pod_labels=self.k8s_pod_labels,
+            pod_label_language_suffix=self.k8s_pod_label_language_suffix,
         )
 
     def get_pool_configs(self):

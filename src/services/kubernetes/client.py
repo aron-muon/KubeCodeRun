@@ -23,6 +23,61 @@ logger = structlog.get_logger(__name__)
 _PROTECTED_LABEL_PREFIXES = ("app.kubernetes.io/", "kubecoderun.io/")
 
 
+@lru_cache(maxsize=1)
+def _parse_and_validate_label_config(
+    pod_labels: str,
+    pod_label_language_suffix: str,
+) -> tuple[dict[str, str], list[str]]:
+    """Parse and validate label JSON config once, caching the result.
+
+    Returns:
+        Tuple of (validated labels dict, validated suffix keys list).
+    """
+    labels: dict[str, str] = {}
+    suffix_keys: list[str] = []
+
+    if pod_labels:
+        try:
+            parsed = json.loads(pod_labels)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Invalid K8S_POD_LABELS JSON, ignoring", raw=pod_labels)
+            return {}, []
+
+        if not isinstance(parsed, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in parsed.items()
+        ):
+            logger.warning(
+                "Invalid K8S_POD_LABELS value, expected JSON dict of string→string, ignoring",
+                raw=pod_labels,
+            )
+            return {}, []
+        labels = parsed
+
+    if pod_label_language_suffix:
+        try:
+            parsed_suffix = json.loads(pod_label_language_suffix)
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Invalid K8S_POD_LABEL_LANGUAGE_SUFFIX JSON, ignoring", raw=pod_label_language_suffix)
+        else:
+            if isinstance(parsed_suffix, list) and all(isinstance(item, str) for item in parsed_suffix):
+                suffix_keys = parsed_suffix
+            else:
+                logger.warning(
+                    "Invalid K8S_POD_LABEL_LANGUAGE_SUFFIX value, expected JSON list of strings, ignoring",
+                    raw=pod_label_language_suffix,
+                )
+
+    # Warn about suffix keys that don't match any label (logged once at config parse time)
+    for suffix_key in suffix_keys:
+        if suffix_key not in labels:
+            logger.warning(
+                "K8S_POD_LABEL_LANGUAGE_SUFFIX key not found in K8S_POD_LABELS, ignoring",
+                suffix_key=suffix_key,
+            )
+
+    return labels, suffix_keys
+
+
 def build_custom_labels(
     pod_labels: str,
     pod_label_language_suffix: str,
@@ -30,8 +85,9 @@ def build_custom_labels(
 ) -> dict[str, str]:
     """Build custom labels from JSON-encoded config, applying language suffix where requested.
 
-    Protected label prefixes (app.kubernetes.io/*, kubecoderun.io/*) are silently
-    dropped to prevent accidental override of internal labels.
+    Protected label prefixes (app.kubernetes.io/*, kubecoderun.io/*) are dropped
+    to prevent accidental override of internal labels, and a warning is logged
+    when such labels are blocked.
 
     Args:
         pod_labels: JSON-encoded dict of extra labels (may be empty).
@@ -45,26 +101,9 @@ def build_custom_labels(
     if not pod_labels:
         return {}
 
-    try:
-        labels: dict[str, str] = json.loads(pod_labels)
-    except (json.JSONDecodeError, TypeError):
-        logger.warning("Invalid K8S_POD_LABELS JSON, ignoring", raw=pod_labels)
+    labels, suffix_keys = _parse_and_validate_label_config(pod_labels, pod_label_language_suffix)
+    if not labels:
         return {}
-
-    suffix_keys: list[str] = []
-    if pod_label_language_suffix:
-        try:
-            suffix_keys = json.loads(pod_label_language_suffix)
-        except (json.JSONDecodeError, TypeError):
-            logger.warning("Invalid K8S_POD_LABEL_LANGUAGE_SUFFIX JSON, ignoring", raw=pod_label_language_suffix)
-
-    # Warn about suffix keys that don't match any label
-    for suffix_key in suffix_keys:
-        if suffix_key not in labels:
-            logger.warning(
-                "K8S_POD_LABEL_LANGUAGE_SUFFIX key not found in K8S_POD_LABELS, ignoring",
-                suffix_key=suffix_key,
-            )
 
     result: dict[str, str] = {}
     for key, value in labels.items():
