@@ -159,10 +159,15 @@ class TestPodPoolStartStop:
     @pytest.mark.asyncio
     async def test_start(self, pod_pool):
         """Test starting the pool."""
-        with patch.object(pod_pool, "_warmup", new_callable=AsyncMock):
+        with (
+            patch.object(pod_pool, "_resolve_owner_pod_uid", new_callable=AsyncMock, return_value="test-uid"),
+            patch.object(pod_pool, "_cleanup_orphaned_pods", new_callable=AsyncMock),
+            patch.object(pod_pool, "_warmup", new_callable=AsyncMock),
+        ):
             await pod_pool.start()
 
             assert pod_pool._running is True
+            assert pod_pool._owner_pod_uid == "test-uid"
             assert pod_pool._replenish_task is not None
             assert pod_pool._health_check_task is not None
 
@@ -182,7 +187,11 @@ class TestPodPoolStartStop:
     @pytest.mark.asyncio
     async def test_stop(self, pod_pool):
         """Test stopping the pool."""
-        with patch.object(pod_pool, "_warmup", new_callable=AsyncMock):
+        with (
+            patch.object(pod_pool, "_resolve_owner_pod_uid", new_callable=AsyncMock, return_value=None),
+            patch.object(pod_pool, "_cleanup_orphaned_pods", new_callable=AsyncMock),
+            patch.object(pod_pool, "_warmup", new_callable=AsyncMock),
+        ):
             await pod_pool.start()
 
         await pod_pool.stop()
@@ -199,6 +208,195 @@ class TestPodPoolStartStop:
 
             mock_delete.assert_called_once()
             assert len(pod_pool._pods) == 0
+
+
+class TestOrphanedPodCleanup:
+    """Tests for _resolve_owner_pod_uid and _cleanup_orphaned_pods."""
+
+    @pytest.mark.asyncio
+    async def test_resolve_owner_pod_uid_no_hostname(self, pod_pool):
+        """Returns None when HOSTNAME is not set."""
+        with patch.dict("os.environ", {}, clear=True):
+            result = await pod_pool._resolve_owner_pod_uid()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_owner_pod_uid_no_core_api(self, pod_pool):
+        """Returns None when k8s client is unavailable."""
+        with (
+            patch.dict("os.environ", {"HOSTNAME": "my-pod-abc123"}),
+            patch("src.services.kubernetes.pool.get_core_api", return_value=None),
+        ):
+            result = await pod_pool._resolve_owner_pod_uid()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_owner_pod_uid_success(self, pod_pool):
+        """Returns the pod UID from the k8s API."""
+        mock_pod = MagicMock()
+        mock_pod.metadata.uid = "api-pod-uid-123"
+        mock_core_api = MagicMock()
+        mock_core_api.read_namespaced_pod.return_value = mock_pod
+
+        with (
+            patch.dict("os.environ", {"HOSTNAME": "my-pod-abc123"}),
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+        ):
+            result = await pod_pool._resolve_owner_pod_uid()
+
+        assert result == "api-pod-uid-123"
+
+    @pytest.mark.asyncio
+    async def test_cleanup_skipped_when_no_owner_uid(self, pod_pool):
+        """Cleanup is skipped when owner UID could not be resolved."""
+        pod_pool._owner_pod_uid = None
+        mock_core_api = MagicMock()
+
+        with patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api):
+            await pod_pool._cleanup_orphaned_pods()
+
+        mock_core_api.list_namespaced_pod.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_deletes_pods_with_dead_owner(self, pod_pool):
+        """Pods whose owner is no longer alive are deleted."""
+        pod_pool._owner_pod_uid = "current-uid"
+
+        dead_pod = MagicMock()
+        dead_pod.metadata.name = "pool-python-dead123"
+        dead_pod.metadata.uid = "pool-pod-uid-1"
+        dead_pod.metadata.labels = {
+            "app.kubernetes.io/managed-by": "kubecoderun",
+            "kubecoderun.io/type": "pool",
+            "kubecoderun.io/language": "python",
+            "kubecoderun.io/owner-pod-uid": "dead-owner-uid",
+        }
+
+        mock_pool_list = MagicMock()
+        mock_pool_list.items = [dead_pod]
+
+        # No live pod has the dead owner's UID
+        mock_all_list = MagicMock()
+        live_pod = MagicMock()
+        live_pod.metadata.uid = "current-uid"
+        mock_all_list.items = [live_pod]
+
+        mock_core_api = MagicMock()
+        mock_core_api.list_namespaced_pod.side_effect = [mock_pool_list, mock_all_list]
+
+        with (
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+            patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete,
+        ):
+            await pod_pool._cleanup_orphaned_pods()
+
+        mock_delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_spares_pods_with_live_owner(self, pod_pool):
+        """Pods whose owner is still running are not deleted."""
+        pod_pool._owner_pod_uid = "current-uid"
+
+        live_pool_pod = MagicMock()
+        live_pool_pod.metadata.name = "pool-python-live123"
+        live_pool_pod.metadata.uid = "pool-pod-uid-2"
+        live_pool_pod.metadata.labels = {
+            "app.kubernetes.io/managed-by": "kubecoderun",
+            "kubecoderun.io/type": "pool",
+            "kubecoderun.io/language": "python",
+            "kubecoderun.io/owner-pod-uid": "other-replica-uid",
+        }
+
+        mock_pool_list = MagicMock()
+        mock_pool_list.items = [live_pool_pod]
+
+        # other-replica-uid IS in the live set
+        mock_all_list = MagicMock()
+        other_pod = MagicMock()
+        other_pod.metadata.uid = "other-replica-uid"
+        mock_all_list.items = [other_pod]
+
+        mock_core_api = MagicMock()
+        mock_core_api.list_namespaced_pod.side_effect = [mock_pool_list, mock_all_list]
+
+        with (
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+            patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete,
+        ):
+            await pod_pool._cleanup_orphaned_pods()
+
+        mock_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_spares_own_pods(self, pod_pool):
+        """Pods owned by this instance are never touched."""
+        pod_pool._owner_pod_uid = "current-uid"
+
+        own_pod = MagicMock()
+        own_pod.metadata.name = "pool-python-mine"
+        own_pod.metadata.uid = "pool-pod-uid-3"
+        own_pod.metadata.labels = {
+            "kubecoderun.io/owner-pod-uid": "current-uid",
+        }
+
+        mock_pool_list = MagicMock()
+        mock_pool_list.items = [own_pod]
+
+        mock_all_list = MagicMock()
+        mock_all_list.items = []
+
+        mock_core_api = MagicMock()
+        mock_core_api.list_namespaced_pod.side_effect = [mock_pool_list, mock_all_list]
+
+        with (
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+            patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete,
+        ):
+            await pod_pool._cleanup_orphaned_pods()
+
+        mock_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_spares_legacy_unlabeled_pods(self, pod_pool):
+        """Pool pods without an owner label (pre-dating this feature) are never
+        deleted, even when no live pod matches their (absent) owner UID.
+
+        This preserves warm pods from old API replicas during a rolling upgrade
+        where old pods haven't acquired the owner label yet.
+        """
+        pod_pool._owner_pod_uid = "current-uid"
+
+        legacy_pod = MagicMock()
+        legacy_pod.metadata.name = "pool-python-legacy"
+        legacy_pod.metadata.uid = "pool-pod-uid-legacy"
+        # Deliberately omit the owner-pod-uid label to simulate a pod created
+        # by an older version of the API that didn't stamp ownership.
+        legacy_pod.metadata.labels = {
+            "app.kubernetes.io/managed-by": "kubecoderun",
+            "kubecoderun.io/type": "pool",
+            "kubecoderun.io/language": "python",
+        }
+
+        mock_pool_list = MagicMock()
+        mock_pool_list.items = [legacy_pod]
+
+        # Live pod list contains a running old-version API pod — but it won't
+        # be matched by owner UID since the pool pod has no owner label.
+        mock_all_list = MagicMock()
+        old_api_pod = MagicMock()
+        old_api_pod.metadata.uid = "old-replica-uid"
+        mock_all_list.items = [old_api_pod]
+
+        mock_core_api = MagicMock()
+        mock_core_api.list_namespaced_pod.side_effect = [mock_pool_list, mock_all_list]
+
+        with (
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+            patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete,
+        ):
+            await pod_pool._cleanup_orphaned_pods()
+
+        mock_delete.assert_not_called()
 
 
 class TestPodPoolWarmup:
