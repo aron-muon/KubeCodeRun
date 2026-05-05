@@ -1,5 +1,6 @@
 """Authentication middleware for API key validation."""
 
+import ipaddress
 import json
 import time
 from typing import Callable, Optional
@@ -8,6 +9,7 @@ import structlog
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ..config import settings
 from ..services.auth import get_auth_service
 
 logger = structlog.get_logger(__name__)
@@ -30,6 +32,7 @@ class AuthenticationMiddleware:
     def __init__(self, app: Callable):
         self.app = app
         self.excluded_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
+        self._trusted_networks = self._parse_trusted_networks(settings.auth_trusted_networks)
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable):
         """Process request through authentication middleware."""
@@ -78,7 +81,41 @@ class AuthenticationMiddleware:
 
     def _should_skip_auth(self, request: Request) -> bool:
         """Check if authentication should be skipped."""
-        return request.url.path in self.excluded_paths or request.method == "OPTIONS"
+        if request.url.path in self.excluded_paths or request.method == "OPTIONS":
+            return True
+
+        # Bypass auth for requests from trusted networks (e.g. in-cluster callers)
+        if self._trusted_networks and self._is_trusted_network(request):
+            return True
+
+        return False
+
+    @staticmethod
+    def _parse_trusted_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+        """Parse comma-separated CIDR strings into network objects."""
+        networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+        if not raw:
+            return networks
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                logger.warning("Invalid trusted network CIDR, skipping", cidr=entry)
+        return networks
+
+    def _is_trusted_network(self, request: Request) -> bool:
+        """Check if the client IP falls within a trusted CIDR range."""
+        client_ip_str = self._get_client_ip(request)
+        if client_ip_str == "unknown":
+            return False
+        try:
+            client_ip = ipaddress.ip_address(client_ip_str)
+        except ValueError:
+            return False
+        return any(client_ip in network for network in self._trusted_networks)
 
     async def _authenticate_request(self, request: Request, scope: dict, *, api_key: str | None = None):
         """Handle API key authentication."""

@@ -86,6 +86,10 @@ class Settings(BaseSettings):
         description="Master API key for admin operations (CLI key management)",
     )
     rate_limit_enabled: bool = Field(default=True, description="Enable per-key rate limiting for Redis-managed keys")
+    auth_trusted_networks: str = Field(
+        default="",
+        description="Comma-separated CIDRs that bypass API key auth (e.g. '10.0.0.0/8,172.16.0.0/12')",
+    )
 
     # Redis Configuration
     redis_host: str = Field(default="localhost")
