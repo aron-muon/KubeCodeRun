@@ -33,6 +33,7 @@ def security_middleware(mock_app):
     """Create security middleware instance."""
     with patch("src.middleware.security.settings") as mock_settings:
         mock_settings.max_file_size_mb = 10
+        mock_settings.auth_trusted_networks = ""
         return SecurityMiddleware(mock_app)
 
 

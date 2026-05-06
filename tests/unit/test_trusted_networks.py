@@ -29,16 +29,12 @@ def _make_request(client_ip: str = "10.0.0.1", path: str = "/exec", method: str 
         "headers": [],
         "query_string": b"",
         "root_path": "",
+        "client": (client_ip, 12345),
     }
     request = Request(scope)
     request._url = MagicMock()
     request._url.path = path
-    # Mock client
-    request._client = MagicMock()
-    request._client.host = client_ip
-    # Patch scope client for Request.client property
-    scope["client"] = (client_ip, 12345)
-    return Request(scope)
+    return request
 
 
 class TestParseNetworks:

@@ -107,10 +107,14 @@ class AuthenticationMiddleware:
         return networks
 
     def _is_trusted_network(self, request: Request) -> bool:
-        """Check if the client IP falls within a trusted CIDR range."""
-        client_ip_str = self._get_client_ip(request)
-        if client_ip_str == "unknown":
+        """Check if the client IP falls within a trusted CIDR range.
+
+        Uses the actual socket peer address (request.client.host) rather than
+        forwarded headers to prevent IP spoofing attacks.
+        """
+        if not request.client:
             return False
+        client_ip_str = request.client.host
         try:
             client_ip = ipaddress.ip_address(client_ip_str)
         except ValueError:
@@ -122,6 +126,9 @@ class AuthenticationMiddleware:
         # Use provided api_key or extract from headers as fallback
         if api_key is None:
             api_key = self._extract_api_key(request)
+
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Missing API key")
 
         # Get authentication service
         auth_service = await get_auth_service()

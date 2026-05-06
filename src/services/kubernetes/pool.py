@@ -163,7 +163,7 @@ class PodPool:
                         "Unexpected error during pool warmup",
                         language=self.language,
                         error=str(result),
-                        exc_info=result,
+                        exc_info=(type(result), result, result.__traceback__),
                     )
 
     async def _create_warm_pod(self) -> PooledPod | None:
@@ -380,7 +380,7 @@ class PodPool:
                                     "Unexpected error during pool replenishment",
                                     language=self.language,
                                     error=str(result),
-                                    exc_info=result,
+                                    exc_info=(type(result), result, result.__traceback__),
                                 )
 
             except asyncio.CancelledError:
