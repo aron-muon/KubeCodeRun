@@ -127,6 +127,10 @@ class PodSpec:
     # Image pull secrets for private registries
     image_pull_secrets: str = ""  # Comma-separated secret names
 
+    # Extra pod labels and language-suffix keys
+    pod_labels: str = ""  # JSON-encoded dict
+    pod_label_language_suffix: str = ""  # JSON-encoded list of keys to suffix with "-<lang>"
+
 
 @dataclass
 class PoolConfig:
@@ -156,6 +160,10 @@ class PoolConfig:
 
     # Image pull secrets for private registries
     image_pull_secrets: str = ""  # Comma-separated secret names
+
+    # Extra pod labels and language-suffix keys
+    pod_labels: str = ""  # JSON-encoded dict
+    pod_label_language_suffix: str = ""  # JSON-encoded list of keys to suffix with "-<lang>"
 
     @property
     def uses_pool(self) -> bool:

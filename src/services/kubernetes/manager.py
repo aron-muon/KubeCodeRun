@@ -51,6 +51,8 @@ class KubernetesManager:
         pod_node_selector: str = "",
         pod_tolerations: str = "",
         image_pull_secrets: str = "",
+        pod_labels: str = "",
+        pod_label_language_suffix: str = "",
     ):
         """Initialize the Kubernetes manager.
 
@@ -66,6 +68,8 @@ class KubernetesManager:
             runtime_class_name: Optional RuntimeClassName for pod sandboxing (e.g. gvisor, kata)
             pod_node_selector: JSON-encoded node selector labels for execution pods
             pod_tolerations: JSON-encoded tolerations for execution pods
+            pod_labels: JSON-encoded extra labels for execution pods
+            pod_label_language_suffix: JSON-encoded list of label keys that get "-<lang>" appended
         """
         self.namespace = namespace or get_current_namespace()
         self.default_cpu_limit = default_cpu_limit
@@ -78,6 +82,8 @@ class KubernetesManager:
         self.pod_node_selector = pod_node_selector
         self.pod_tolerations = pod_tolerations
         self.image_pull_secrets = image_pull_secrets
+        self.pod_labels = pod_labels
+        self.pod_label_language_suffix = pod_label_language_suffix
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
@@ -290,6 +296,8 @@ class KubernetesManager:
                 pod_node_selector=self.pod_node_selector,
                 pod_tolerations=self.pod_tolerations,
                 image_pull_secrets=self.image_pull_secrets,
+                pod_labels=self.pod_labels,
+                pod_label_language_suffix=self.pod_label_language_suffix,
             )
 
             result = await self._job_executor.execute_with_job(

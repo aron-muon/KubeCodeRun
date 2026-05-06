@@ -16,6 +16,7 @@ import structlog
 from kubernetes.client import ApiException
 
 from .client import (
+    build_custom_labels,
     create_pod_manifest,
     get_core_api,
     get_current_namespace,
@@ -186,6 +187,11 @@ class PodPool:
             "kubecoderun.io/language": self.language,
             "kubecoderun.io/type": "pool",
             "kubecoderun.io/pool-status": "warm",
+            **build_custom_labels(
+                self.config.pod_labels,
+                self.config.pod_label_language_suffix,
+                self.language,
+            ),
         }
 
         try:
