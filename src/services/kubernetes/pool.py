@@ -6,6 +6,7 @@ pool with configurable size.
 """
 
 import asyncio
+import os
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Dict, List, Optional, Set
@@ -68,6 +69,11 @@ class PodPool:
         # HTTP client for health checks and execution
         self._http_client: httpx.AsyncClient | None = None
 
+        # UID of the API pod running this pool manager, stamped onto every
+        # pool pod we create so cleanup can distinguish our orphans from live
+        # pods owned by other replicas. Set during start().
+        self._owner_pod_uid: str | None = None
+
         # Background tasks
         self._replenish_task: asyncio.Task | None = None
         self._health_check_task: asyncio.Task | None = None
@@ -98,6 +104,15 @@ class PodPool:
             language=self.language,
             pool_size=self.pool_size,
         )
+
+        # Resolve our own pod UID so we can stamp ownership on pool pods and
+        # safely distinguish our orphans from live pods of other replicas.
+        self._owner_pod_uid = await self._resolve_owner_pod_uid()
+
+        # Delete pods left behind by crashed/evicted previous instances.
+        # Ownership-aware: only deletes pods whose owner pod no longer exists,
+        # so live pods from other running replicas are never touched.
+        await self._cleanup_orphaned_pods()
 
         # Initial warmup
         await self._warmup()
@@ -136,6 +151,127 @@ class PodPool:
             await self._http_client.aclose()
 
         logger.info("Pod pool stopped", language=self.language)
+
+    async def _resolve_owner_pod_uid(self) -> str | None:
+        """Return this API pod's UID by looking up HOSTNAME in the k8s API.
+
+        Returns None when running outside a cluster or when the lookup fails;
+        in that case orphan cleanup is skipped to avoid false positives.
+        """
+        pod_name = os.environ.get("HOSTNAME")
+        if not pod_name:
+            return None
+
+        core_api = get_core_api()
+        if not core_api:
+            return None
+
+        try:
+            loop = asyncio.get_event_loop()
+            pod = await loop.run_in_executor(
+                None,
+                lambda: core_api.read_namespaced_pod(pod_name, self.namespace),
+            )
+            return pod.metadata.uid
+        except ApiException:
+            return None
+
+    async def _cleanup_orphaned_pods(self):
+        """Delete pool pods left behind by crashed or evicted API pods.
+
+        On ungraceful shutdown (OOM, SIGKILL, node eviction) stop() is never
+        called, so warm pods are orphaned in Kubernetes. Because Pods have no
+        TTL, they accumulate across restarts and exhaust namespace CPU quota.
+
+        Ownership-aware: each pool pod carries a
+        ``kubecoderun.io/owner-pod-uid`` label set to the UID of the API pod
+        that created it. Cleanup checks every distinct owner UID found on
+        existing pool pods; if that owner pod no longer exists the pool pods
+        are deleted. Pods owned by other live replicas are left untouched, so
+        rolling updates and multi-replica deployments are safe.
+
+        Skipped entirely when we cannot resolve our own pod UID (e.g. running
+        outside a cluster during local development).
+        """
+        if not self._owner_pod_uid:
+            logger.debug(
+                "Skipping orphan cleanup (owner pod UID unavailable)",
+                language=self.language,
+            )
+            return
+
+        core_api = get_core_api()
+        if not core_api:
+            return
+
+        label_selector = (
+            "app.kubernetes.io/managed-by=kubecoderun,"
+            f"kubecoderun.io/type=pool,"
+            f"kubecoderun.io/language={self.language}"
+        )
+
+        try:
+            loop = asyncio.get_event_loop()
+            pod_list = await loop.run_in_executor(
+                None,
+                lambda: core_api.list_namespaced_pod(
+                    self.namespace,
+                    label_selector=label_selector,
+                ),
+            )
+
+            if not pod_list.items:
+                return
+
+            # Group existing pool pods by their owner UID.
+            by_owner: dict[str | None, list] = defaultdict(list)
+            for pod in pod_list.items:
+                owner = (pod.metadata.labels or {}).get("kubecoderun.io/owner-pod-uid")
+                by_owner[owner].append(pod)
+
+            # Build the set of live pod UIDs in this namespace with one call.
+            # Cheaper than one read_namespaced_pod call per distinct owner and
+            # avoids the name-vs-UID confusion (read_namespaced_pod takes a name).
+            all_pods = await loop.run_in_executor(
+                None,
+                lambda: core_api.list_namespaced_pod(self.namespace),
+            )
+            live_uids = {pod.metadata.uid for pod in all_pods.items}
+
+            for owner_uid, pods in by_owner.items():
+                # Never touch pods owned by this instance.
+                if owner_uid == self._owner_pod_uid:
+                    continue
+
+                # If the owner pod is still alive, leave its pool pods alone
+                # (handles rolling updates and multi-replica deployments).
+                if owner_uid and owner_uid in live_uids:
+                    continue
+
+                logger.info(
+                    "Cleaning up orphaned pool pods",
+                    language=self.language,
+                    owner_pod_uid=owner_uid,
+                    count=len(pods),
+                )
+                for pod in pods:
+                    await self._delete_pod(
+                        PodHandle(
+                            name=pod.metadata.name,
+                            namespace=self.namespace,
+                            uid=pod.metadata.uid,
+                            language=self.language,
+                            status=PodStatus.WARM,
+                            labels=pod.metadata.labels or {},
+                        )
+                    )
+
+        except ApiException as e:
+            logger.warning(
+                "Failed to clean up orphaned pool pods",
+                language=self.language,
+                error=str(e),
+            )
 
     async def _warmup(self):
         """Create initial warm pods."""
@@ -187,6 +323,8 @@ class PodPool:
             "kubecoderun.io/type": "pool",
             "kubecoderun.io/pool-status": "warm",
         }
+        if self._owner_pod_uid:
+            labels["kubecoderun.io/owner-pod-uid"] = self._owner_pod_uid
 
         try:
             pod_manifest = create_pod_manifest(
