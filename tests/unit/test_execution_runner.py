@@ -388,14 +388,56 @@ class TestFilterGeneratedFiles:
     """Tests for _filter_generated_files method."""
 
     def test_filter_removes_mounted(self, runner):
-        """Test filtering removes mounted files."""
+        """Test filtering removes mounted files that were NOT modified."""
         generated = [
-            {"path": "/mnt/data/output.txt"},
-            {"path": "/mnt/data/input.csv"},
+            {"path": "/mnt/data/output.txt", "mod_time": 1000},
+            {"path": "/mnt/data/input.csv", "mod_time": 900},
         ]
         mounted = {"input.csv"}
 
-        result = runner._filter_generated_files(generated, mounted)
+        # execution_start_unix=1000 means input.csv (mod_time=900) was not modified
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=1000)
+
+        assert len(result) == 1
+        assert result[0]["path"] == "/mnt/data/output.txt"
+
+    def test_filter_keeps_modified_mounted_file(self, runner):
+        """Test filtering keeps mounted files that were modified during execution (issue #56)."""
+        generated = [
+            {"path": "/mnt/data/output.txt", "mod_time": 1005},
+            {"path": "/mnt/data/input.csv", "mod_time": 1003},
+        ]
+        mounted = {"input.csv"}
+
+        # execution_start_unix=1000 means input.csv (mod_time=1003) was modified during exec
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=1000)
+
+        assert len(result) == 2
+        paths = {f["path"] for f in result}
+        assert "/mnt/data/output.txt" in paths
+        assert "/mnt/data/input.csv" in paths
+
+    def test_filter_keeps_mounted_file_modified_at_exact_start(self, runner):
+        """Test that mod_time == execution_start is treated as modified."""
+        generated = [
+            {"path": "/mnt/data/input.csv", "mod_time": 1000},
+        ]
+        mounted = {"input.csv"}
+
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=1000)
+
+        assert len(result) == 1
+        assert result[0]["path"] == "/mnt/data/input.csv"
+
+    def test_filter_no_execution_start_falls_back_to_exclude(self, runner):
+        """Test backward compat: without execution_start_unix, mounted files are excluded."""
+        generated = [
+            {"path": "/mnt/data/output.txt", "mod_time": 1005},
+            {"path": "/mnt/data/input.csv", "mod_time": 1003},
+        ]
+        mounted = {"input.csv"}
+
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=0)
 
         assert len(result) == 1
         assert result[0]["path"] == "/mnt/data/output.txt"
