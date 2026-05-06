@@ -192,6 +192,7 @@ build_image() {
 
     # shellcheck disable=SC2086
     build_output=$(docker build \
+        --platform linux/amd64 \
         $NO_CACHE \
         --build-arg VERSION="$TAG" \
         --build-arg BUILD_DATE="$build_date" \
@@ -284,6 +285,7 @@ build_single_image() {
             vcs_ref=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
             # shellcheck disable=SC2086
             docker build \
+                --platform linux/amd64 \
                 $NO_CACHE \
                 --build-arg VERSION="$TAG" \
                 --build-arg BUILD_DATE="$build_date" \

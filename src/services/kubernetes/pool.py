@@ -19,6 +19,7 @@ from .client import (
     create_pod_manifest,
     get_core_api,
     get_current_namespace,
+    get_initialization_error,
 )
 from .models import (
     ExecutionResult,
@@ -155,12 +156,25 @@ class PodPool:
         batch_size = min(needed, 5)
         for i in range(0, needed, batch_size):
             tasks = [self._create_warm_pod() for _ in range(min(batch_size, needed - i))]
-            await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    logger.error(
+                        "Unexpected error during pool warmup",
+                        language=self.language,
+                        error=str(result),
+                        exc_info=(type(result), result, result.__traceback__),
+                    )
 
     async def _create_warm_pod(self) -> PooledPod | None:
         """Create a single warm pod."""
         core_api = get_core_api()
         if not core_api:
+            logger.error(
+                "Cannot create warm pod: Kubernetes client unavailable",
+                language=self.language,
+                init_error=get_initialization_error(),
+            )
             return None
 
         pod_name = self._generate_pod_name()
@@ -174,25 +188,25 @@ class PodPool:
             "kubecoderun.io/pool-status": "warm",
         }
 
-        pod_manifest = create_pod_manifest(
-            name=pod_name,
-            namespace=self.namespace,
-            main_image=self.config.image,
-            language=self.language,
-            labels=labels,
-            cpu_limit=self.config.cpu_limit or "1",
-            memory_limit=self.config.memory_limit or "512Mi",
-            image_pull_policy=self.config.image_pull_policy,
-            runner_port=8080,
-            seccomp_profile_type=self.config.seccomp_profile_type,
-            network_isolated=self.config.network_isolated,
-            runtime_class_name=self.config.runtime_class_name,
-            pod_node_selector=self.config.pod_node_selector,
-            pod_tolerations=self.config.pod_tolerations,
-            image_pull_secrets=self.config.image_pull_secrets,
-        )
-
         try:
+            pod_manifest = create_pod_manifest(
+                name=pod_name,
+                namespace=self.namespace,
+                main_image=self.config.image,
+                language=self.language,
+                labels=labels,
+                cpu_limit=self.config.cpu_limit or "1",
+                memory_limit=self.config.memory_limit or "512Mi",
+                image_pull_policy=self.config.image_pull_policy,
+                runner_port=8080,
+                seccomp_profile_type=self.config.seccomp_profile_type,
+                network_isolated=self.config.network_isolated,
+                runtime_class_name=self.config.runtime_class_name,
+                pod_node_selector=self.config.pod_node_selector,
+                pod_tolerations=self.config.pod_tolerations,
+                image_pull_secrets=self.config.image_pull_secrets,
+            )
+
             loop = asyncio.get_event_loop()
             pod = await loop.run_in_executor(
                 None,
@@ -211,6 +225,11 @@ class PodPool:
             # Wait for pod to be ready
             ready = await self._wait_for_pod_ready(handle)
             if not ready:
+                logger.warning(
+                    "Warm pod did not become ready, deleting",
+                    pod_name=pod_name,
+                    language=self.language,
+                )
                 await self._delete_pod(handle)
                 return None
 
@@ -235,9 +254,21 @@ class PodPool:
 
         except ApiException as e:
             logger.error(
-                "Failed to create warm pod",
+                "Failed to create warm pod (Kubernetes API error)",
                 pod_name=pod_name,
+                language=self.language,
+                status=e.status,
+                reason=e.reason,
                 error=str(e),
+            )
+            return None
+        except Exception as e:
+            logger.error(
+                "Failed to create warm pod (unexpected error)",
+                pod_name=pod_name,
+                language=self.language,
+                error=str(e),
+                exc_info=True,
             )
             return None
 
@@ -342,7 +373,15 @@ class PodPool:
                     for i in range(0, needed, 5):
                         batch = min(5, needed - i)
                         tasks = [self._create_warm_pod() for _ in range(batch)]
-                        await asyncio.gather(*tasks, return_exceptions=True)
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                        for result in results:
+                            if isinstance(result, BaseException):
+                                logger.error(
+                                    "Unexpected error during pool replenishment",
+                                    language=self.language,
+                                    error=str(result),
+                                    exc_info=(type(result), result, result.__traceback__),
+                                )
 
             except asyncio.CancelledError:
                 break

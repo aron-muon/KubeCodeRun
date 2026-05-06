@@ -1,5 +1,7 @@
 """Authentication middleware for API key validation."""
 
+import ipaddress
+import json
 import time
 from typing import Callable, Optional
 
@@ -7,9 +9,14 @@ import structlog
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ..config import settings
 from ..services.auth import get_auth_service
 
 logger = structlog.get_logger(__name__)
+
+# Max bytes to buffer when inspecting the request body for an API key.
+# Keeps memory bounded for unauthenticated requests (issue #59 review).
+_MAX_AUTH_BODY_BYTES = 1 * 1024 * 1024  # 1 MB
 
 
 class AuthenticationMiddleware:
@@ -25,6 +32,7 @@ class AuthenticationMiddleware:
     def __init__(self, app: Callable):
         self.app = app
         self.excluded_paths = {"/health", "/docs", "/redoc", "/openapi.json"}
+        self._trusted_networks = self._parse_trusted_networks(settings.auth_trusted_networks)
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable):
         """Process request through authentication middleware."""
@@ -40,7 +48,16 @@ class AuthenticationMiddleware:
             return
 
         try:
-            await self._authenticate_request(request, scope)
+            # Try header-based extraction first
+            api_key = self._extract_api_key(request)
+
+            # If no key in headers, try JSON body extraction for POST/PUT/PATCH
+            content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+            if api_key is None and request.method in ("POST", "PUT", "PATCH") and content_type == "application/json":
+                body_bytes, receive = await self._buffer_body(receive)
+                api_key = self._extract_api_key_from_body(body_bytes)
+
+            await self._authenticate_request(request, scope, api_key=api_key)
         except HTTPException as e:
             response = JSONResponse(
                 status_code=e.status_code,
@@ -64,12 +81,54 @@ class AuthenticationMiddleware:
 
     def _should_skip_auth(self, request: Request) -> bool:
         """Check if authentication should be skipped."""
-        return request.url.path in self.excluded_paths or request.method == "OPTIONS"
+        if request.url.path in self.excluded_paths or request.method == "OPTIONS":
+            return True
 
-    async def _authenticate_request(self, request: Request, scope: dict):
+        # Bypass auth for requests from trusted networks (e.g. in-cluster callers)
+        if self._trusted_networks and self._is_trusted_network(request):
+            return True
+
+        return False
+
+    @staticmethod
+    def _parse_trusted_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+        """Parse comma-separated CIDR strings into network objects."""
+        networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+        if not raw:
+            return networks
+        for entry in raw.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            try:
+                networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                logger.warning("Invalid trusted network CIDR, skipping", cidr=entry)
+        return networks
+
+    def _is_trusted_network(self, request: Request) -> bool:
+        """Check if the client IP falls within a trusted CIDR range.
+
+        Uses the actual socket peer address (request.client.host) rather than
+        forwarded headers to prevent IP spoofing attacks.
+        """
+        if not request.client:
+            return False
+        client_ip_str = request.client.host
+        try:
+            client_ip = ipaddress.ip_address(client_ip_str)
+        except ValueError:
+            return False
+        return any(client_ip in network for network in self._trusted_networks)
+
+    async def _authenticate_request(self, request: Request, scope: dict, *, api_key: str | None = None):
         """Handle API key authentication."""
-        # Extract API key
-        api_key = self._extract_api_key(request)
+        # Use provided api_key or extract from headers as fallback
+        if api_key is None:
+            api_key = self._extract_api_key(request)
+
+        if not api_key:
+            raise HTTPException(status_code=401, detail="Missing API key")
 
         # Get authentication service
         auth_service = await get_auth_service()
@@ -107,6 +166,59 @@ class AuthenticationMiddleware:
                 return auth_header[7:]
 
         return None
+
+    def _extract_api_key_from_body(self, body: bytes) -> str | None:
+        """Extract API key from JSON request body fields.
+
+        Supports @librechat/agents >=3.1.74 which spreads params into the
+        request body instead of sending the key as a header.
+        """
+        if not body:
+            return None
+        try:
+            data = json.loads(body)
+            if not isinstance(data, dict):
+                return None
+            for field in ("LIBRECHAT_CODE_API_KEY", "api_key", "apiKey"):
+                if key := data.get(field):
+                    if isinstance(key, str) and key.strip():
+                        return key.strip()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+        return None
+
+    async def _buffer_body(self, receive: Callable) -> tuple[bytes, Callable]:
+        """Read and buffer the request body, returning a replay receive callable.
+
+        This ensures the body remains available for downstream handlers after
+        the middleware has inspected it.
+        """
+        body_parts: list[bytes] = []
+        total = 0
+        while True:
+            message = await receive()
+            body = message.get("body", b"")
+            if body:
+                total += len(body)
+                if total > _MAX_AUTH_BODY_BYTES:
+                    raise HTTPException(status_code=413, detail="Request body too large")
+                body_parts.append(body)
+            if not message.get("more_body", False):
+                break
+
+        full_body = b"".join(body_parts)
+
+        # Create a replay receive that returns the buffered body
+        body_sent = False
+
+        async def replay_receive() -> dict:
+            nonlocal body_sent
+            if not body_sent:
+                body_sent = True
+                return {"type": "http.request", "body": full_body, "more_body": False}
+            return {"type": "http.disconnect"}
+
+        return full_body, replay_receive
 
     def _get_client_ip(self, request: Request) -> str:
         """Get client IP address."""
