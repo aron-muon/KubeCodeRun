@@ -218,13 +218,16 @@ class CodeExecutionRunner:
                     {
                         "path": f.get("path", f"/mnt/data/{f.get('name', '')}"),
                         "size": f.get("size", 0),
+                        "mod_time": f.get("mod_time", 0),
                         "mime_type": OutputProcessor.guess_mime_type(f.get("name", "")),
                     }
                     for f in result.generated_files
                 ]
 
             mounted_filenames = self._get_mounted_filenames(files)
-            filtered_files = self._filter_generated_files(generated_files, mounted_filenames)
+            filtered_files = self._filter_generated_files(
+                generated_files, mounted_filenames, execution_start_unix=int(start_time.timestamp())
+            )
 
             for file_info in filtered_files:
                 if OutputProcessor.validate_generated_file(file_info):
@@ -337,9 +340,27 @@ class CodeExecutionRunner:
                 pass
         return mounted
 
-    def _filter_generated_files(self, generated: list[dict[str, Any]], mounted_filenames: set) -> list[dict[str, Any]]:
-        """Filter out mounted files from generated files list."""
-        return [f for f in generated if Path(f.get("path", "")).name not in mounted_filenames]
+    def _filter_generated_files(
+        self,
+        generated: list[dict[str, Any]],
+        mounted_filenames: set,
+        execution_start_unix: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Filter generated files, keeping new files and modified mounted files.
+
+        A mounted file is included if its mod_time indicates it was modified
+        during or after execution started (fixes issue #56).
+        """
+        result = []
+        for f in generated:
+            name = Path(f.get("path", "")).name
+            if name not in mounted_filenames:
+                # New file — always include
+                result.append(f)
+            elif execution_start_unix and f.get("mod_time", 0) >= execution_start_unix:
+                # Mounted file modified during execution — include
+                result.append(f)
+        return result
 
     def _record_metrics(
         self,
@@ -390,6 +411,7 @@ class CodeExecutionRunner:
                             {
                                 "path": f"/mnt/data/{name}",
                                 "size": f.get("size", 0),
+                                "mod_time": f.get("mod_time", 0),
                                 "mime_type": OutputProcessor.guess_mime_type(name),
                             }
                         )

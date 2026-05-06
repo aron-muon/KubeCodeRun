@@ -10,9 +10,10 @@ import (
 
 // FileInfo represents a file in the working directory.
 type FileInfo struct {
-	Name     string  `json:"name"`
-	Path     string  `json:"path"`
-	Size     int64   `json:"size"`
+	Name    string  `json:"name"`
+	Path    string  `json:"path"`
+	Size    int64   `json:"size"`
+	ModTime int64   `json:"mod_time"`
 	MimeType *string `json:"mime_type,omitempty"`
 }
 
@@ -76,10 +77,18 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			src.Close()
 			dst.Close()
 
+			// Get mod_time of the newly created file
+			fi, _ := os.Stat(destPath)
+			var modTime int64
+			if fi != nil {
+				modTime = fi.ModTime().Unix()
+			}
+
 			uploaded = append(uploaded, FileInfo{
-				Name: safeName,
-				Path: destPath,
-				Size: n,
+				Name:    safeName,
+				Path:    destPath,
+				Size:    n,
+				ModTime: modTime,
 			})
 		}
 	}
@@ -106,9 +115,10 @@ func (h *FileHandler) HandleList(w http.ResponseWriter, r *http.Request) {
 			size = 0
 		}
 		files = append(files, FileInfo{
-			Name: e.Name(),
-			Path: e.Name(),
-			Size: size,
+			Name:    e.Name(),
+			Path:    e.Name(),
+			Size:    size,
+			ModTime: info.ModTime().Unix(),
 		})
 	}
 
