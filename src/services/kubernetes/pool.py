@@ -574,20 +574,56 @@ class PodPool:
         client = await self._get_http_client()
         runner_url = handle.runner_url
 
-        # Upload files if provided
+        # Upload files if provided. Large files (observed in issue #57 for
+        # datasets >16 MB) can exceed a fixed 30s window; scale the timeout
+        # with payload size and fail fast with a clear error so callers know
+        # the execution environment is missing expected files.
         if files:
             for file_data in files:
+                upload_timeout = max(30, len(file_data.content) // (1024 * 1024) + 30)
                 try:
-                    await client.post(
+                    response = await client.post(
                         f"{runner_url}/files",
                         files={"files": (file_data.filename, file_data.content)},
-                        timeout=30,
+                        timeout=upload_timeout,
+                    )
+                    if response.status_code >= 400:
+                        return ExecutionResult(
+                            exit_code=1,
+                            stdout="",
+                            stderr=(
+                                f"Failed to upload '{file_data.filename}' to execution pod "
+                                f"(runner returned {response.status_code}). The pod may have "
+                                "been restarted mid-request."
+                            ),
+                            execution_time_ms=0,
+                        )
+                except httpx.TimeoutException:
+                    return ExecutionResult(
+                        exit_code=1,
+                        stdout="",
+                        stderr=(
+                            f"Timed out uploading '{file_data.filename}' ({len(file_data.content)} bytes) "
+                            f"to execution pod after {upload_timeout}s. Consider reducing file size "
+                            "or raising max_file_size_mb."
+                        ),
+                        execution_time_ms=0,
                     )
                 except Exception as e:
-                    logger.warning(
-                        "Failed to upload file",
+                    logger.error(
+                        "Failed to upload file to pod",
+                        pod_name=handle.name,
                         filename=file_data.filename,
                         error=str(e),
+                    )
+                    return ExecutionResult(
+                        exit_code=1,
+                        stdout="",
+                        stderr=(
+                            f"Failed to upload '{file_data.filename}' to execution pod: {e}. "
+                            "The pod may have been restarted (OOM or timeout)."
+                        ),
+                        execution_time_ms=0,
                     )
 
         # Execute code
@@ -639,12 +675,58 @@ class PodPool:
                 pod_name=handle.name,
                 error=str(e),
             )
+            # Inspect the pod so the caller learns *why* the connection dropped
+            # (issue #57: "socket hang up" typically means the pod was
+            # OOMKilled or evicted mid-request).
+            pod_failure_reason = await self._inspect_pod_failure(handle)
+            stderr = f"Execution error: {str(e)}"
+            if pod_failure_reason:
+                stderr = f"{stderr}. Pod status: {pod_failure_reason}"
             return ExecutionResult(
                 exit_code=1,
                 stdout="",
-                stderr=f"Execution error: {str(e)}",
+                stderr=stderr,
                 execution_time_ms=0,
             )
+
+    async def _inspect_pod_failure(self, handle: PodHandle) -> str | None:
+        """Best-effort lookup of why a pod stopped responding.
+
+        Returns a short human-readable reason (e.g. "OOMKilled", "Evicted")
+        or None if the pod still appears healthy or the K8s API is
+        unavailable. Used to turn opaque "socket hang up" errors into
+        actionable messages.
+        """
+        core_api = get_core_api()
+        if not core_api:
+            return None
+
+        try:
+            loop = asyncio.get_event_loop()
+            pod = await loop.run_in_executor(
+                None,
+                lambda: core_api.read_namespaced_pod(handle.name, handle.namespace),
+            )
+        except ApiException as e:
+            if e.status == 404:
+                return "pod not found (deleted or restarted)"
+            return None
+        except Exception:
+            return None
+
+        phase = getattr(pod.status, "phase", None)
+        reason = getattr(pod.status, "reason", None)
+        if reason:
+            return reason
+        if pod.status and pod.status.container_statuses:
+            for cs in pod.status.container_statuses:
+                terminated = getattr(getattr(cs, "last_state", None), "terminated", None)
+                if terminated and terminated.reason:
+                    return terminated.reason
+                waiting = getattr(getattr(cs, "state", None), "waiting", None)
+                if waiting and waiting.reason:
+                    return waiting.reason
+        return phase
 
     @property
     def available_count(self) -> int:

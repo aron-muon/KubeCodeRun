@@ -291,12 +291,19 @@ class ExecutionOrchestrator:
         return session.session_id
 
     async def _mount_files(self, ctx: ExecutionContext) -> list[dict[str, Any]]:
-        """Mount files for code execution."""
-        if not ctx.request.files:
-            return []
+        """Mount files for code execution.
 
-        mounted = []
-        mounted_ids = set()
+        Pool pods are destroyed after every execution and their /mnt/data
+        volume is an ephemeral emptyDir, so files uploaded in a previous
+        request do not persist in the pod. To keep the user-visible
+        "/mnt/data" illusion stable across requests (issue #57), every
+        uploaded file associated with the execution session is re-hydrated
+        from MinIO on each call, in addition to whatever the client
+        explicitly referenced in request.files.
+        """
+        mounted: list[dict[str, Any]] = []
+        mounted_keys: set[tuple[str, str]] = set()
+        mounted_filenames: set[str] = set()
 
         for file_ref in ctx.request.files:
             # Get file info - try by ID first
@@ -319,9 +326,9 @@ class ExecutionOrchestrator:
                 )
                 continue
 
-            # Skip duplicates
+            # Skip duplicates (by id and by filename)
             key = (file_ref.session_id, file_info.file_id)
-            if key in mounted_ids:
+            if key in mounted_keys or file_info.filename in mounted_filenames:
                 continue
 
             # Fetch actual file content from MinIO storage
@@ -344,9 +351,11 @@ class ExecutionOrchestrator:
                     "size": file_info.size,
                     "session_id": file_ref.session_id,
                     "content": content,
+                    "auto_mounted": False,
                 }
             )
-            mounted_ids.add(key)
+            mounted_keys.add(key)
+            mounted_filenames.add(file_info.filename)
 
             # Consolidate cross-session files into the chosen session (issue #34).
             # When files are uploaded in separate sessions (e.g. entity_id=null),
@@ -380,6 +389,71 @@ class ExecutionOrchestrator:
                 file_id=file_info.file_id,
                 filename=file_info.filename,
                 size=len(content),
+            )
+
+        # Re-hydrate uploaded files that belong to the execution session but
+        # were not explicitly referenced in the request. Skips generated
+        # outputs (path starts with "/outputs/") to avoid collisions with
+        # files produced by previous executions.
+        auto_mount_count = 0
+        if ctx.session_id:
+            try:
+                session_files = await self.file_service.list_files(ctx.session_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to list session files for auto-mount",
+                    session_id=ctx.session_id[:12],
+                    error=str(e),
+                )
+                session_files = []
+
+            for file_info in session_files:
+                if file_info.path and file_info.path.startswith("/outputs/"):
+                    continue
+
+                key = (ctx.session_id, file_info.file_id)
+                if key in mounted_keys or file_info.filename in mounted_filenames:
+                    continue
+
+                content = await self.file_service.get_file_content(ctx.session_id, file_info.file_id)
+                if content is None:
+                    logger.warning(
+                        "Failed to fetch session file content for auto-mount",
+                        session_id=ctx.session_id[:12],
+                        file_id=file_info.file_id,
+                        filename=file_info.filename,
+                    )
+                    continue
+
+                mounted.append(
+                    {
+                        "file_id": file_info.file_id,
+                        "filename": file_info.filename,
+                        "path": file_info.path,
+                        "size": file_info.size,
+                        "session_id": ctx.session_id,
+                        "content": content,
+                        "auto_mounted": True,
+                    }
+                )
+                mounted_keys.add(key)
+                mounted_filenames.add(file_info.filename)
+                auto_mount_count += 1
+
+                logger.debug(
+                    "Auto-mounted session file",
+                    session_id=ctx.session_id[:12],
+                    file_id=file_info.file_id,
+                    filename=file_info.filename,
+                    size=len(content),
+                )
+
+        if auto_mount_count:
+            logger.info(
+                "Re-hydrated session files from MinIO",
+                session_id=ctx.session_id[:12] if ctx.session_id else None,
+                auto_mounted=auto_mount_count,
+                explicit=len(mounted) - auto_mount_count,
             )
 
         return mounted
@@ -618,6 +692,8 @@ class ExecutionOrchestrator:
                 # Fallback to base64 string length if decode fails
                 state_size = len(ctx.new_state)
 
+        auto_mounted = sum(1 for f in ctx.mounted_files if f.get("auto_mounted")) if ctx.mounted_files else 0
+
         return ExecResponse(
             session_id=ctx.session_id,
             files=ctx.generated_files or [],
@@ -626,6 +702,7 @@ class ExecutionOrchestrator:
             has_state=has_state,
             state_size=state_size,
             state_hash=state_hash,
+            auto_mounted_files=auto_mounted,
         )
 
     async def _cleanup(self, ctx: ExecutionContext) -> None:
