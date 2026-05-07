@@ -576,6 +576,99 @@ class TestMountFilesExtended:
         # Should only include one file
         assert len(result) == 1
 
+    @pytest.mark.asyncio
+    async def test_mount_files_auto_mount_session_files(self, orchestrator, mock_file_service):
+        """Session-scoped files should be re-hydrated from MinIO even when
+        request.files is empty (issue #57: pool pods are destroyed after
+        each execution, emptyDir /mnt/data is ephemeral)."""
+        from datetime import datetime
+
+        from src.models.files import FileInfo
+
+        session_file = FileInfo(
+            file_id="file-upload-1",
+            filename="data.csv",
+            size=2048,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/data.csv",
+        )
+        mock_file_service.list_files.return_value = [session_file]
+        mock_file_service.get_file_content.return_value = b"a,b\n1,2\n"
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(request=request, request_id="req-1", session_id="session-abc")
+
+        result = await orchestrator._mount_files(ctx)
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "data.csv"
+        assert result[0]["auto_mounted"] is True
+        assert result[0]["content"] == b"a,b\n1,2\n"
+
+    @pytest.mark.asyncio
+    async def test_mount_files_auto_mount_skips_outputs(self, orchestrator, mock_file_service):
+        """Generated output files (path starts with /outputs/) must not be
+        auto-mounted — only uploads re-hydrate into /mnt/data."""
+        from datetime import datetime
+
+        from src.models.files import FileInfo
+
+        upload = FileInfo(
+            file_id="file-upload-1",
+            filename="data.csv",
+            size=10,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/data.csv",
+        )
+        output = FileInfo(
+            file_id="file-output-1",
+            filename="chart.png",
+            size=10,
+            content_type="image/png",
+            created_at=datetime.now(),
+            path="/outputs/chart.png",
+        )
+        mock_file_service.list_files.return_value = [upload, output]
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(request=request, request_id="req-1", session_id="session-abc")
+
+        result = await orchestrator._mount_files(ctx)
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "data.csv"
+
+    @pytest.mark.asyncio
+    async def test_mount_files_auto_mount_dedupes_with_explicit(self, orchestrator, mock_file_service):
+        """When a file is explicitly in request.files, the auto-mount pass
+        must not mount it again (dedup by filename and by (session,file_id))."""
+        from datetime import datetime
+
+        from src.models.exec import RequestFile
+        from src.models.files import FileInfo
+
+        file_info = FileInfo(
+            file_id="file-123",
+            filename="data.csv",
+            size=10,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/data.csv",
+        )
+        mock_file_service.get_file_info.return_value = file_info
+        mock_file_service.list_files.return_value = [file_info]
+
+        request_file = RequestFile(id="file-123", session_id="session-abc", name="data.csv")
+        request = ExecRequest(code="print('hi')", lang="python", files=[request_file])
+        ctx = ExecutionContext(request=request, request_id="req-1", session_id="session-abc")
+
+        result = await orchestrator._mount_files(ctx)
+
+        assert len(result) == 1
+        assert result[0]["auto_mounted"] is False
+
 
 class TestLoadState:
     """Tests for _load_state method."""

@@ -182,6 +182,11 @@ Kubernetes is used for secure code execution in isolated pods.
 | `K8S_MEMORY_LIMIT`     | `512Mi`                                      | Memory limit per execution pod           |
 | `K8S_CPU_REQUEST`      | `100m`                                       | CPU request per execution pod            |
 | `K8S_MEMORY_REQUEST`   | `128Mi`                                      | Memory request per execution pod         |
+| `K8S_RUNTIME_CLASS_NAME` | `""`                                       | RuntimeClassName for execution pods (e.g. `gvisor`, `kata`). Empty = cluster default |
+| `K8S_POD_NODE_SELECTOR` | `""`                                        | JSON-encoded node selector for execution pods (e.g. `{"sandbox":"true"}`) |
+| `K8S_POD_TOLERATIONS`  | `""`                                         | JSON-encoded tolerations for execution pods |
+| `K8S_POD_LABELS`       | `""`                                         | JSON-encoded extra labels for execution pods (e.g. `{"team":"platform"}`) |
+| `K8S_POD_LABEL_LANGUAGE_SUFFIX` | `""`                                | JSON-encoded list of label keys whose values get `-<lang>` appended (optional) |
 
 **Security Notes:**
 
@@ -191,6 +196,21 @@ Kubernetes is used for secure code execution in isolated pods.
 - Network policies deny all egress by default
 - Pods are destroyed immediately after execution
 - See [SECURITY.md](SECURITY.md) for the full security model
+
+**Custom Pod Labels:**
+
+`K8S_POD_LABELS` lets you attach extra Kubernetes labels to every execution pod (pool and job).
+`K8S_POD_LABEL_LANGUAGE_SUFFIX` optionally lists label keys whose values get the language code
+appended with a `-` separator (e.g. `MyApp` → `MyApp-py`). Labels under `app.kubernetes.io/*`
+and `kubecoderun.io/*` prefixes are protected and cannot be overridden. Unmatched suffix keys
+produce a warning in the API logs but do not prevent startup.
+
+```bash
+# Example
+K8S_POD_LABELS='{"example.com/workload-type":"CodeRunner","example.com/workload-name":"MyApp"}'
+K8S_POD_LABEL_LANGUAGE_SUFFIX='["example.com/workload-name"]'
+# → Python pod gets: example.com/workload-name=MyApp-py
+```
 
 ### Resource Limits
 

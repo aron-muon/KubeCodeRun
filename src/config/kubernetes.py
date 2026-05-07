@@ -34,6 +34,10 @@ class KubernetesConfig:
     pod_node_selector: str = ""  # JSON-encoded dict, e.g. '{"sandbox": "true"}'
     pod_tolerations: str = ""  # JSON-encoded list, e.g. '[{"key":"sandbox","operator":"Exists","effect":"NoSchedule"}]'
 
+    # Extra pod labels (JSON-encoded dict) and language-suffix keys (JSON-encoded list)
+    pod_labels: str = ""  # e.g. '{"team":"platform"}'
+    pod_label_language_suffix: str = ""  # e.g. '["team"]' → appends "-py", "-js", etc.
+
     # Job settings (for languages with pool_size=0)
     job_ttl_seconds_after_finished: int = 60
     job_active_deadline_seconds: int = 300

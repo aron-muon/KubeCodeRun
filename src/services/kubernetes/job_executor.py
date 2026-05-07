@@ -14,6 +14,7 @@ import structlog
 from kubernetes.client import ApiException
 
 from .client import (
+    build_custom_labels,
     create_job_manifest,
     get_batch_api,
     get_core_api,
@@ -101,6 +102,11 @@ class JobExecutor:
             "kubecoderun.io/session-id": session_id[:63],
             "kubecoderun.io/type": "job",
             **spec.labels,
+            **build_custom_labels(
+                spec.pod_labels,
+                spec.pod_label_language_suffix,
+                spec.language,
+            ),
         }
 
         job_manifest = create_job_manifest(

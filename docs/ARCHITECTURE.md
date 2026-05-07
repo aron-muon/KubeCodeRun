@@ -185,6 +185,21 @@ COPY --from=runner /runner /usr/local/bin/runner
 7. Client Response
 ```
 
+## File Persistence Across Executions
+
+Pool pods are destroyed after every execution and their `/mnt/data`
+volume is an ephemeral `emptyDir`. To keep uploaded files available
+across multiple `POST /exec` calls on the same session, the orchestrator
+re-hydrates every uploaded file associated with the execution session
+from MinIO on each request — in addition to whatever the client lists
+in `request.files`. Generated outputs (stored under `/outputs/…`) are
+skipped to avoid collisions with files produced by earlier runs.
+
+The number of files re-hydrated this way is returned to the client in
+the `auto_mounted_files` field of `ExecResponse`, making pod rotations
+(pool churn, OOMKills, evictions) observable without changing the
+LibreChat-compatible response shape.
+
 ## State Persistence (Python)
 
 Python sessions support state persistence across executions:

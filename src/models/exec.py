@@ -61,3 +61,11 @@ class ExecResponse(BaseModel):
     )
     state_size: int | None = Field(default=None, description="Compressed state size in bytes")
     state_hash: str | None = Field(default=None, description="SHA256 hash for ETag/change detection")
+    auto_mounted_files: int = Field(
+        default=0,
+        description=(
+            "Number of session-scoped uploaded files that were automatically "
+            "re-hydrated from storage into /mnt/data because the pod was fresh. "
+            "Surfaces pod rotations caused by pool churn, OOMKills or evictions."
+        ),
+    )

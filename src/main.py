@@ -156,6 +156,8 @@ async def lifespan(app: FastAPI):
                 pod_node_selector=settings.k8s_pod_node_selector,
                 pod_tolerations=settings.k8s_pod_tolerations,
                 image_pull_secrets=settings.k8s_image_pull_secrets,
+                pod_labels=settings.k8s_pod_labels,
+                pod_label_language_suffix=settings.k8s_pod_label_language_suffix,
             )
 
             await kubernetes_manager.start()
