@@ -297,3 +297,123 @@ class TestExecuteCodeEndpoint:
         call_args = mock_orchestrator.execute.call_args
         assert call_args.args[0].entity_id == "entity-123"
         assert call_args.args[0].user_id == "user-456"
+
+
+class TestUserIdHeaderFallback:
+    """LibreChat 0.8.5 sends user_id in the User-Id HTTP header, not in the
+    request body. exec.py must fall back to the header when the body field
+    is missing, so the cross-user session-isolation check in
+    orchestrator._get_or_create_session has a user_id to match against.
+    """
+
+    @pytest.mark.asyncio
+    async def test_user_id_falls_back_to_user_id_header(
+        self,
+        mock_session_service,
+        mock_file_service,
+        mock_execution_service,
+        mock_state_service,
+        mock_state_archival_service,
+    ):
+        """Body user_id is missing → exec.py copies User-Id header onto request."""
+        http_request = MagicMock(spec=Request)
+        http_request.state = MagicMock()
+        http_request.state.api_key_hash = "abc123hash"
+        http_request.state.is_env_key = False
+        http_request.headers = {"user-id": "user-from-header", "x-user-id": None}
+
+        exec_request = ExecRequest(code="print('hi')", lang="py")
+        expected = ExecResponse(session_id="s", stdout="", stderr="")
+
+        with patch("src.api.exec.ExecutionOrchestrator") as MockOrchestrator:
+            mock_orchestrator = MagicMock()
+            mock_orchestrator.execute = AsyncMock(return_value=expected)
+            MockOrchestrator.return_value = mock_orchestrator
+
+            await execute_code(
+                request=exec_request,
+                http_request=http_request,
+                session_service=mock_session_service,
+                file_service=mock_file_service,
+                execution_service=mock_execution_service,
+                state_service=mock_state_service,
+                state_archival_service=mock_state_archival_service,
+            )
+
+        passed = mock_orchestrator.execute.call_args.args[0]
+        assert passed.user_id == "user-from-header"
+
+    @pytest.mark.asyncio
+    async def test_user_id_falls_back_to_x_user_id_header(
+        self,
+        mock_session_service,
+        mock_file_service,
+        mock_execution_service,
+        mock_state_service,
+        mock_state_archival_service,
+    ):
+        """X-User-Id is accepted when User-Id is absent (X- naming convention)."""
+        http_request = MagicMock(spec=Request)
+        http_request.state = MagicMock()
+        http_request.state.api_key_hash = "abc123hash"
+        http_request.state.is_env_key = False
+        http_request.headers = {"user-id": None, "x-user-id": "user-x"}
+
+        exec_request = ExecRequest(code="print('hi')", lang="py")
+        expected = ExecResponse(session_id="s", stdout="", stderr="")
+
+        with patch("src.api.exec.ExecutionOrchestrator") as MockOrchestrator:
+            mock_orchestrator = MagicMock()
+            mock_orchestrator.execute = AsyncMock(return_value=expected)
+            MockOrchestrator.return_value = mock_orchestrator
+
+            await execute_code(
+                request=exec_request,
+                http_request=http_request,
+                session_service=mock_session_service,
+                file_service=mock_file_service,
+                execution_service=mock_execution_service,
+                state_service=mock_state_service,
+                state_archival_service=mock_state_archival_service,
+            )
+
+        passed = mock_orchestrator.execute.call_args.args[0]
+        assert passed.user_id == "user-x"
+
+    @pytest.mark.asyncio
+    async def test_body_user_id_wins_over_header(
+        self,
+        mock_session_service,
+        mock_file_service,
+        mock_execution_service,
+        mock_state_service,
+        mock_state_archival_service,
+    ):
+        """When the request body already carries user_id, the header is ignored.
+        This preserves the existing API contract for direct-API callers."""
+        http_request = MagicMock(spec=Request)
+        http_request.state = MagicMock()
+        http_request.state.api_key_hash = "abc123hash"
+        http_request.state.is_env_key = False
+        http_request.headers = {"user-id": "user-from-header", "x-user-id": None}
+
+        exec_request = ExecRequest(code="print('hi')", lang="py", user_id="user-from-body")
+        expected = ExecResponse(session_id="s", stdout="", stderr="")
+
+        with patch("src.api.exec.ExecutionOrchestrator") as MockOrchestrator:
+            mock_orchestrator = MagicMock()
+            mock_orchestrator.execute = AsyncMock(return_value=expected)
+            MockOrchestrator.return_value = mock_orchestrator
+
+            await execute_code(
+                request=exec_request,
+                http_request=http_request,
+                session_service=mock_session_service,
+                file_service=mock_file_service,
+                execution_service=mock_execution_service,
+                state_service=mock_state_service,
+                state_archival_service=mock_state_archival_service,
+            )
+
+        passed = mock_orchestrator.execute.call_args.args[0]
+        assert passed.user_id == "user-from-body"

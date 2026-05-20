@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 # Third-party imports
 import structlog
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from unidecode import unidecode
 
@@ -48,6 +48,8 @@ async def upload_file(
     file: UploadFile | None = File(None),
     files: list[UploadFile] | None = File(None),
     entity_id: str | None = Form(None),
+    user_id_header: str | None = Header(None, alias="User-Id"),
+    x_user_id_header: str | None = Header(None, alias="X-User-Id"),
     file_service: FileServiceDep = None,
     session_service: SessionServiceDep = None,
 ):
@@ -55,7 +57,15 @@ async def upload_file(
 
     Accepts files in either 'file' (singular) or 'files' (plural) field names.
     LibreChat uses 'file' while our tests use 'files'.
+
+    LibreChat 0.8.5 sends ``User-Id: <user-id>`` on every upload
+    (api/server/services/Files/Code/crud.js). We persist that on
+    session.metadata.user_id so cross-user session-isolation checks
+    (orchestrator._get_or_create_session) can prove ownership later.
     """
+    # Resolve user id from headers (LibreChat convention is `User-Id`; we
+    # also accept `X-User-Id` for clients that prefer the X- convention).
+    request_user_id = user_id_header or x_user_id_header
     try:
         # Handle both singular and plural field names
         upload_files = []
@@ -103,19 +113,28 @@ async def upload_file(
         # When entity_id is provided, reuse the existing session for that
         # entity so that multiple file uploads land in the same session
         # (fixes issue #34 where separate uploads created isolated sessions).
+        #
+        # SECURITY: same-user gating mirrors orchestrator._get_or_create_session.
+        # Without this, two different users uploading files for the same
+        # shared agent would collapse onto a single session and see each
+        # other's uploads. Only reuse when the existing session's
+        # metadata.user_id matches the current request's User-Id header.
         session_id = None
-        if entity_id:
+        if entity_id and request_user_id:
             try:
-                existing = await session_service.list_sessions_by_entity(entity_id, limit=1)
-                if existing:
-                    candidate = existing[0]
-                    if getattr(candidate.status, "value", str(candidate.status)) == "active":
+                existing = await session_service.list_sessions_by_entity(entity_id, limit=10)
+                for candidate in existing:
+                    if getattr(candidate.status, "value", str(candidate.status)) != "active":
+                        continue
+                    candidate_user = (candidate.metadata or {}).get("user_id")
+                    if candidate_user and candidate_user == request_user_id:
                         session_id = candidate.session_id
                         logger.info(
-                            "Reusing existing session for entity",
+                            "Reusing existing session for entity (same user)",
                             session_id=session_id,
                             entity_id=entity_id,
                         )
+                        break
             except Exception as e:
                 logger.warning(
                     "Failed to look up session by entity_id",
@@ -124,9 +143,11 @@ async def upload_file(
                 )
 
         if not session_id:
-            session_metadata = {}
+            session_metadata: dict = {}
             if entity_id:
                 session_metadata["entity_id"] = entity_id
+            if request_user_id:
+                session_metadata["user_id"] = request_user_id
             session = await session_service.create_session(SessionCreate(metadata=session_metadata))
             session_id = session.session_id
 

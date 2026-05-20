@@ -119,6 +119,12 @@ class TestCrossSessionFileConsolidation:
         mock_file_service.get_file_info.side_effect = get_file_info_side_effect
         mock_file_service.get_file_content.return_value = b"csv data"
 
+        # Legacy pre-user_id sessions: session lookup returns None so the
+        # authorization check treats them as legacy/anonymous and allows
+        # cross-session mount (backward compatibility). The issue-#34
+        # scenario predates the user_id ownership concept.
+        orchestrator.session_service.get_session.return_value = None
+
         # Create request with files from two different sessions
         request = ExecRequest(
             code="import pandas as pd; df = pd.read_csv('data_b.csv')",
@@ -216,6 +222,10 @@ class TestCrossSessionFileConsolidation:
         mock_file_service.get_file_content.return_value = b"csv data"
         mock_file_service.store_uploaded_file.side_effect = Exception("MinIO error")
 
+        # Legacy session (no user_id metadata) — see comment in the
+        # consolidation test above.
+        orchestrator.session_service.get_session.return_value = None
+
         request = ExecRequest(
             code="print('hello')",
             lang="python",
@@ -240,14 +250,20 @@ class TestUploadSessionReuse:
     """Tests for upload endpoint reusing sessions by entity_id."""
 
     @pytest.mark.asyncio
-    async def test_upload_reuses_session_with_entity_id(self):
-        """When entity_id is provided, upload should reuse existing session."""
+    async def test_upload_reuses_session_with_entity_id_same_user(self):
+        """When entity_id and User-Id are provided AND the existing session
+        was created by the same user, upload should reuse it.
+
+        Cross-user sharing via a shared entity_id is now blocked (see
+        test_upload_does_NOT_reuse_session_for_different_user below).
+        """
         from src.api.files import upload_file
 
         existing_session = MagicMock()
         existing_session.session_id = "existing-session"
         existing_session.status = MagicMock()
         existing_session.status.value = "active"
+        existing_session.metadata = {"user_id": "user-A", "entity_id": "conversation-123"}
 
         mock_session_service = MagicMock()
         mock_session_service.list_sessions_by_entity = AsyncMock(return_value=[existing_session])
@@ -266,6 +282,8 @@ class TestUploadSessionReuse:
             file=mock_file,
             files=None,
             entity_id="conversation-123",
+            user_id_header="user-A",
+            x_user_id_header=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )
@@ -273,6 +291,87 @@ class TestUploadSessionReuse:
         # Should reuse existing session, not create a new one
         mock_session_service.create_session.assert_not_called()
         assert result["session_id"] == "existing-session"
+
+    @pytest.mark.asyncio
+    async def test_upload_does_NOT_reuse_session_for_different_user(self):
+        """SECURITY: same entity_id shared across users must NOT collapse
+        them into one session. User-B uploading must create a fresh session
+        even though user-A's session exists for the same entity_id."""
+        from src.api.files import upload_file
+
+        a_session = MagicMock()
+        a_session.session_id = "session-by-A"
+        a_session.status = MagicMock()
+        a_session.status.value = "active"
+        a_session.metadata = {"user_id": "user-A", "entity_id": "conversation-123"}
+
+        new_session = MagicMock()
+        new_session.session_id = "new-for-B"
+
+        mock_session_service = MagicMock()
+        mock_session_service.list_sessions_by_entity = AsyncMock(return_value=[a_session])
+        mock_session_service.create_session = AsyncMock(return_value=new_session)
+
+        mock_file_service = MagicMock()
+        mock_file_service.store_uploaded_file = AsyncMock(return_value="file-123")
+
+        mock_file = MagicMock()
+        mock_file.filename = "test.csv"
+        mock_file.content_type = "text/csv"
+        mock_file.size = 100
+        mock_file.read = AsyncMock(return_value=b"csv data")
+
+        result = await upload_file(
+            file=mock_file,
+            files=None,
+            entity_id="conversation-123",
+            user_id_header="user-B",
+            x_user_id_header=None,
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
+
+        # Must create a fresh session for user-B; must NOT reuse user-A's.
+        mock_session_service.create_session.assert_called_once()
+        assert result["session_id"] == "new-for-B"
+
+    @pytest.mark.asyncio
+    async def test_upload_persists_user_id_on_session(self):
+        """User-Id header is persisted on session.metadata.user_id so the
+        cross-user isolation check at exec-time can recognize ownership."""
+        from src.api.files import upload_file
+        from src.models.session import SessionCreate
+
+        new_session = MagicMock()
+        new_session.session_id = "new-session"
+
+        mock_session_service = MagicMock()
+        mock_session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        mock_session_service.create_session = AsyncMock(return_value=new_session)
+
+        mock_file_service = MagicMock()
+        mock_file_service.store_uploaded_file = AsyncMock(return_value="file-123")
+
+        mock_file = MagicMock()
+        mock_file.filename = "test.csv"
+        mock_file.content_type = "text/csv"
+        mock_file.size = 100
+        mock_file.read = AsyncMock(return_value=b"csv data")
+
+        await upload_file(
+            file=mock_file,
+            files=None,
+            entity_id="conv-1",
+            user_id_header="user-A",
+            x_user_id_header=None,
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
+
+        call = mock_session_service.create_session.call_args
+        sc: SessionCreate = call.args[0]
+        assert sc.metadata.get("user_id") == "user-A"
+        assert sc.metadata.get("entity_id") == "conv-1"
 
     @pytest.mark.asyncio
     async def test_upload_creates_session_without_entity_id(self):
@@ -298,6 +397,8 @@ class TestUploadSessionReuse:
             file=mock_file,
             files=None,
             entity_id=None,
+            user_id_header=None,
+            x_user_id_header=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )
@@ -331,6 +432,8 @@ class TestUploadSessionReuse:
             file=mock_file,
             files=None,
             entity_id="conversation-123",
+            user_id_header="user-A",
+            x_user_id_header=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )

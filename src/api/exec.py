@@ -60,6 +60,18 @@ async def execute_code(
     api_key_hash = getattr(http_request.state, "api_key_hash", None)
     is_env_key = getattr(http_request.state, "is_env_key", False)
 
+    # LibreChat 0.8.5 (@librechat/agents >= 3.1.74) does not put user_id in
+    # the request body; it sends an `User-Id` header on every code-interpreter
+    # call (api/server/services/Files/Code/crud.js). Fall back to the header
+    # when the body field is missing so cross-user session isolation
+    # (orchestrator._get_or_create_session) has a user_id to match against.
+    # Without this fallback, every LC request would fall through to "create
+    # new session" and same-user file continuity would break.
+    if not request.user_id:
+        header_user_id = http_request.headers.get("user-id") or http_request.headers.get("x-user-id")
+        if header_user_id:
+            request.user_id = header_user_id
+
     logger.info(
         "Code execution request",
         request_id=request_id,
