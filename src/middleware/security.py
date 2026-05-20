@@ -3,6 +3,7 @@
 # Standard library imports
 import base64
 import binascii
+import hashlib
 import ipaddress
 import json
 import time
@@ -103,20 +104,35 @@ class SecurityMiddleware:
 
             # Handle authentication (skip for excluded paths and OPTIONS)
             if not self._should_skip_auth(request, scope):
-                # Try header-based extraction first
-                api_key = self._extract_api_key(request)
+                # CodeAPI JWT path (LibreChat 0.8.5+).
+                # If a Bearer token is present AND it structurally looks
+                # like a JWT AND JWT verification is enabled, that takes
+                # precedence over the API-key path. On JWT validation
+                # failure we 401 immediately rather than falling back to
+                # API-key extraction — falling back would let an attacker
+                # downgrade by submitting a deliberately-bad JWT.
+                jwt_token = self._extract_bearer_jwt(request)
+                if jwt_token is not None:
+                    await self._authenticate_jwt(jwt_token, scope)
+                else:
+                    # Legacy API-key path.
+                    api_key = self._extract_api_key(request)
 
-                # If no key in headers, try JSON body extraction for POST/PUT/PATCH
-                content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-                if (
-                    api_key is None
-                    and request.method in ("POST", "PUT", "PATCH")
-                    and content_type == "application/json"
-                ):
-                    body_bytes, receive = await self._buffer_body(receive)
-                    api_key = self._extract_api_key_from_body(body_bytes)
+                    # If no key in headers, try JSON body extraction
+                    # for POST/PUT/PATCH (LC ≤ 3.1.74 spread the key
+                    # into the body as LIBRECHAT_CODE_API_KEY).
+                    content_type = (
+                        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+                    )
+                    if (
+                        api_key is None
+                        and request.method in ("POST", "PUT", "PATCH")
+                        and content_type == "application/json"
+                    ):
+                        body_bytes, receive = await self._buffer_body(receive)
+                        api_key = self._extract_api_key_from_body(body_bytes)
 
-                await self._authenticate_request(request, scope, api_key=api_key)
+                    await self._authenticate_request(request, scope, api_key=api_key)
 
         except HTTPException as e:
             response = JSONResponse(
@@ -319,6 +335,78 @@ class SecurityMiddleware:
         # Record usage for all keys (both managed and env keys)
         if result.key_hash:
             await auth_service.record_usage(result.key_hash, is_env_key=result.is_env_key)
+
+    def _extract_bearer_jwt(self, request: Request) -> str | None:
+        """Return the Bearer token if it looks like a CodeAPI JWT, else None.
+
+        Returns ``None`` (deferring to API-key auth) when:
+          - ``settings.codeapi_jwt_enabled`` is False, OR
+          - the Authorization header is missing / not ``Bearer``, OR
+          - the Bearer value does not structurally look like a JWT (three
+            base64 segments separated by dots). An attacker submitting a
+            random 40-char API key as ``Bearer foo`` should keep being
+            handled by the API-key path, not get a 401 from the JWT verifier.
+
+        Returns the raw token string otherwise; verification happens in
+        ``_authenticate_jwt``.
+        """
+        if not settings.codeapi_jwt_enabled:
+            return None
+        auth_header = request.headers.get("authorization") or ""
+        if not auth_header.lower().startswith("bearer "):
+            return None
+        token = auth_header.split(" ", 1)[1].strip()
+        # Import locally to keep middleware import-time cheap and to avoid
+        # a circular import if codeapi_jwt ever wants to log via middleware.
+        from ..services.codeapi_jwt import _looks_like_jwt
+
+        return token if _looks_like_jwt(token) else None
+
+    async def _authenticate_jwt(self, token: str, scope: dict) -> None:
+        """Verify a CodeAPI JWT and seed scope state.
+
+        Raises:
+            HTTPException(401): the token is invalid (expired, wrong
+                signature, wrong iss/aud, malformed).
+            HTTPException(500): CodeAPI JWT auth is enabled but no public
+                key is configured. This is a server-side bug; the client
+                did nothing wrong.
+        """
+        from ..services.codeapi_jwt import (
+            CodeApiJwtConfigurationError,
+            CodeApiJwtError,
+            verify,
+        )
+
+        try:
+            claims = verify(token)
+        except CodeApiJwtConfigurationError as exc:
+            logger.error("CodeAPI JWT misconfigured", error=str(exc))
+            raise HTTPException(
+                status_code=500,
+                detail="CodeAPI JWT auth is enabled but public key is not configured",
+            ) from exc
+        except CodeApiJwtError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+        # Seed request state. The JWT.sub IS the user identity — downstream
+        # code (exec endpoint, orchestrator) trusts this over the User-Id
+        # HTTP header because it is cryptographically signed.
+        # api_key_hash uses a short prefix of sha256(sub) for log aggregation
+        # without exposing the user id in metric dashboards.
+        sub_hash = hashlib.sha256(claims.sub.encode()).hexdigest()
+        scope_state = scope.get("state") or {}
+        scope_state["authenticated"] = True
+        scope_state["api_key"] = ""  # not an api-key auth path
+        scope_state["api_key_hash"] = f"jwt:{sub_hash[:16]}"
+        scope_state["is_env_key"] = False
+        scope_state["user_id"] = claims.sub
+        scope_state["auth_principal_source"] = "codeapi_jwt"
+        if claims.tenant_id and settings.codeapi_jwt_trust_tenant_id:
+            scope_state["tenant_id"] = claims.tenant_id
+        if claims.jti:
+            scope_state["jwt_jti"] = claims.jti
+        scope["state"] = scope_state
 
     def _extract_api_key(self, request: Request) -> str | None:
         """Extract API key from request headers.

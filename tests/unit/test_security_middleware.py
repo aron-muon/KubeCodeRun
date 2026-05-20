@@ -668,3 +668,177 @@ class TestAuthEnabledBypass:
             assert security_middleware._should_skip_auth(request, scope) is True
 
         assert scope["state"]["api_key_hash"] == "anonymous"
+
+
+class TestExtractBearerJwt:
+    """``_extract_bearer_jwt`` is the gate: it returns a token only when
+    ``settings.codeapi_jwt_enabled`` AND the Bearer value looks like a JWT.
+    Everything else falls through to the API-key path."""
+
+    def test_returns_none_when_jwt_disabled(self, security_middleware):
+        request = MagicMock()
+        request.headers.get.return_value = "Bearer aaaa.bbbb.cccc"
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.codeapi_jwt_enabled = False
+            assert security_middleware._extract_bearer_jwt(request) is None
+
+    def test_returns_none_without_bearer_scheme(self, security_middleware):
+        request = MagicMock()
+        request.headers.get.return_value = "Basic ZG9lOnNlY3JldA=="
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.codeapi_jwt_enabled = True
+            assert security_middleware._extract_bearer_jwt(request) is None
+
+    def test_returns_none_when_bearer_is_not_jwt_shaped(self, security_middleware):
+        """A plain API key submitted as Bearer must NOT be classified as JWT
+        (otherwise we'd 401 every legacy ApiKey-via-Bearer client)."""
+        request = MagicMock()
+        request.headers.get.return_value = "Bearer my-flat-api-key-deadbeef"
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.codeapi_jwt_enabled = True
+            assert security_middleware._extract_bearer_jwt(request) is None
+
+    def test_returns_token_when_jwt_enabled_and_shaped(self, security_middleware):
+        request = MagicMock()
+        request.headers.get.return_value = "Bearer aaaa.bbbb.cccc"
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.codeapi_jwt_enabled = True
+            assert security_middleware._extract_bearer_jwt(request) == "aaaa.bbbb.cccc"
+
+
+class TestAuthenticateJwt:
+    """``_authenticate_jwt`` calls the verifier and seeds scope state."""
+
+    @pytest.mark.asyncio
+    async def test_valid_jwt_seeds_user_id_and_auth_state(self, security_middleware):
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import JwtClaims
+
+        scope: dict = {}
+        claims = JwtClaims(
+            sub="user-from-jwt",
+            tenant_id="tenant-A",
+            role="USER",
+            principal_source="librechat_jwt",
+            jti="jti-1",
+        )
+
+        with _patch("src.services.codeapi_jwt.verify", return_value=claims):
+            with _patch("src.middleware.security.settings") as mock_settings:
+                mock_settings.codeapi_jwt_trust_tenant_id = True
+                await security_middleware._authenticate_jwt("a.b.c", scope)
+
+        state = scope["state"]
+        assert state["authenticated"] is True
+        assert state["user_id"] == "user-from-jwt"
+        assert state["api_key"] == ""  # not an api-key path
+        assert state["api_key_hash"].startswith("jwt:")
+        assert state["is_env_key"] is False
+        assert state["auth_principal_source"] == "codeapi_jwt"
+        assert state["tenant_id"] == "tenant-A"
+        assert state["jwt_jti"] == "jti-1"
+
+    @pytest.mark.asyncio
+    async def test_tenant_id_omitted_when_trust_disabled(self, security_middleware):
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import JwtClaims
+
+        scope: dict = {}
+        claims = JwtClaims(
+            sub="u", tenant_id="t", role=None, principal_source=None, jti=None
+        )
+
+        with _patch("src.services.codeapi_jwt.verify", return_value=claims):
+            with _patch("src.middleware.security.settings") as mock_settings:
+                mock_settings.codeapi_jwt_trust_tenant_id = False
+                await security_middleware._authenticate_jwt("a.b.c", scope)
+
+        assert "tenant_id" not in scope["state"]
+
+    @pytest.mark.asyncio
+    async def test_invalid_jwt_raises_401(self, security_middleware):
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import CodeApiJwtError
+
+        with _patch("src.services.codeapi_jwt.verify", side_effect=CodeApiJwtError("expired")):
+            with pytest.raises(HTTPException) as exc:
+                await security_middleware._authenticate_jwt("a.b.c", {})
+        assert exc.value.status_code == 401
+        assert "expired" in exc.value.detail
+
+    @pytest.mark.asyncio
+    async def test_misconfigured_jwt_raises_500(self, security_middleware):
+        """Operator enabled JWT auth but didn't configure a public key.
+        Client did nothing wrong; 500 is correct."""
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import CodeApiJwtConfigurationError
+
+        with _patch(
+            "src.services.codeapi_jwt.verify",
+            side_effect=CodeApiJwtConfigurationError("no key"),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await security_middleware._authenticate_jwt("a.b.c", {})
+        assert exc.value.status_code == 500
+
+
+class TestJwtTakesPrecedenceOverApiKey:
+    """When a JWT-shaped Bearer is present AND JWT auth is enabled, the
+    JWT path runs INSTEAD OF the API-key path. A failed JWT must NOT
+    fall back to API-key auth (downgrade-attack defence)."""
+
+    @pytest.mark.asyncio
+    async def test_failed_jwt_does_not_fall_back_to_api_key(
+        self, security_middleware, mock_app, mock_send
+    ):
+        """End-to-end through __call__: bad JWT must 401, NEVER reach the
+        API-key auth path with the same Bearer string."""
+        import json as _json
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import CodeApiJwtError
+
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/exec",
+            "query_string": b"",
+            "headers": [
+                (b"authorization", b"Bearer aaaa.bbbb.cccc"),
+                (b"content-type", b"application/json"),
+            ],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b"{}", "more_body": False}
+
+        sent = []
+
+        async def send(message):
+            sent.append(message)
+
+        with _patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.codeapi_jwt_enabled = True
+            mock_settings.codeapi_jwt_trust_tenant_id = False
+            mock_settings.auth_enabled = True
+            mock_settings.auth_trusted_networks = ""
+            mock_settings.max_file_size_mb = 10
+            with _patch(
+                "src.services.codeapi_jwt.verify",
+                side_effect=CodeApiJwtError("bad signature"),
+            ):
+                await security_middleware(scope, receive, send)
+
+        # Response is a 401; downstream app was NEVER called (no fallback).
+        mock_app.assert_not_called()
+        start = sent[0]
+        assert start["type"] == "http.response.start"
+        assert start["status"] == 401
