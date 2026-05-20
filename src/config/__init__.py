@@ -101,6 +101,59 @@ class Settings(BaseSettings):
         ),
     )
 
+    # CodeAPI JWT — LibreChat 0.8.5 (danny-avila/LibreChat#13028) mints
+    # short-lived signed JWTs and sends them as `Authorization: Bearer <jwt>`.
+    # When this verifier is enabled we accept those tokens in addition to the
+    # legacy API-key / Basic-auth paths. Env-var names mirror LC's signer side
+    # (CODEAPI_JWT_*) so operator docs are 1:1.
+    codeapi_jwt_enabled: bool = Field(
+        default=False,
+        description=(
+            "Accept LibreChat-minted CodeAPI JWTs in Authorization: Bearer. "
+            "Required when LibreChat is configured with "
+            "CODEAPI_AUTH_PROVIDER=librechat-jwt|both. Off by default so legacy "
+            "API-key clients continue to work unchanged."
+        ),
+    )
+    codeapi_jwt_public_key: str | None = Field(
+        default=None,
+        description=(
+            "Public key for verifying CodeAPI JWTs. Accepts PEM (begins with "
+            "'-----BEGIN PUBLIC KEY-----'), raw JWK JSON ('{\"kty\":...}'), or "
+            "an absolute file path. Pairs with LibreChat's "
+            "CODEAPI_JWT_PRIVATE_KEY / CODEAPI_JWT_PRIVATE_JWK_JSON."
+        ),
+    )
+    codeapi_jwt_algorithm: Literal["EdDSA", "RS256"] = Field(
+        default="EdDSA",
+        description="JWT signing algorithm. Must match LC's CODEAPI_JWT_ALGORITHM.",
+    )
+    codeapi_jwt_issuer: str = Field(
+        default="librechat",
+        description="Expected `iss` claim. Must match LC's CODEAPI_JWT_ISSUER.",
+    )
+    codeapi_jwt_audience: str = Field(
+        default="codeapi",
+        description="Expected `aud` claim. Must match LC's CODEAPI_JWT_AUDIENCE.",
+    )
+    codeapi_jwt_leeway_seconds: int = Field(
+        default=10,
+        ge=0,
+        le=60,
+        description=(
+            "Clock-skew tolerance for exp/nbf validation. LC mints tokens "
+            "with nbf=iat and a 300s TTL by default, so small skew is normal."
+        ),
+    )
+    codeapi_jwt_trust_tenant_id: bool = Field(
+        default=False,
+        description=(
+            "When true, the JWT's `tenant_id` claim is recorded on new "
+            "sessions (metadata.tenant_id). KubeCodeRun does not enforce "
+            "tenant-scoped ACLs today; this is observability-only."
+        ),
+    )
+
     # Redis Configuration
     redis_host: str = Field(default="localhost")
     redis_port: int = Field(default=6379, ge=1, le=65535)
