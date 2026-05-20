@@ -1,5 +1,7 @@
 """Authentication middleware for API key validation."""
 
+import base64
+import binascii
 import ipaddress
 import json
 import time
@@ -151,19 +153,32 @@ class AuthenticationMiddleware:
         scope["state"]["api_key"] = api_key
 
     def _extract_api_key(self, request: Request) -> str | None:
-        """Extract API key from request headers."""
-        # Check x-api-key header first
+        """Extract API key from request headers.
+
+        Order: ``x-api-key`` → ``Authorization: Bearer/ApiKey/Basic``.
+        See ``SecurityMiddleware._extract_api_key`` for the rationale on
+        Basic support (LibreChat 0.8.5 / ``@librechat/agents`` ≥ 3.1.74
+        compatibility).
+        """
         api_key = request.headers.get("x-api-key")
         if api_key:
             return api_key
 
-        # Check Authorization header
-        auth_header = request.headers.get("authorization")
-        if auth_header:
-            if auth_header.startswith("Bearer "):
-                return auth_header[7:]
-            elif auth_header.startswith("ApiKey "):
-                return auth_header[7:]
+        auth_header = request.headers.get("authorization") or ""
+        if not auth_header:
+            return None
+
+        scheme, _, value = auth_header.partition(" ")
+        scheme_lower = scheme.lower()
+        if scheme_lower in ("bearer", "apikey") and value:
+            return value
+        if scheme_lower == "basic" and value:
+            try:
+                decoded = base64.b64decode(value, validate=True).decode("utf-8", errors="replace")
+            except (binascii.Error, ValueError):
+                return None
+            user, _, password = decoded.partition(":")
+            return user or password or None
 
         return None
 

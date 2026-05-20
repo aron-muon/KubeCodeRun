@@ -1,6 +1,8 @@
 """Consolidated security middleware for the Code Interpreter API."""
 
 # Standard library imports
+import base64
+import binascii
 import ipaddress
 import json
 import time
@@ -100,7 +102,7 @@ class SecurityMiddleware:
             await self._validate_request(request)
 
             # Handle authentication (skip for excluded paths and OPTIONS)
-            if not self._should_skip_auth(request):
+            if not self._should_skip_auth(request, scope):
                 # Try header-based extraction first
                 api_key = self._extract_api_key(request)
 
@@ -156,22 +158,63 @@ class SecurityMiddleware:
             if not any(allowed in content_type for allowed in allowed_types):
                 raise HTTPException(status_code=415, detail=f"Unsupported content type: {content_type}")
 
-    def _should_skip_auth(self, request: Request) -> bool:
-        """Check if authentication should be skipped."""
+    def _should_skip_auth(self, request: Request, scope: dict) -> bool:
+        """Check if authentication should be skipped.
+
+        Returns True for:
+          1. Excluded paths (/health, /docs, /redoc, /openapi.json) or OPTIONS.
+          2. Admin paths — middleware skips; the admin endpoints enforce
+             MASTER_API_KEY via their own dependency.
+          3. Requests from a configured trusted network CIDR
+             (AUTH_TRUSTED_NETWORKS — VPC-scoped bypass).
+          4. ``settings.auth_enabled == False`` on non-admin paths
+             (operator-controlled global bypass for trusted-boundary
+             deployments). Admin paths still require MASTER_API_KEY.
+
+        For trusted-network and disabled-auth bypasses we seed scope state
+        with anonymous markers so downstream code that reads
+        ``request.state.api_key_hash`` / ``is_env_key`` does not raise.
+        """
         path = request.url.path
-        if (
-            path in self.excluded_paths
-            or path.startswith("/api/v1/admin")
-            or path.startswith("/admin-dashboard")
-            or request.method == "OPTIONS"
-        ):
+        is_admin_path = path.startswith("/api/v1/admin") or path.startswith("/admin-dashboard")
+
+        if path in self.excluded_paths or request.method == "OPTIONS":
             return True
 
-        # Bypass auth for requests from trusted networks (e.g. in-cluster callers)
+        # Admin paths bypass middleware auth; their own dependencies require
+        # MASTER_API_KEY, so the bypass is safe and intentional.
+        if is_admin_path:
+            return True
+
+        # Trusted-network bypass — only applies to user-facing paths.
         if self._trusted_networks and self._is_trusted_network(request):
+            self._grant_anonymous_access(scope)
+            return True
+
+        # Operator-controlled bypass for trusted-boundary deployments
+        # (e.g. mTLS sidecar, VPC ingress). Never applies to admin paths.
+        if not settings.auth_enabled:
+            self._grant_anonymous_access(scope)
             return True
 
         return False
+
+    @staticmethod
+    def _grant_anonymous_access(scope: dict) -> None:
+        """Seed scope state for requests that bypassed authentication.
+
+        Downstream code (exec endpoint, orchestrator metrics) reads
+        ``request.state.api_key_hash`` and ``request.state.is_env_key``.
+        Seeding ``"anonymous"`` keeps dashboards / log lines readable and
+        avoids ``AttributeError`` when callers do ``getattr(..., None)``
+        with type-narrowed code paths.
+        """
+        scope_state = scope.get("state") or {}
+        scope_state.setdefault("authenticated", True)
+        scope_state.setdefault("api_key", "")
+        scope_state.setdefault("api_key_hash", "anonymous")
+        scope_state.setdefault("is_env_key", False)
+        scope["state"] = scope_state
 
     @staticmethod
     def _parse_trusted_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
@@ -278,19 +321,47 @@ class SecurityMiddleware:
             await auth_service.record_usage(result.key_hash, is_env_key=result.is_env_key)
 
     def _extract_api_key(self, request: Request) -> str | None:
-        """Extract API key from request headers."""
-        # Check x-api-key header first
+        """Extract API key from request headers.
+
+        Sources checked, in order:
+        1. ``x-api-key`` header — preferred when present (reverse-proxy injection,
+           older LibreChat versions).
+        2. ``Authorization: Bearer <token>`` / ``Authorization: ApiKey <token>``.
+        3. ``Authorization: Basic <base64(user:pass)>`` — LibreChat 0.8.5
+           (``@librechat/agents`` ≥ 3.1.74) dropped both the ``x-api-key``
+           header and the body-spread ``LIBRECHAT_CODE_API_KEY`` field. The
+           only way the legacy ``LIBRECHAT_CODE_BASEURL=https://KEY@host/v1``
+           pattern still reaches us is via the Basic header that ``axios``
+           auto-derives from URL credentials. We return the user half (the
+           legacy convention LC uses) and fall back to the password half so
+           ``user:KEY`` deployments still work.
+
+        Returns the first key found, or None.
+        """
+        # 1. x-api-key wins when present.
         api_key = request.headers.get("x-api-key")
         if api_key:
             return api_key
 
-        # Check Authorization header
-        auth_header = request.headers.get("authorization")
-        if auth_header:
-            if auth_header.startswith("Bearer "):
-                return auth_header[7:]
-            elif auth_header.startswith("ApiKey "):
-                return auth_header[7:]
+        # 2/3. Authorization header.
+        auth_header = request.headers.get("authorization") or ""
+        if not auth_header:
+            return None
+
+        scheme, _, value = auth_header.partition(" ")
+        scheme_lower = scheme.lower()
+        if scheme_lower in ("bearer", "apikey") and value:
+            return value
+        if scheme_lower == "basic" and value:
+            try:
+                decoded = base64.b64decode(value, validate=True).decode("utf-8", errors="replace")
+            except (binascii.Error, ValueError):
+                return None
+            user, _, password = decoded.partition(":")
+            # LibreChat's URL-embedded credential pattern puts the key in the
+            # user half (no password); generic ``user:KEY`` deployments use
+            # the password half. Prefer user, fall back to password.
+            return user or password or None
 
         return None
 

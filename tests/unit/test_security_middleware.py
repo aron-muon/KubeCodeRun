@@ -122,7 +122,7 @@ class TestShouldSkipAuth:
         request.url.path = "/health"
         request.method = "GET"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -132,7 +132,7 @@ class TestShouldSkipAuth:
         request.url.path = "/ready"
         request.method = "GET"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -142,7 +142,7 @@ class TestShouldSkipAuth:
         request.url.path = "/docs"
         request.method = "GET"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -152,7 +152,7 @@ class TestShouldSkipAuth:
         request.url.path = "/api/v1/admin/keys"
         request.method = "GET"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -162,7 +162,7 @@ class TestShouldSkipAuth:
         request.url.path = "/admin-dashboard/metrics"
         request.method = "GET"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -172,7 +172,7 @@ class TestShouldSkipAuth:
         request.url.path = "/api/v1/exec"
         request.method = "OPTIONS"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is True
 
@@ -182,7 +182,7 @@ class TestShouldSkipAuth:
         request.url.path = "/api/v1/exec"
         request.method = "POST"
 
-        result = security_middleware._should_skip_auth(request)
+        result = security_middleware._should_skip_auth(request, {})
 
         assert result is False
 
@@ -504,3 +504,167 @@ class TestRequestLoggingMiddleware:
 
         with pytest.raises(ValueError):
             await logging_middleware(scope, mock_receive, mock_send)
+
+
+class TestExtractApiKeyBasicAuth:
+    """LibreChat 0.8.5 (@librechat/agents >=3.1.74) dropped x-api-key and the
+    body-spread LIBRECHAT_CODE_API_KEY field. The only remaining channel for
+    the legacy LIBRECHAT_CODE_BASEURL=https://KEY@host/v1 pattern is the
+    Basic auth header that axios derives from URL credentials. These tests
+    pin down our handling of that channel.
+    """
+
+    @staticmethod
+    def _request_with_auth(value: str | None):
+        import base64
+
+        request = MagicMock()
+
+        def _get(name, default=None):
+            if name == "x-api-key":
+                return None
+            if name == "authorization":
+                return value if value is not None else default
+            return default
+
+        request.headers.get.side_effect = _get
+        return request
+
+    def _basic(self, raw: str) -> str:
+        import base64
+
+        return "Basic " + base64.b64encode(raw.encode("utf-8")).decode("ascii")
+
+    def test_basic_auth_user_only(self, security_middleware):
+        """axios URL-creds form: ``https://KEY@host`` -> ``Basic base64('KEY:')``.
+        We must return KEY (the user half)."""
+        request = self._request_with_auth(self._basic("test-api-key-12345:"))
+        assert security_middleware._extract_api_key(request) == "test-api-key-12345"
+
+    def test_basic_auth_password_only(self, security_middleware):
+        """``:KEY`` form falls through to password half."""
+        request = self._request_with_auth(self._basic(":test-api-key-12345"))
+        assert security_middleware._extract_api_key(request) == "test-api-key-12345"
+
+    def test_basic_auth_user_and_password_prefers_user(self, security_middleware):
+        """``user:KEY`` is ambiguous; LibreChat uses the user half, so we
+        match upstream and return ``user``. Document the convention so
+        ``user:KEY`` deployments know to flip the values."""
+        request = self._request_with_auth(self._basic("apiuser:apikey"))
+        assert security_middleware._extract_api_key(request) == "apiuser"
+
+    def test_basic_auth_invalid_base64(self, security_middleware):
+        """Malformed Basic header returns None (no crash, no 500)."""
+        request = self._request_with_auth("Basic !!!notbase64!!!")
+        assert security_middleware._extract_api_key(request) is None
+
+    def test_basic_auth_empty(self, security_middleware):
+        """``Basic `` with no value returns None."""
+        request = self._request_with_auth("Basic ")
+        assert security_middleware._extract_api_key(request) is None
+
+    def test_x_api_key_wins_over_basic(self, security_middleware):
+        """When both x-api-key AND Authorization are present, x-api-key wins
+        so reverse-proxy injection has deterministic behaviour."""
+        import base64
+
+        request = MagicMock()
+
+        def _get(name, default=None):
+            if name == "x-api-key":
+                return "from-header"
+            if name == "authorization":
+                return "Basic " + base64.b64encode(b"from-basic:").decode("ascii")
+            return default
+
+        request.headers.get.side_effect = _get
+        assert security_middleware._extract_api_key(request) == "from-header"
+
+    def test_bearer_still_works(self, security_middleware):
+        """Adding Basic must not regress Bearer."""
+        request = self._request_with_auth("Bearer my-jwt")
+        assert security_middleware._extract_api_key(request) == "my-jwt"
+
+    def test_apikey_scheme_still_works(self, security_middleware):
+        """Adding Basic must not regress ApiKey."""
+        request = self._request_with_auth("ApiKey my-key")
+        assert security_middleware._extract_api_key(request) == "my-key"
+
+    def test_unknown_scheme_returns_none(self, security_middleware):
+        """Unknown schemes (Digest, Negotiate) return None."""
+        request = self._request_with_auth("Digest realm=foo")
+        assert security_middleware._extract_api_key(request) is None
+
+
+class TestAuthEnabledBypass:
+    """AUTH_ENABLED=false flips middleware into trust-the-boundary mode for
+    user paths. Admin paths must still require MASTER_API_KEY."""
+
+    def test_user_path_bypassed_when_auth_disabled(self, security_middleware):
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        scope = {}
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = False
+            mock_settings.auth_trusted_networks = ""
+            mock_settings.max_file_size_mb = 10
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        # Anonymous state must be seeded so downstream metrics don't crash.
+        assert scope["state"]["authenticated"] is True
+        assert scope["state"]["api_key_hash"] == "anonymous"
+        assert scope["state"]["is_env_key"] is False
+
+    def test_user_path_NOT_bypassed_when_auth_enabled(self, security_middleware):
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        scope: dict = {}
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = True
+            mock_settings.auth_trusted_networks = ""
+            mock_settings.max_file_size_mb = 10
+            assert security_middleware._should_skip_auth(request, scope) is False
+
+        assert scope == {}, "no state seed when auth still required"
+
+    def test_admin_path_does_not_get_anonymous_seed(self, security_middleware):
+        """Admin paths skip middleware auth (their dependency enforces master
+        key) but must NOT be seeded with anonymous state — a bug in an admin
+        endpoint dependency must fail closed, not silently impersonate
+        anonymous."""
+        request = MagicMock()
+        request.url.path = "/api/v1/admin/keys"
+        request.method = "GET"
+        scope: dict = {}
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = False  # still skip — admin path
+            mock_settings.auth_trusted_networks = ""
+            mock_settings.max_file_size_mb = 10
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert "state" not in scope, "admin path must not receive anonymous seed"
+
+    def test_trusted_network_seeds_anonymous(self, security_middleware):
+        """Trusted-network bypass also gets the anonymous state seed."""
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        request.client.host = "10.0.0.5"
+        scope: dict = {}
+
+        # Inject a trusted CIDR after construction (constructor read empty).
+        import ipaddress
+
+        security_middleware._trusted_networks = [ipaddress.ip_network("10.0.0.0/8")]
+
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = True
+            mock_settings.max_file_size_mb = 10
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert scope["state"]["api_key_hash"] == "anonymous"

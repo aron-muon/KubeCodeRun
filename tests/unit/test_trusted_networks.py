@@ -143,16 +143,19 @@ class TestShouldSkipAuth:
             mw = SecurityMiddleware(mock_app)
 
         request = _make_request(client_ip="10.1.2.3", path="/exec")
-        assert mw._should_skip_auth(request) is True
+        # _should_skip_auth now takes scope so it can seed anonymous state
+        # on bypass paths; pass an empty dict for assertion-only callers.
+        assert mw._should_skip_auth(request, {}) is True
 
     def test_untrusted_ip_requires_auth(self, mock_app):
         with patch("src.middleware.security.settings") as mock_settings:
             mock_settings.max_file_size_mb = 10
             mock_settings.auth_trusted_networks = "10.0.0.0/8"
+            mock_settings.auth_enabled = True
             mw = SecurityMiddleware(mock_app)
 
         request = _make_request(client_ip="203.0.113.1", path="/exec")
-        assert mw._should_skip_auth(request) is False
+        assert mw._should_skip_auth(request, {}) is False
 
     def test_excluded_path_still_skips(self, mock_app):
         with patch("src.middleware.security.settings") as mock_settings:
@@ -161,7 +164,7 @@ class TestShouldSkipAuth:
             mw = SecurityMiddleware(mock_app)
 
         request = _make_request(client_ip="203.0.113.1", path="/health")
-        assert mw._should_skip_auth(request) is True
+        assert mw._should_skip_auth(request, {}) is True
 
 
 class TestAuthMiddlewareTrustedNetworks:
