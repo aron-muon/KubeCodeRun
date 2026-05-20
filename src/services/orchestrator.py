@@ -235,8 +235,6 @@ class ExecutionOrchestrator:
         We only reuse a file-referenced or entity-referenced session if its
         recorded user_id matches the current request. When the request has no
         user_id we never reuse — always create a new session.
-
-        Compatible upstream fix: usnavy13/LibreCodeInterpreter#63.
         """
         request = ctx.request
 
