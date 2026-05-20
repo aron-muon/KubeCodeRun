@@ -117,14 +117,32 @@ SSL_REDIRECT=true
 
 Manages API key authentication and security.
 
-| Variable             | Default        | Description                                      |
-| -------------------- | -------------- | ------------------------------------------------ |
-| `API_KEY`            | `test-api-key` | Primary API key (CHANGE IN PRODUCTION)           |
-| `API_KEYS`           | -              | Additional API keys (comma-separated)            |
-| `API_KEY_HEADER`     | `x-api-key`    | HTTP header name for API key                     |
-| `API_KEY_CACHE_TTL`  | `300`          | API key validation cache TTL (seconds)           |
-| `MASTER_API_KEY`     | -              | Master API key for admin operations (CLI, admin) |
-| `RATE_LIMIT_ENABLED` | `true`         | Enable per-key rate limiting for Redis keys      |
+| Variable                | Default        | Description                                                                                                                       |
+| ----------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `API_KEY`               | `test-api-key` | Primary API key (CHANGE IN PRODUCTION)                                                                                            |
+| `API_KEYS`              | -              | Additional API keys (comma-separated)                                                                                             |
+| `API_KEY_HEADER`        | `x-api-key`    | HTTP header name for API key                                                                                                      |
+| `API_KEY_CACHE_TTL`     | `300`          | API key validation cache TTL (seconds)                                                                                            |
+| `MASTER_API_KEY`        | -              | Master API key for admin operations (CLI, admin)                                                                                  |
+| `RATE_LIMIT_ENABLED`    | `true`         | Enable per-key rate limiting for Redis keys                                                                                       |
+| `AUTH_ENABLED`          | `true`         | Global auth toggle. Set false to skip api-key auth on user paths (admin still requires `MASTER_API_KEY`).                         |
+| `AUTH_TRUSTED_NETWORKS` | -              | Comma-separated CIDRs whose socket peer IP bypasses api-key auth (e.g. `10.0.0.0/8`). Unspoofable — uses TCP peer, not XFF.       |
+
+**Auth source priority** (highest first, checked per request):
+
+1. **CodeAPI JWT** (`Authorization: Bearer <jwt>`) — verified by the keys in
+   `CODEAPI_JWT_*`. See the next section.
+2. **`x-api-key` header** — preferred legacy path.
+3. **`Authorization: Bearer <token>` / `ApiKey <token>`** — when the Bearer
+   value is NOT shaped like a JWT.
+4. **`Authorization: Basic base64(KEY:)`** — supports LibreChat 0.8.5
+   `LIBRECHAT_CODE_BASEURL=https://KEY@host/v1` (axios derives the Basic
+   header from URL credentials).
+5. **JSON body `LIBRECHAT_CODE_API_KEY` / `api_key` / `apiKey`** — supports
+   `@librechat/agents` 3.1.74 (body-spread). Tried only for JSON POST/PUT/PATCH.
+
+A failed JWT does NOT fall back to api-key (downgrade-attack defence) — 401
+is returned immediately.
 
 **Security Notes:**
 
@@ -132,6 +150,36 @@ Manages API key authentication and security.
 - Use cryptographically secure random keys in production
 - Consider rotating API keys regularly
 - The `MASTER_API_KEY` is required for admin dashboard and CLI key management
+
+### CodeAPI JWT Authentication (LibreChat 0.8.5+)
+
+LibreChat 0.8.5 ([danny-avila/LibreChat#13028](https://github.com/danny-avila/LibreChat/pull/13028))
+mints short-lived signed JWTs and sends them as `Authorization: Bearer <jwt>`
+when `CODEAPI_AUTH_PROVIDER=librechat-jwt` or `both`. Enable the verifier here
+to accept those tokens. Env-var names mirror LC's signer side 1:1 — copy the
+matching values from the LC deployment.
+
+| Variable                       | Default     | Description                                                                                                                                                                                                                                                                                            |
+| ------------------------------ | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `CODEAPI_JWT_ENABLED`          | `false`     | Accept LibreChat-minted CodeAPI JWTs. Off by default so legacy api-key clients keep working unchanged.                                                                                                                                                                                                 |
+| `CODEAPI_JWT_PUBLIC_KEY`       | -           | Public key paired with LC's `CODEAPI_JWT_PRIVATE_KEY` / `CODEAPI_JWT_PRIVATE_JWK_JSON`. Accepts PEM (`-----BEGIN PUBLIC KEY-----`), raw JWK JSON (`{"kty":...}`), or an absolute file path.                                                                                                              |
+| `CODEAPI_JWT_ALGORITHM`        | `EdDSA`     | Must match LC's `CODEAPI_JWT_ALGORITHM` (`EdDSA` is the default; `RS256` is supported). Pinned at verify time — `alg` header is NEVER trusted (alg-confusion defence).                                                                                                                                  |
+| `CODEAPI_JWT_ISSUER`           | `librechat` | Expected `iss` claim. Must match LC's `CODEAPI_JWT_ISSUER`.                                                                                                                                                                                                                                            |
+| `CODEAPI_JWT_AUDIENCE`         | `codeapi`   | Expected `aud` claim. Must match LC's `CODEAPI_JWT_AUDIENCE`.                                                                                                                                                                                                                                          |
+| `CODEAPI_JWT_LEEWAY_SECONDS`   | `10`        | Clock-skew tolerance for `exp` / `nbf` validation.                                                                                                                                                                                                                                                     |
+| `CODEAPI_JWT_TRUST_TENANT_ID`  | `false`     | When true, the JWT's `tenant_id` claim is recorded on new sessions (`metadata.tenant_id`). KubeCodeRun does not enforce tenant-scoped ACLs today; observability-only.                                                                                                                                  |
+
+**Trust model when JWT is enabled:**
+
+- The JWT's `sub` claim is the authoritative user id. It OVERRIDES the
+  `User-Id` HTTP header and any `user_id` field in the request body. This
+  prevents an attacker holding a valid JWT for user-A from operating against
+  user-victim's sessions by lying about user_id in headers/body.
+- Operators rotate signing keys by restarting the process (the public key
+  is process-cached).
+- Missing/expired/wrong-signature/wrong-iss/wrong-aud tokens → 401.
+- `CODEAPI_JWT_ENABLED=true` without `CODEAPI_JWT_PUBLIC_KEY` → 500
+  (server misconfiguration; client did nothing wrong).
 
 ### Redis Configuration
 
