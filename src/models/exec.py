@@ -4,23 +4,53 @@
 from typing import Any, List, Optional
 
 # Third-party imports
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 
 
 class FileRef(BaseModel):
-    """File reference model for execution response."""
+    """File reference model for execution response.
+
+    LibreChat 0.8.5 (packages/data-provider/src/codeEnvRef.ts) expects
+    ``storage_session_id`` rather than ``session_id`` on each file ref;
+    we emit both for back-compat. ``resource_id``/``kind``/``version``
+    carry the LC ``CodeEnvFile`` discriminator into the response so
+    skill/agent attribution survives a generation round-trip.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     id: str
     name: str
     path: str | None = None  # Make path optional
+    session_id: str | None = None
+    resource_id: str | None = None
+    kind: str | None = None  # 'skill' | 'agent' | 'user'
+    version: int | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def storage_session_id(self) -> str | None:
+        """LibreChat alias for session_id; expected by @librechat/agents."""
+        return self.session_id
 
 
 class RequestFile(BaseModel):
-    """Request file model."""
+    """Request file model.
+
+    Accepts both ``storage_session_id`` (LibreChat 0.8.5 convention) and
+    ``session_id`` (legacy) so old and new clients work side by side.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     id: str
-    session_id: str
+    session_id: str = Field(
+        validation_alias=AliasChoices("storage_session_id", "session_id"),
+    )
     name: str
+    resource_id: str | None = None
+    kind: str | None = None  # 'skill' | 'agent' | 'user'
+    version: int | None = None
 
 
 class ExecRequest(BaseModel):

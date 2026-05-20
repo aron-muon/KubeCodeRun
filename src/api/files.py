@@ -190,10 +190,13 @@ async def upload_file(
             entity_id=entity_id,
         )
 
-        # Return LibreChat-compatible response
-        # Note: Production API returns different format with fileId instead of id
+        # Return LibreChat-compatible response.
+        # `storage_session_id` is the field LC 0.8.5 reads
+        # (api/server/services/Files/Code/crud.js); `session_id` is dual-
+        # emitted for back-compat with older clients.
         return {
             "message": "success",
+            "storage_session_id": session_id,
             "session_id": session_id,
             "files": [{"filename": file["name"], "fileId": file["id"]} for file in uploaded_files],
         }
@@ -205,6 +208,147 @@ async def upload_file(
         raise HTTPException(status_code=500, detail="Failed to upload files")
 
 
+@router.post("/upload/batch")
+async def upload_files_batch(
+    file: list[UploadFile] | None = File(None),
+    files: list[UploadFile] | None = File(None),
+    entity_id: str | None = Form(None),
+    kind: str | None = Form(None),
+    id: str | None = Form(None),
+    version: str | None = Form(None),
+    read_only: str | None = Form(None),
+    user_id_header: str | None = Header(None, alias="User-Id"),
+    x_user_id_header: str | None = Header(None, alias="X-User-Id"),
+    file_service: FileServiceDep = None,
+    session_service: SessionServiceDep = None,
+):
+    """Batch upload endpoint - LibreChat 0.8.5 compatible.
+
+    Used by ``@librechat/agents`` for skill priming (uploading a bundle of
+    files in a single request) — see api/server/services/Files/Code/crud.js
+    ``batchUploadCodeEnvFiles``. The single-file ``/upload`` works for
+    one-at-a-time uploads; this endpoint accepts a multi-file batch and
+    returns per-file ``succeeded`` / ``failed`` counts.
+
+    Form fields:
+
+      - ``file`` (or ``files``): one or more file parts (LC uses ``file``).
+      - ``entity_id``: optional, mirrors /upload.
+      - ``kind``: ``skill`` | ``agent`` | ``user``. LC sends this on every
+        batch upload. Treated as a hint; passed back in the response
+        envelope but not used for ACL today.
+      - ``id``: resource id (skillId / agentId / userId).
+      - ``version``: only meaningful with ``kind=skill``.
+      - ``read_only``: ``true`` marks every file as infrastructure (skill
+        bundle). Accepted but not yet enforced — placeholder for future
+        sandbox-side write-protection.
+
+    Returns ``{ message, storage_session_id, session_id, files: [...],
+    succeeded, failed }``.
+    """
+    request_user_id = user_id_header or x_user_id_header
+    upload_files: list[UploadFile] = file or files or []
+
+    if not upload_files:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "Request validation failed",
+                "error_type": "validation",
+                "details": [{"field": "body -> file", "message": "Field required", "code": "missing"}],
+            },
+        )
+
+    if len(upload_files) > settings.max_files_per_session:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Too many files in batch. Maximum {settings.max_files_per_session} files allowed",
+        )
+
+    # Resolve session (same-user reuse, mirrors /upload).
+    session_id = None
+    if entity_id and request_user_id:
+        try:
+            existing = await session_service.list_sessions_by_entity(entity_id, limit=10)
+            for candidate in existing:
+                if getattr(candidate.status, "value", str(candidate.status)) != "active":
+                    continue
+                candidate_user = (candidate.metadata or {}).get("user_id")
+                if candidate_user and candidate_user == request_user_id:
+                    session_id = candidate.session_id
+                    break
+        except Exception as e:
+            logger.warning(
+                "Failed to look up batch upload session by entity_id",
+                entity_id=entity_id,
+                error=str(e),
+            )
+
+    if not session_id:
+        session_metadata: dict = {}
+        if entity_id:
+            session_metadata["entity_id"] = entity_id
+        if request_user_id:
+            session_metadata["user_id"] = request_user_id
+        if kind:
+            session_metadata["kind"] = kind
+        if id:
+            session_metadata["resource_id"] = id
+        session = await session_service.create_session(SessionCreate(metadata=session_metadata))
+        session_id = session.session_id
+
+    results: list[dict] = []
+    succeeded = 0
+    failed = 0
+
+    for upload in upload_files:
+        try:
+            if upload.size and upload.size > settings.max_file_size_mb * 1024 * 1024:
+                raise ValueError(f"File {upload.filename} exceeds maximum size of {settings.max_file_size_mb}MB")
+
+            content = await upload.read()
+            sanitized_name = OutputProcessor.sanitize_filename(upload.filename or "file")
+            file_id = await file_service.store_uploaded_file(
+                session_id=session_id,
+                filename=sanitized_name,
+                content=content,
+                content_type=upload.content_type,
+            )
+            results.append(
+                {
+                    "status": "success",
+                    "fileId": file_id,
+                    "filename": sanitized_name,
+                }
+            )
+            succeeded += 1
+        except Exception as e:  # noqa: BLE001 — per-file isolation for batch
+            logger.warning(
+                "Batch upload file failed",
+                filename=upload.filename,
+                error=str(e),
+            )
+            results.append(
+                {
+                    "status": "error",
+                    "filename": upload.filename,
+                    "error": str(e),
+                }
+            )
+            failed += 1
+
+    message = "success" if succeeded > 0 else "error"
+
+    return {
+        "message": message,
+        "storage_session_id": session_id,
+        "session_id": session_id,
+        "files": results,
+        "succeeded": succeeded,
+        "failed": failed,
+    }
+
+
 @router.get("/files/{session_id}")
 async def list_files(
     session_id: str,
@@ -212,10 +356,29 @@ async def list_files(
         None,
         description="Detail level: 'simple' for basic info, otherwise full details",
     ),
+    kind: str | None = Query(
+        None,
+        description="Resource kind filter for LibreChat scoped listing: 'skill', 'agent', or 'user'",
+    ),
+    id: str | None = Query(
+        None,
+        description="Resource id for scoped listing (LibreChat agents lib fetchSessionFiles)",
+    ),
+    version: int | None = Query(
+        None,
+        description="Resource version (only meaningful when kind=skill)",
+    ),
     file_service: FileServiceDep = None,
     session_service: SessionServiceDep = None,
 ):
-    """List all files in a session with optional detail parameter - LibreChat compatible."""
+    """List all files in a session with optional detail parameter - LibreChat compatible.
+
+    ``kind``/``id``/``version`` query params are accepted for LibreChat 0.8.5
+    compatibility (``@librechat/agents`` fetchSessionFiles). They are currently
+    pass-through metadata: we do not filter by them server-side because our
+    file storage does not yet carry the discriminator. Accepting them avoids
+    422 validation errors from LC clients that send the params unconditionally.
+    """
     try:
         files = await file_service.list_files(session_id)
 
@@ -296,6 +459,9 @@ async def list_files(
                     {
                         "name": sanitized_name,
                         "id": file_info.file_id,
+                        # `storage_session_id` is the field LC 0.8.5 reads;
+                        # `session_id` is dual-emitted for back-compat.
+                        "storage_session_id": session_id,
                         "session_id": session_id,
                         "content": None,  # Not returned in list
                         "size": file_info.size,

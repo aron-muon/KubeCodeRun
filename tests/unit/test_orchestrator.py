@@ -1303,9 +1303,7 @@ class TestSessionIsolation:
         )
 
     @pytest.mark.asyncio
-    async def test_file_ref_session_NOT_reused_for_different_user(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_file_ref_session_NOT_reused_for_different_user(self, orchestrator, mock_session_service):
         """Attacker user-B references file_ref.session_id from user-A's session.
         Must NOT reuse — must create a fresh session for user-B.
         """
@@ -1330,9 +1328,7 @@ class TestSessionIsolation:
         mock_session_service.create_session.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_file_ref_session_NOT_reused_when_request_has_no_user_id(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_file_ref_session_NOT_reused_when_request_has_no_user_id(self, orchestrator, mock_session_service):
         """Even when the upload session has no user_id, a request without
         user_id must NOT inherit it — we can't prove ownership."""
         from src.models.exec import RequestFile
@@ -1355,9 +1351,7 @@ class TestSessionIsolation:
         mock_session_service.create_session.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_file_ref_session_reused_for_same_user(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_file_ref_session_reused_for_same_user(self, orchestrator, mock_session_service):
         """Same user uploads a file then references it in /exec — reuse OK."""
         from src.models.exec import RequestFile
 
@@ -1378,9 +1372,7 @@ class TestSessionIsolation:
         mock_session_service.create_session.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_entity_id_session_NOT_reused_for_different_user(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_entity_id_session_NOT_reused_for_different_user(self, orchestrator, mock_session_service):
         """Shared agent with entity_id: user-B must NOT reuse user-A's session."""
         a_session = self._session("entity-by-A", user_id="user-A", entity_id="agent-X")
         b_session = self._session("new-for-B", user_id="user-B", entity_id="agent-X")
@@ -1401,9 +1393,7 @@ class TestSessionIsolation:
         assert session_id == "new-for-B"
 
     @pytest.mark.asyncio
-    async def test_entity_id_session_picks_users_own_among_many(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_entity_id_session_picks_users_own_among_many(self, orchestrator, mock_session_service):
         """Entity has multiple users' sessions; pick the requesting user's,
         not just the first."""
         sessions = [
@@ -1427,9 +1417,7 @@ class TestSessionIsolation:
         assert session_id == "entity-by-B"
 
     @pytest.mark.asyncio
-    async def test_explicit_session_id_in_request_always_reused(
-        self, orchestrator, mock_session_service
-    ):
+    async def test_explicit_session_id_in_request_always_reused(self, orchestrator, mock_session_service):
         """request.session_id is opaque; if the auth layer let the request
         through, we trust the user knows their session. (Don't break stateful
         Python continuation with surprise ownership checks.)"""
@@ -1449,9 +1437,7 @@ class TestSessionIsolation:
         assert session_id == "explicit-sid"
 
     @pytest.mark.asyncio
-    async def test_mount_files_skips_foreign_user_session(
-        self, orchestrator, mock_session_service, mock_file_service
-    ):
+    async def test_mount_files_skips_foreign_user_session(self, orchestrator, mock_session_service, mock_file_service):
         """Defense in depth: even if a fresh execution session is created
         (per _get_or_create_session security check), _mount_files must refuse
         to copy file contents out of a session owned by a different user."""

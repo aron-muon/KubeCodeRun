@@ -371,9 +371,7 @@ class ExecutionOrchestrator:
             if file_session_id not in session_owner_cache:
                 try:
                     foreign = await self.session_service.get_session(file_session_id)
-                    session_owner_cache[file_session_id] = (
-                        (foreign.metadata or {}).get("user_id") if foreign else None
-                    )
+                    session_owner_cache[file_session_id] = (foreign.metadata or {}).get("user_id") if foreign else None
                 except Exception as e:
                     logger.warning(
                         "Error inspecting foreign session for ownership check",
