@@ -217,13 +217,32 @@ class ExecutionOrchestrator:
 
         Session lookup priority:
         1. Use session_id from request (for explicit session continuity/state persistence)
-        2. Reuse session from file references (for file-based workflows)
-        3. Reuse session by entity_id (for session continuity within same entity)
+        2. Reuse session from file references, but ONLY if the session belongs to
+           the same user (prevents cross-user session sharing via shared agent files)
+        3. Reuse session by entity_id, but ONLY if the session belongs to
+           the same user (prevents collapsing multiple users of a shared agent
+           into the same execution context)
         4. Create new session
+
+        SECURITY: File references carry a session_id that indicates where the
+        file is *stored*, NOT which session to execute in. When multiple users
+        share an agent with attached files, every user's request carries the
+        same upload session_id. Blindly reusing that session would leak state,
+        generated files, and auto-rehydrated session files between users
+        (the file_ref.session_id reuse path is followed by `_mount_files`
+        re-hydrating every file under the chosen session_id from MinIO).
+
+        We only reuse a file-referenced or entity-referenced session if its
+        recorded user_id matches the current request. When the request has no
+        user_id we never reuse — always create a new session.
+
+        Compatible upstream fix: usnavy13/LibreCodeInterpreter#63.
         """
         request = ctx.request
 
-        # Priority 1: Use explicit session_id from request (for state persistence)
+        # Priority 1: Use explicit session_id from request (for state persistence).
+        # The client knows the session is theirs; an attacker would need to know
+        # both a victim's session_id AND bypass the auth layer (validated above).
         if request.session_id:
             try:
                 existing = await self.session_service.get_session(request.session_id)
@@ -240,38 +259,59 @@ class ExecutionOrchestrator:
                     error=str(e),
                 )
 
-        # Priority 2: Try to reuse session from files array
-        if request.files:
+        # Priority 2: Try to reuse session from files array, but only if the
+        # session was created by the same user. This enables same-user session
+        # continuity (e.g., upload-then-exec) while preventing cross-user
+        # sharing via agent-attached files that reference a shared upload session.
+        if request.files and request.user_id:
             for file_ref in request.files:
-                if file_ref.session_id:
-                    try:
-                        existing = await self.session_service.get_session(file_ref.session_id)
-                        if existing and existing.status.value == "active":
-                            logger.info(
-                                "Reusing session from file reference",
-                                session_id=file_ref.session_id,
-                            )
-                            return file_ref.session_id
-                    except Exception as e:
-                        logger.warning(
-                            "Error looking up session",
-                            session_id=file_ref.session_id,
-                            error=str(e),
-                        )
-
-        # Try to reuse session by entity_id (enables session continuity)
-        if request.entity_id:
-            try:
-                entity_sessions = await self.session_service.list_sessions_by_entity(request.entity_id, limit=1)
-                if entity_sessions:
-                    existing = entity_sessions[0]
-                    if existing.status.value == "active":
+                if not file_ref.session_id:
+                    continue
+                try:
+                    existing = await self.session_service.get_session(file_ref.session_id)
+                    if not (existing and existing.status.value == "active"):
+                        continue
+                    session_user = (existing.metadata or {}).get("user_id")
+                    if session_user and session_user == request.user_id:
                         logger.info(
-                            "Reusing session by entity_id",
-                            session_id=existing.session_id[:12],
+                            "Reusing session from file reference (same user)",
+                            session_id=file_ref.session_id[:12],
+                        )
+                        return file_ref.session_id
+                    logger.info(
+                        "Skipping file_ref session reuse (different user)",
+                        session_id=file_ref.session_id[:12],
+                        session_user=(session_user[:8] + "...") if session_user else None,
+                        request_user=request.user_id[:8] + "...",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Error looking up session",
+                        session_id=file_ref.session_id,
+                        error=str(e),
+                    )
+
+        # Priority 3: Try to reuse session by entity_id, but only if the
+        # session was created by the same user. Without the user_id check,
+        # multiple users of a shared agent would converge on a single session
+        # and see each other's files/state.
+        if request.entity_id and request.user_id:
+            try:
+                # Pull a larger window than the previous "first match wins"
+                # heuristic so we can pick the user's own session even when
+                # the agent has been used by other users in between.
+                entity_sessions = await self.session_service.list_sessions_by_entity(request.entity_id, limit=10)
+                for candidate in entity_sessions:
+                    if candidate.status.value != "active":
+                        continue
+                    session_user = (candidate.metadata or {}).get("user_id")
+                    if session_user and session_user == request.user_id:
+                        logger.info(
+                            "Reusing session by entity_id (same user)",
+                            session_id=candidate.session_id[:12],
                             entity_id=request.entity_id,
                         )
-                        return existing.session_id
+                        return candidate.session_id
             except Exception as e:
                 logger.warning(
                     "Error looking up session by entity_id",
@@ -287,7 +327,11 @@ class ExecutionOrchestrator:
             metadata["user_id"] = request.user_id
 
         session = await self.session_service.create_session(SessionCreate(metadata=metadata))
-        logger.info("Created new session", session_id=session.session_id)
+        logger.info(
+            "Created new session",
+            session_id=session.session_id,
+            has_user_id=bool(request.user_id),
+        )
         return session.session_id
 
     async def _mount_files(self, ctx: ExecutionContext) -> list[dict[str, Any]]:
@@ -300,12 +344,64 @@ class ExecutionOrchestrator:
         uploaded file associated with the execution session is re-hydrated
         from MinIO on each call, in addition to whatever the client
         explicitly referenced in request.files.
+
+        SECURITY: When a file_ref points at a session owned by a different
+        user (e.g. a request-forged or replayed reference), we skip mounting
+        it. This is defense-in-depth on top of _get_or_create_session — even
+        if the request lands on a fresh execution session, we must not copy
+        a foreign user's file content into it.
         """
+        request_user_id = ctx.request.user_id
+        # Cache user_id of foreign sessions to avoid repeated lookups when a
+        # request carries multiple file refs against the same upload session.
+        session_owner_cache: dict[str, str | None] = {}
+
+        async def _is_file_ref_authorized(file_session_id: str) -> bool:
+            """True if the file_ref's session is mountable by the current request.
+
+            - If request has no user_id, only allow refs whose session also has
+              no user_id (legacy / anonymous flow). This is the same posture
+              `_get_or_create_session` takes when it refuses to reuse foreign
+              sessions without an authenticated user_id.
+            - If request has a user_id, the session must either have the same
+              user_id or no user_id at all (legacy uploads predate the field).
+            """
+            if file_session_id == ctx.session_id:
+                return True
+            if file_session_id not in session_owner_cache:
+                try:
+                    foreign = await self.session_service.get_session(file_session_id)
+                    session_owner_cache[file_session_id] = (
+                        (foreign.metadata or {}).get("user_id") if foreign else None
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Error inspecting foreign session for ownership check",
+                        session_id=file_session_id[:12],
+                        error=str(e),
+                    )
+                    # Fail closed: if we can't verify, don't mount.
+                    return False
+            session_user = session_owner_cache[file_session_id]
+            if session_user is None:
+                # Legacy / anonymous upload. Allow for backward compatibility.
+                return True
+            return session_user == request_user_id
+
         mounted: list[dict[str, Any]] = []
         mounted_keys: set[tuple[str, str]] = set()
         mounted_filenames: set[str] = set()
 
         for file_ref in ctx.request.files:
+            if not await _is_file_ref_authorized(file_ref.session_id):
+                logger.warning(
+                    "Skipping file_ref from foreign-user session",
+                    session_id=file_ref.session_id[:12],
+                    file_id=file_ref.id,
+                    request_user=request_user_id[:8] + "..." if request_user_id else None,
+                )
+                continue
+
             # Get file info - try by ID first
             file_info = await self.file_service.get_file_info(file_ref.session_id, file_ref.id)
 

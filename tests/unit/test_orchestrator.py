@@ -193,11 +193,19 @@ class TestGetOrCreateSession:
 
     @pytest.mark.asyncio
     async def test_reuse_session_by_entity_id(self, orchestrator, mock_session_service, sample_session):
-        """Test reusing session by entity_id."""
+        """Test reusing session by entity_id (same user only).
+
+        Sessions referenced via entity_id can leak between users of a shared
+        agent, so reuse requires matching user_id. Verifies the same-user
+        happy path here; the cross-user denial is covered in
+        TestSessionIsolation.
+        """
+        sample_session.metadata = {"user_id": "user-1", "entity_id": "entity-123"}
         request = ExecRequest(
             code="print('hello')",
             lang="python",
             entity_id="entity-123",
+            user_id="user-1",
         )
         mock_session_service.get_session.return_value = None
         mock_session_service.list_sessions_by_entity.return_value = [sample_session]
@@ -309,13 +317,20 @@ class TestGetOrCreateSessionExtended:
 
     @pytest.mark.asyncio
     async def test_session_from_file_ref(self, orchestrator, mock_session_service, sample_session):
-        """Test reusing session from file reference."""
+        """Test reusing session from file reference (same user only).
+
+        Same-user file_ref reuse is the legitimate session-continuity path
+        (upload-then-exec for the same user). Cross-user denial is covered
+        in TestSessionIsolation.
+        """
         from src.models.exec import RequestFile
 
+        sample_session.metadata = {"user_id": "user-1"}
         request_file = RequestFile(id="file-123", session_id="session-123", name="test.txt")
         request = ExecRequest(
             code="print('hello')",
             lang="python",
+            user_id="user-1",
             files=[request_file],
         )
         mock_session_service.get_session.return_value = sample_session
@@ -490,7 +505,7 @@ class TestMountFilesExtended:
 
         request_file = RequestFile(id="file-123", session_id="session-123", name="test.txt")
         request = ExecRequest(code="print('hello')", lang="python", files=[request_file])
-        ctx = ExecutionContext(request=request, request_id="req-123")
+        ctx = ExecutionContext(request=request, request_id="req-123", session_id="session-123")
 
         result = await orchestrator._mount_files(ctx)
 
@@ -537,7 +552,7 @@ class TestMountFilesExtended:
 
         request_file = RequestFile(id="file-123", session_id="session-123", name="test.txt")
         request = ExecRequest(code="print('hello')", lang="python", files=[request_file])
-        ctx = ExecutionContext(request=request, request_id="req-123")
+        ctx = ExecutionContext(request=request, request_id="req-123", session_id="session-123")
 
         result = await orchestrator._mount_files(ctx)
 
@@ -569,7 +584,7 @@ class TestMountFilesExtended:
             lang="python",
             files=[request_file, request_file],  # Duplicate
         )
-        ctx = ExecutionContext(request=request, request_id="req-123")
+        ctx = ExecutionContext(request=request, request_id="req-123", session_id="session-123")
 
         result = await orchestrator._mount_files(ctx)
 
@@ -1256,3 +1271,309 @@ class TestCleanupExtended:
 
         # Give the background task a chance to run
         await asyncio.sleep(0.1)
+
+
+class TestSessionIsolation:
+    """Tests for cross-user session isolation in _get_or_create_session and _mount_files.
+
+    Background: file references carry a session_id that points to the
+    *storage* session where the file was uploaded. When an agent is shared,
+    all users see file references pointing at the same upload session. Blindly
+    reusing that session for execution leaks state/files across users.
+
+    These tests pin down the same-user/cross-user matrix for every session
+    lookup path.
+    """
+
+    @staticmethod
+    def _session(session_id: str, *, user_id: str | None = None, entity_id: str | None = None):
+        from datetime import timedelta
+
+        metadata: dict = {}
+        if user_id is not None:
+            metadata["user_id"] = user_id
+        if entity_id is not None:
+            metadata["entity_id"] = entity_id
+        return Session(
+            session_id=session_id,
+            status=SessionStatus.ACTIVE,
+            created_at=datetime.now(),
+            expires_at=datetime.now() + timedelta(hours=1),
+            metadata=metadata,
+        )
+
+    @pytest.mark.asyncio
+    async def test_file_ref_session_NOT_reused_for_different_user(
+        self, orchestrator, mock_session_service
+    ):
+        """Attacker user-B references file_ref.session_id from user-A's session.
+        Must NOT reuse — must create a fresh session for user-B.
+        """
+        from src.models.exec import RequestFile
+
+        upload_session = self._session("upload-by-A", user_id="user-A")
+        new_session = self._session("new-for-B", user_id="user-B")
+        mock_session_service.get_session.return_value = upload_session
+        mock_session_service.create_session.return_value = new_session
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-B",
+            files=[RequestFile(id="fid", session_id="upload-by-A", name="leak.csv")],
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "new-for-B"
+        mock_session_service.create_session.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_file_ref_session_NOT_reused_when_request_has_no_user_id(
+        self, orchestrator, mock_session_service
+    ):
+        """Even when the upload session has no user_id, a request without
+        user_id must NOT inherit it — we can't prove ownership."""
+        from src.models.exec import RequestFile
+
+        upload_session = self._session("upload-anon")
+        new_session = self._session("new-anon")
+        mock_session_service.get_session.return_value = upload_session
+        mock_session_service.create_session.return_value = new_session
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            files=[RequestFile(id="fid", session_id="upload-anon", name="x.txt")],
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "new-anon"
+        mock_session_service.create_session.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_file_ref_session_reused_for_same_user(
+        self, orchestrator, mock_session_service
+    ):
+        """Same user uploads a file then references it in /exec — reuse OK."""
+        from src.models.exec import RequestFile
+
+        upload_session = self._session("upload-by-A", user_id="user-A")
+        mock_session_service.get_session.return_value = upload_session
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-A",
+            files=[RequestFile(id="fid", session_id="upload-by-A", name="own.csv")],
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "upload-by-A"
+        mock_session_service.create_session.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_entity_id_session_NOT_reused_for_different_user(
+        self, orchestrator, mock_session_service
+    ):
+        """Shared agent with entity_id: user-B must NOT reuse user-A's session."""
+        a_session = self._session("entity-by-A", user_id="user-A", entity_id="agent-X")
+        b_session = self._session("new-for-B", user_id="user-B", entity_id="agent-X")
+        mock_session_service.get_session.return_value = None
+        mock_session_service.list_sessions_by_entity.return_value = [a_session]
+        mock_session_service.create_session.return_value = b_session
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-B",
+            entity_id="agent-X",
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "new-for-B"
+
+    @pytest.mark.asyncio
+    async def test_entity_id_session_picks_users_own_among_many(
+        self, orchestrator, mock_session_service
+    ):
+        """Entity has multiple users' sessions; pick the requesting user's,
+        not just the first."""
+        sessions = [
+            self._session("entity-by-A", user_id="user-A", entity_id="agent-X"),
+            self._session("entity-by-B", user_id="user-B", entity_id="agent-X"),
+            self._session("entity-by-C", user_id="user-C", entity_id="agent-X"),
+        ]
+        mock_session_service.get_session.return_value = None
+        mock_session_service.list_sessions_by_entity.return_value = sessions
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-B",
+            entity_id="agent-X",
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "entity-by-B"
+
+    @pytest.mark.asyncio
+    async def test_explicit_session_id_in_request_always_reused(
+        self, orchestrator, mock_session_service
+    ):
+        """request.session_id is opaque; if the auth layer let the request
+        through, we trust the user knows their session. (Don't break stateful
+        Python continuation with surprise ownership checks.)"""
+        existing = self._session("explicit-sid", user_id="user-Z")
+        mock_session_service.get_session.return_value = existing
+
+        request = ExecRequest(
+            code="x = 1",
+            lang="py",
+            session_id="explicit-sid",
+            user_id="someone-else",
+        )
+        ctx = ExecutionContext(request=request, request_id="req")
+
+        session_id = await orchestrator._get_or_create_session(ctx)
+
+        assert session_id == "explicit-sid"
+
+    @pytest.mark.asyncio
+    async def test_mount_files_skips_foreign_user_session(
+        self, orchestrator, mock_session_service, mock_file_service
+    ):
+        """Defense in depth: even if a fresh execution session is created
+        (per _get_or_create_session security check), _mount_files must refuse
+        to copy file contents out of a session owned by a different user."""
+        from src.models.exec import RequestFile
+        from src.models.files import FileInfo
+
+        # Foreign session (owned by user-A) referenced by user-B's request.
+        foreign_session = self._session("upload-by-A", user_id="user-A")
+        mock_session_service.get_session.return_value = foreign_session
+
+        # File service would otherwise happily return content for the file.
+        foreign_file = FileInfo(
+            file_id="fid",
+            filename="secret.csv",
+            size=10,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/secret.csv",
+        )
+        mock_file_service.get_file_info.return_value = foreign_file
+        mock_file_service.list_files.return_value = []
+        mock_file_service.get_file_content = AsyncMock(return_value=b"SECRET")
+        mock_file_service.store_uploaded_file = AsyncMock()
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-B",
+            files=[RequestFile(id="fid", session_id="upload-by-A", name="secret.csv")],
+        )
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req",
+            session_id="fresh-for-B",
+        )
+
+        mounted = await orchestrator._mount_files(ctx)
+
+        assert mounted == [], "foreign file content must not leak into user-B's pod"
+        mock_file_service.get_file_content.assert_not_called()
+        mock_file_service.store_uploaded_file.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mount_files_allows_same_user_cross_session(
+        self, orchestrator, mock_session_service, mock_file_service
+    ):
+        """Same user can still reference files from a previous session of
+        theirs (legitimate continuity)."""
+        from src.models.exec import RequestFile
+        from src.models.files import FileInfo
+
+        own_session = self._session("upload-by-A", user_id="user-A")
+        mock_session_service.get_session.return_value = own_session
+
+        own_file = FileInfo(
+            file_id="fid",
+            filename="mine.csv",
+            size=10,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/mine.csv",
+        )
+        mock_file_service.get_file_info.return_value = own_file
+        mock_file_service.list_files.return_value = []
+        mock_file_service.get_file_content = AsyncMock(return_value=b"data")
+        mock_file_service.store_uploaded_file = AsyncMock(return_value="new-id")
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-A",
+            files=[RequestFile(id="fid", session_id="upload-by-A", name="mine.csv")],
+        )
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req",
+            session_id="exec-for-A",
+        )
+
+        mounted = await orchestrator._mount_files(ctx)
+
+        assert len(mounted) == 1
+        assert mounted[0]["filename"] == "mine.csv"
+
+    @pytest.mark.asyncio
+    async def test_mount_files_allows_legacy_anonymous_session(
+        self, orchestrator, mock_session_service, mock_file_service
+    ):
+        """Sessions created before user_id was tracked carry no metadata.
+        We allow these for backward compat (the leak window predates the
+        ownership concept; no further-leakage is created)."""
+        from src.models.exec import RequestFile
+        from src.models.files import FileInfo
+
+        legacy_session = self._session("legacy-upload")  # no user_id metadata
+        mock_session_service.get_session.return_value = legacy_session
+
+        info = FileInfo(
+            file_id="fid",
+            filename="old.csv",
+            size=10,
+            content_type="text/csv",
+            created_at=datetime.now(),
+            path="/old.csv",
+        )
+        mock_file_service.get_file_info.return_value = info
+        mock_file_service.list_files.return_value = []
+        mock_file_service.get_file_content = AsyncMock(return_value=b"old")
+        mock_file_service.store_uploaded_file = AsyncMock(return_value="new-id")
+
+        request = ExecRequest(
+            code="print('hi')",
+            lang="py",
+            user_id="user-A",
+            files=[RequestFile(id="fid", session_id="legacy-upload", name="old.csv")],
+        )
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req",
+            session_id="exec-for-A",
+        )
+
+        mounted = await orchestrator._mount_files(ctx)
+
+        assert len(mounted) == 1
