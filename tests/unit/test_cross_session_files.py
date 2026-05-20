@@ -24,6 +24,20 @@ from src.models.files import FileInfo
 from src.services.orchestrator import ExecutionContext, ExecutionOrchestrator
 
 
+def _anon_http_request():
+    """Build a MagicMock HTTP request with no JWT-resolved user_id.
+
+    upload_file/upload_files_batch now take a `request: Request` parameter
+    and read `request.state.user_id` first (set by SecurityMiddleware
+    after JWT verification). Tests that don't exercise the JWT path
+    pass an anonymous request so resolution falls through to headers.
+    """
+    request = MagicMock()
+    request.state = MagicMock()
+    request.state.user_id = None
+    return request
+
+
 @pytest.fixture
 def mock_session_service():
     service = MagicMock()
@@ -279,6 +293,7 @@ class TestUploadSessionReuse:
         mock_file.read = AsyncMock(return_value=b"csv data")
 
         result = await upload_file(
+            request=_anon_http_request(),
             file=mock_file,
             files=None,
             entity_id="conversation-123",
@@ -322,6 +337,7 @@ class TestUploadSessionReuse:
         mock_file.read = AsyncMock(return_value=b"csv data")
 
         result = await upload_file(
+            request=_anon_http_request(),
             file=mock_file,
             files=None,
             entity_id="conversation-123",
@@ -359,6 +375,7 @@ class TestUploadSessionReuse:
         mock_file.read = AsyncMock(return_value=b"csv data")
 
         await upload_file(
+            request=_anon_http_request(),
             file=mock_file,
             files=None,
             entity_id="conv-1",
@@ -394,6 +411,7 @@ class TestUploadSessionReuse:
         mock_file.read = AsyncMock(return_value=b"csv data")
 
         result = await upload_file(
+            request=_anon_http_request(),
             file=mock_file,
             files=None,
             entity_id=None,
@@ -429,6 +447,7 @@ class TestUploadSessionReuse:
         mock_file.read = AsyncMock(return_value=b"csv data")
 
         result = await upload_file(
+            request=_anon_http_request(),
             file=mock_file,
             files=None,
             entity_id="conversation-123",

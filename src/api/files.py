@@ -45,6 +45,7 @@ def _build_content_disposition(filename: str | None, fallback_identifier: str) -
 
 @router.post("/upload")
 async def upload_file(
+    request: Request,
     file: UploadFile | None = File(None),
     files: list[UploadFile] | None = File(None),
     entity_id: str | None = Form(None),
@@ -58,14 +59,18 @@ async def upload_file(
     Accepts files in either 'file' (singular) or 'files' (plural) field names.
     LibreChat uses 'file' while our tests use 'files'.
 
-    LibreChat 0.8.5 sends ``User-Id: <user-id>`` on every upload
-    (api/server/services/Files/Code/crud.js). We persist that on
-    session.metadata.user_id so cross-user session-isolation checks
-    (orchestrator._get_or_create_session) can prove ownership later.
+    user_id resolution (most-trustworthy first):
+      1. JWT.sub via request.state.user_id (cryptographically authenticated
+         by SecurityMiddleware when codeapi_jwt_enabled).
+      2. ``User-Id`` HTTP header (LibreChat 0.8.5 convention).
+      3. ``X-User-Id`` HTTP header (X- naming convention).
+
+    The resolved value is persisted on session.metadata.user_id so the
+    cross-user session-isolation check (orchestrator._get_or_create_session)
+    can prove ownership at exec time.
     """
-    # Resolve user id from headers (LibreChat convention is `User-Id`; we
-    # also accept `X-User-Id` for clients that prefer the X- convention).
-    request_user_id = user_id_header or x_user_id_header
+    jwt_user_id = getattr(request.state, "user_id", None) if request else None
+    request_user_id = jwt_user_id or user_id_header or x_user_id_header
     try:
         # Handle both singular and plural field names
         upload_files = []
@@ -210,6 +215,7 @@ async def upload_file(
 
 @router.post("/upload/batch")
 async def upload_files_batch(
+    request: Request,
     file: list[UploadFile] | None = File(None),
     files: list[UploadFile] | None = File(None),
     entity_id: str | None = Form(None),
@@ -245,8 +251,12 @@ async def upload_files_batch(
 
     Returns ``{ message, storage_session_id, session_id, files: [...],
     succeeded, failed }``.
+
+    user_id resolution mirrors ``/upload`` — JWT.sub via
+    ``request.state.user_id`` wins over the User-Id / X-User-Id headers.
     """
-    request_user_id = user_id_header or x_user_id_header
+    jwt_user_id = getattr(request.state, "user_id", None) if request else None
+    request_user_id = jwt_user_id or user_id_header or x_user_id_header
     upload_files: list[UploadFile] = file or files or []
 
     if not upload_files:

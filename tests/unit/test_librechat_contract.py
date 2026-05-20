@@ -122,6 +122,20 @@ def _mock_file(filename: str = "f.csv", content: bytes = b"x"):
     return f
 
 
+def _anon_http_request():
+    """Anonymous HTTP request (no JWT-resolved user_id).
+
+    upload_file/upload_files_batch read ``request.state.user_id`` first
+    (set by SecurityMiddleware when JWT auth is enabled). Contract tests
+    don't exercise that path; explicit None forces resolution to fall
+    through to the User-Id / X-User-Id headers as before.
+    """
+    request = MagicMock()
+    request.state = MagicMock()
+    request.state.user_id = None
+    return request
+
+
 class TestUploadResponseShape:
     @pytest.mark.asyncio
     async def test_upload_emits_storage_session_id(self):
@@ -133,6 +147,7 @@ class TestUploadResponseShape:
         file_service.store_uploaded_file = AsyncMock(return_value="fid-1")
 
         result = await upload_file(
+            request=_anon_http_request(),
             file=_mock_file(),
             files=None,
             entity_id=None,
@@ -161,6 +176,7 @@ class TestUploadBatchEndpoint:
         files = [_mock_file("a.csv", b"a"), _mock_file("b.csv", b"b")]
 
         result = await upload_files_batch(
+            request=_anon_http_request(),
             file=files,
             files=None,
             entity_id=None,
@@ -194,6 +210,7 @@ class TestUploadBatchEndpoint:
         file_service.store_uploaded_file = AsyncMock(return_value="fid-a")
 
         await upload_files_batch(
+            request=_anon_http_request(),
             file=[_mock_file("a.toml", b"[tool]")],
             files=None,
             entity_id=None,
@@ -225,6 +242,7 @@ class TestUploadBatchEndpoint:
         file_service.store_uploaded_file = AsyncMock(side_effect=["fid-a", Exception("MinIO down"), "fid-c"])
 
         result = await upload_files_batch(
+            request=_anon_http_request(),
             file=[
                 _mock_file("a.csv", b"a"),
                 _mock_file("b.csv", b"b"),
@@ -253,6 +271,7 @@ class TestUploadBatchEndpoint:
 
         with pytest.raises(HTTPException) as exc:
             await upload_files_batch(
+                request=_anon_http_request(),
                 file=None,
                 files=None,
                 entity_id=None,

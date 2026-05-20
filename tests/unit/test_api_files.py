@@ -51,6 +51,21 @@ def mock_upload_file():
 
 
 @pytest.fixture
+def mock_http_request():
+    """Anonymous HTTP Request (no JWT-resolved user_id).
+
+    upload_file now reads request.state.user_id (set by SecurityMiddleware
+    after JWT verification) before falling through to header/body
+    resolution. Tests that don't exercise the JWT path use this anonymous
+    fixture so resolution behaves as it did pre-JWT.
+    """
+    request = MagicMock()
+    request.state = MagicMock()
+    request.state.user_id = None
+    return request
+
+
+@pytest.fixture
 def mock_file_info():
     """Create a mock file info object."""
     info = MagicMock()
@@ -116,9 +131,12 @@ class TestUploadFile:
     """Tests for upload_file endpoint."""
 
     @pytest.mark.asyncio
-    async def test_upload_single_file(self, mock_file_service, mock_session_service, mock_upload_file):
+    async def test_upload_single_file(
+        self, mock_file_service, mock_session_service, mock_upload_file, mock_http_request
+    ):
         """Test uploading a single file."""
         result = await upload_file(
+            request=mock_http_request,
             file=mock_upload_file,
             files=None,
             entity_id="entity-123",
@@ -144,7 +162,7 @@ class TestUploadFile:
         ],
     )
     async def test_upload_sanitizes_filename_before_storage(
-        self, mock_file_service, mock_session_service, original, expected
+        self, mock_file_service, mock_session_service, mock_http_request, original, expected
     ):
         """Test that filenames with special characters are sanitized before storing."""
         file = MagicMock(spec=UploadFile)
@@ -154,6 +172,7 @@ class TestUploadFile:
         file.read = AsyncMock(return_value=b"a,b,c")
 
         result = await upload_file(
+            request=mock_http_request,
             file=file,
             files=None,
             entity_id=None,
@@ -169,11 +188,14 @@ class TestUploadFile:
         assert result["files"][0]["filename"] == expected
 
     @pytest.mark.asyncio
-    async def test_upload_multiple_files(self, mock_file_service, mock_session_service, mock_upload_file):
+    async def test_upload_multiple_files(
+        self, mock_file_service, mock_session_service, mock_upload_file, mock_http_request
+    ):
         """Test uploading multiple files."""
         files = [mock_upload_file, mock_upload_file]
 
         result = await upload_file(
+            request=mock_http_request,
             file=None,
             files=files,
             entity_id="entity-123",
@@ -186,10 +208,11 @@ class TestUploadFile:
         mock_session_service.create_session.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_upload_no_files(self, mock_file_service):
+    async def test_upload_no_files(self, mock_file_service, mock_http_request):
         """Test upload with no files raises 422."""
         with pytest.raises(HTTPException) as exc_info:
             await upload_file(
+                request=mock_http_request,
                 file=None,
                 files=None,
                 entity_id="entity-123",
@@ -199,7 +222,7 @@ class TestUploadFile:
         assert exc_info.value.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_upload_file_too_large(self, mock_file_service, mock_upload_file):
+    async def test_upload_file_too_large(self, mock_file_service, mock_upload_file, mock_http_request):
         """Test upload file too large raises 413."""
         mock_upload_file.size = 500 * 1024 * 1024  # 500MB
 
@@ -208,6 +231,7 @@ class TestUploadFile:
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file(
+                    request=mock_http_request,
                     file=mock_upload_file,
                     files=None,
                     entity_id="entity-123",
@@ -217,7 +241,7 @@ class TestUploadFile:
             assert exc_info.value.status_code == 413
 
     @pytest.mark.asyncio
-    async def test_upload_too_many_files(self, mock_file_service, mock_upload_file):
+    async def test_upload_too_many_files(self, mock_file_service, mock_upload_file, mock_http_request):
         """Test upload too many files raises 413."""
         files = [mock_upload_file] * 100
 
@@ -227,6 +251,7 @@ class TestUploadFile:
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file(
+                    request=mock_http_request,
                     file=None,
                     files=files,
                     entity_id="entity-123",
@@ -236,7 +261,9 @@ class TestUploadFile:
             assert exc_info.value.status_code == 413
 
     @pytest.mark.asyncio
-    async def test_upload_file_service_error(self, mock_file_service, mock_session_service, mock_upload_file):
+    async def test_upload_file_service_error(
+        self, mock_file_service, mock_session_service, mock_upload_file, mock_http_request
+    ):
         """Test upload file service error raises 500."""
         mock_file_service.store_uploaded_file.side_effect = Exception("Storage error")
 
@@ -246,6 +273,7 @@ class TestUploadFile:
 
             with pytest.raises(HTTPException) as exc_info:
                 await upload_file(
+                    request=mock_http_request,
                     file=mock_upload_file,
                     files=None,
                     entity_id="entity-123",
