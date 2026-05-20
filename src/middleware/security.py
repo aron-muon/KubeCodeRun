@@ -121,9 +121,7 @@ class SecurityMiddleware:
                     # If no key in headers, try JSON body extraction
                     # for POST/PUT/PATCH (LC ≤ 3.1.74 spread the key
                     # into the body as LIBRECHAT_CODE_API_KEY).
-                    content_type = (
-                        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-                    )
+                    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
                     if (
                         api_key is None
                         and request.method in ("POST", "PUT", "PATCH")

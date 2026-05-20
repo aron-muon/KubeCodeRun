@@ -31,7 +31,6 @@ from src.services.codeapi_jwt import (
     verify,
 )
 
-
 # ---------------------------------------------------------------------------
 # Key helpers
 # ---------------------------------------------------------------------------
@@ -326,9 +325,7 @@ class TestKeyFormats:
         with patch.object(codeapi_jwt, "settings") as mock_settings:
             mock_settings.codeapi_jwt_enabled = True
             # to_jwk may already return a string; normalize.
-            mock_settings.codeapi_jwt_public_key = (
-                public_jwk if isinstance(public_jwk, str) else json.dumps(public_jwk)
-            )
+            mock_settings.codeapi_jwt_public_key = public_jwk if isinstance(public_jwk, str) else json.dumps(public_jwk)
             mock_settings.codeapi_jwt_algorithm = "EdDSA"
             mock_settings.codeapi_jwt_issuer = "librechat"
             mock_settings.codeapi_jwt_audience = "codeapi"

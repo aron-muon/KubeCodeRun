@@ -750,9 +750,7 @@ class TestAuthenticateJwt:
         from src.services.codeapi_jwt import JwtClaims
 
         scope: dict = {}
-        claims = JwtClaims(
-            sub="u", tenant_id="t", role=None, principal_source=None, jti=None
-        )
+        claims = JwtClaims(sub="u", tenant_id="t", role=None, principal_source=None, jti=None)
 
         with _patch("src.services.codeapi_jwt.verify", return_value=claims):
             with _patch("src.middleware.security.settings") as mock_settings:
@@ -796,9 +794,7 @@ class TestJwtTakesPrecedenceOverApiKey:
     fall back to API-key auth (downgrade-attack defence)."""
 
     @pytest.mark.asyncio
-    async def test_failed_jwt_does_not_fall_back_to_api_key(
-        self, security_middleware, mock_app, mock_send
-    ):
+    async def test_failed_jwt_does_not_fall_back_to_api_key(self, security_middleware, mock_app, mock_send):
         """End-to-end through __call__: bad JWT must 401, NEVER reach the
         API-key auth path with the same Bearer string."""
         import json as _json

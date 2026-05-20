@@ -136,9 +136,7 @@ def _load_pem_or_jwk(raw: str) -> PublicKeyTypes:
     try:
         return serialization.load_pem_public_key(candidate.encode("utf-8"))
     except ValueError as exc:
-        raise CodeApiJwtConfigurationError(
-            "codeapi_jwt_public_key is not a recognized PEM, JWK, or file path"
-        ) from exc
+        raise CodeApiJwtConfigurationError("codeapi_jwt_public_key is not a recognized PEM, JWK, or file path") from exc
 
 
 @lru_cache(maxsize=1)
