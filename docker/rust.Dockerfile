@@ -11,7 +11,7 @@ FROM ${RUNNER_IMAGE} AS runner
 ################################
 # Builder stage - compile crate dependencies
 ################################
-FROM dhi.io/rust:1.93-debian13-dev AS builder
+FROM dhi.io/rust:1.95.0-debian13-dev AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -48,7 +48,7 @@ RUN rm -rf /tmp/rust-cache/src /tmp/rust-cache/Cargo.toml /tmp/rust-cache/Cargo.
 ################################
 # Final stage - runtime only
 ################################
-FROM dhi.io/rust:1.93-debian13-dev AS final
+FROM dhi.io/rust:1.95.0-debian13-dev AS final
 
 ARG BUILD_DATE
 ARG VERSION
@@ -60,13 +60,17 @@ LABEL org.opencontainers.image.title="KubeCodeRun Rust Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Runtime libraries only - no -dev packages (reduced attack surface)
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Runtime libraries only - pre-compiled crates link against these
 # These are linked by the pre-compiled crates: image, plotters (freetype/fontconfig)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libssl3t64 \
     libfontconfig1 \
     libfreetype6 \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy entire cargo home (registry, config, env) and pre-compiled target

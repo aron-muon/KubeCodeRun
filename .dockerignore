@@ -1,6 +1,8 @@
 # Git
 .git
 .gitignore
+.gitattributes
+.github/
 
 # Python
 __pycache__/
@@ -24,11 +26,31 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
 
 # Virtual environments
 venv/
 env/
 ENV/
+.venv/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.npm/
+package-lock.json
+
+# Go
+/bin/
+/vendor/
+
+# Rust
+target/
+Cargo.lock
 
 # IDE
 .vscode/
@@ -40,6 +62,7 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+.env*
 
 # Logs
 *.log
@@ -48,13 +71,17 @@ logs/
 # Test coverage
 .coverage
 htmlcov/
-.pytest_cache/
+coverage/
 
-# Environment files
-.env
-.env.local
-.env.prod
-.env.staging
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+azure-pipelines.yml
+
+# Documentation (optional—comment out if needed in build context)
+# docs/
+# *.md
+# README*
 
 # Documentation
 docs/
@@ -92,9 +119,6 @@ tests/
 data/
 uploads/
 temp/
-
-# Node modules (if any)
-node_modules/
 
 # Temporary files
 *.tmp

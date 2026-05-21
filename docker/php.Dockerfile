@@ -3,7 +3,7 @@
 
 # PHP version configuration - single source of truth
 # These must be declared before any FROM to be available in all stages.
-ARG PHP_VERSION=8.5.3
+ARG PHP_VERSION=8.5.6
 ARG PHP_MAJOR=8.5
 ARG DEBIAN_VERSION=debian13
 

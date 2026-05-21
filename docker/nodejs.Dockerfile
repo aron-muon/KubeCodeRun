@@ -12,7 +12,7 @@ ARG VCS_REF
 ################################
 # Builder stage - install packages with native addons
 ################################
-FROM dhi.io/node:25.4-debian13-dev AS builder
+FROM dhi.io/node:26.1-debian13-dev AS builder
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -38,7 +38,7 @@ RUN --mount=type=cache,target=/root/.npm \
 ################################
 # Runtime dependencies stage
 ################################
-FROM dhi.io/node:25.4-debian13-dev AS runtime-deps
+FROM dhi.io/node:26.1-debian13-dev AS runtime-deps
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -54,7 +54,7 @@ RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu /mnt/data && \
 ################################
 # Final stage - minimal runtime image
 ################################
-FROM dhi.io/node:25.4-debian13 AS final
+FROM dhi.io/node:26.1-debian13 AS final
 
 ARG BUILD_DATE
 ARG VERSION
