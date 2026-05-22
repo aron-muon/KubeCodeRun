@@ -838,3 +838,203 @@ class TestJwtTakesPrecedenceOverApiKey:
         start = sent[0]
         assert start["type"] == "http.response.start"
         assert start["status"] == 401
+
+
+class TestBypassWithIdentityExtraction:
+    """When auth is bypassed (CIDR trust / AUTH_ENABLED=false), we still
+    populate scope.state.user_id from any identity signal present.
+
+    Without this, LibreChat bash_tool calls from a CIDR-trusted pod reach
+    a "fresh" execution session every time because the orchestrator's
+    cross-user file-isolation needs a user_id to match against the upload
+    session. The bypass keeps the user OUT of the auth queue; the identity
+    extraction keeps the user IN the session-ownership graph.
+    """
+
+    @pytest.mark.asyncio
+    async def test_trusted_network_bypass_extracts_jwt_sub(self, security_middleware):
+        """CIDR-trusted call carrying a valid JWT: bypass auth-key check
+        BUT still extract sub for ownership."""
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import JwtClaims
+
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        request.client.host = "10.0.0.5"
+        request.headers.get = lambda name, default=None: {
+            "authorization": "Bearer aaaa.bbbb.cccc",
+            "user-id": None,
+            "x-user-id": None,
+        }.get(name, default)
+        scope: dict = {}
+
+        import ipaddress
+
+        security_middleware._trusted_networks = [ipaddress.ip_network("10.0.0.0/8")]
+
+        with (
+            _patch("src.middleware.security.settings") as mock_settings,
+            _patch(
+                "src.services.codeapi_jwt.verify",
+                return_value=JwtClaims(
+                    sub="user-from-jwt",
+                    tenant_id=None,
+                    role=None,
+                    principal_source=None,
+                    jti=None,
+                ),
+            ),
+        ):
+            mock_settings.auth_enabled = True
+            mock_settings.codeapi_jwt_enabled = True
+            mock_settings.codeapi_jwt_trust_tenant_id = False
+            mock_settings.max_file_size_mb = 10
+
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert scope["state"]["user_id"] == "user-from-jwt"
+        assert scope["state"]["auth_principal_source"] == "codeapi_jwt_bypassed"
+        # Anonymous markers still seeded so metrics don't crash.
+        assert scope["state"]["api_key_hash"] == "anonymous"
+
+    @pytest.mark.asyncio
+    async def test_trusted_network_bypass_falls_back_to_user_id_header(self, security_middleware):
+        """No JWT, but LibreChat /upload sent User-Id: extract that for ownership."""
+        from unittest.mock import patch as _patch
+
+        request = MagicMock()
+        request.url.path = "/upload"
+        request.method = "POST"
+        request.client.host = "10.0.0.5"
+        request.headers.get = lambda name, default=None: {
+            "authorization": None,
+            "user-id": "lc-user-42",
+            "x-user-id": None,
+        }.get(name, default)
+        scope: dict = {}
+
+        import ipaddress
+
+        security_middleware._trusted_networks = [ipaddress.ip_network("10.0.0.0/8")]
+
+        with _patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = True
+            mock_settings.codeapi_jwt_enabled = False
+            mock_settings.max_file_size_mb = 10
+
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert scope["state"]["user_id"] == "lc-user-42"
+        assert scope["state"]["auth_principal_source"] == "header_bypassed"
+
+    @pytest.mark.asyncio
+    async def test_auth_disabled_bypass_extracts_jwt_sub(self, security_middleware):
+        """AUTH_ENABLED=false + JWT enabled + valid JWT → bypass + identity."""
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import JwtClaims
+
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        request.headers.get = lambda name, default=None: {
+            "authorization": "Bearer aaaa.bbbb.cccc",
+            "user-id": None,
+            "x-user-id": None,
+        }.get(name, default)
+        scope: dict = {}
+
+        with (
+            _patch("src.middleware.security.settings") as mock_settings,
+            _patch(
+                "src.services.codeapi_jwt.verify",
+                return_value=JwtClaims(
+                    sub="user-from-jwt",
+                    tenant_id=None,
+                    role=None,
+                    principal_source=None,
+                    jti=None,
+                ),
+            ),
+        ):
+            mock_settings.auth_enabled = False
+            mock_settings.codeapi_jwt_enabled = True
+            mock_settings.codeapi_jwt_trust_tenant_id = False
+            mock_settings.auth_trusted_networks = ""
+            mock_settings.max_file_size_mb = 10
+
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert scope["state"]["user_id"] == "user-from-jwt"
+
+    @pytest.mark.asyncio
+    async def test_bypass_with_invalid_jwt_falls_back_to_anonymous(self, security_middleware):
+        """Bypassed request with an INVALID JWT: don't 401 (bypass already
+        allowed it), don't set user_id, log and continue."""
+        from unittest.mock import patch as _patch
+
+        from src.services.codeapi_jwt import CodeApiJwtError
+
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        request.client.host = "10.0.0.5"
+        request.headers.get = lambda name, default=None: {
+            "authorization": "Bearer aaaa.bbbb.cccc",
+            "user-id": None,
+            "x-user-id": None,
+        }.get(name, default)
+        scope: dict = {}
+
+        import ipaddress
+
+        security_middleware._trusted_networks = [ipaddress.ip_network("10.0.0.0/8")]
+
+        with (
+            _patch("src.middleware.security.settings") as mock_settings,
+            _patch("src.services.codeapi_jwt.verify", side_effect=CodeApiJwtError("expired")),
+        ):
+            mock_settings.auth_enabled = True
+            mock_settings.codeapi_jwt_enabled = True
+            mock_settings.codeapi_jwt_trust_tenant_id = False
+            mock_settings.max_file_size_mb = 10
+
+            # Bypass still returns True; we don't 401 on a bypassed request.
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        # No user_id extracted, but anonymous state still seeded.
+        assert "user_id" not in scope["state"]
+        assert scope["state"]["api_key_hash"] == "anonymous"
+
+    @pytest.mark.asyncio
+    async def test_bypass_with_no_identity_signals_stays_anonymous(self, security_middleware):
+        """No JWT, no User-Id header: bypass leaves user_id unset.
+        Orchestrator will then treat the request as truly anonymous (no
+        session reuse, no file mounting). Documents the behavior."""
+        from unittest.mock import patch as _patch
+
+        request = MagicMock()
+        request.url.path = "/exec"
+        request.method = "POST"
+        request.client.host = "10.0.0.5"
+        request.headers.get = lambda name, default=None: {
+            "authorization": None,
+            "user-id": None,
+            "x-user-id": None,
+        }.get(name, default)
+        scope: dict = {}
+
+        import ipaddress
+
+        security_middleware._trusted_networks = [ipaddress.ip_network("10.0.0.0/8")]
+
+        with _patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.auth_enabled = True
+            mock_settings.codeapi_jwt_enabled = False
+            mock_settings.max_file_size_mb = 10
+
+            assert security_middleware._should_skip_auth(request, scope) is True
+
+        assert "user_id" not in scope["state"]

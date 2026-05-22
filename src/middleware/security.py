@@ -188,6 +188,12 @@ class SecurityMiddleware:
         For trusted-network and disabled-auth bypasses we seed scope state
         with anonymous markers so downstream code that reads
         ``request.state.api_key_hash`` / ``is_env_key`` does not raise.
+        We *also* attempt best-effort identity extraction (verified JWT
+        sub, then User-Id header) so file-ownership checks in the
+        orchestrator still work when the request is bypassed but the
+        caller did identify itself. Without this, LibreChat bash_tool
+        calls from a CIDR-trusted pod can't reach the user's uploaded
+        files because we have no user_id to match against.
         """
         path = request.url.path
         is_admin_path = path.startswith("/api/v1/admin") or path.startswith("/admin-dashboard")
@@ -203,12 +209,14 @@ class SecurityMiddleware:
         # Trusted-network bypass — only applies to user-facing paths.
         if self._trusted_networks and self._is_trusted_network(request):
             self._grant_anonymous_access(scope)
+            self._extract_best_effort_identity(request, scope)
             return True
 
         # Operator-controlled bypass for trusted-boundary deployments
         # (e.g. mTLS sidecar, VPC ingress). Never applies to admin paths.
         if not settings.auth_enabled:
             self._grant_anonymous_access(scope)
+            self._extract_best_effort_identity(request, scope)
             return True
 
         return False
@@ -229,6 +237,66 @@ class SecurityMiddleware:
         scope_state.setdefault("api_key_hash", "anonymous")
         scope_state.setdefault("is_env_key", False)
         scope["state"] = scope_state
+
+    def _extract_best_effort_identity(self, request: Request, scope: dict) -> None:
+        """Populate ``scope.state.user_id`` from any identity signal present.
+
+        Even when auth is bypassed (CIDR trust, AUTH_ENABLED=false) we
+        still want to know *who* is calling, so the orchestrator's
+        cross-user file-isolation checks can find the user's session.
+        Without an identity, every bypassed request looks like a brand-
+        new anonymous user and prior uploads become unreachable.
+
+        Sources, in order:
+          1. ``Authorization: Bearer <jwt>`` — verified if CODEAPI_JWT
+             is enabled. Failures here are non-fatal (the bypass already
+             allowed the request); we just log and continue without
+             user_id.
+          2. ``User-Id`` / ``X-User-Id`` header — unsigned, only trusted
+             because the bypass already trusted the network boundary
+             that delivered the request.
+        """
+        scope_state = scope.get("state") or {}
+        if scope_state.get("user_id"):
+            return  # already set by a prior helper
+
+        # JWT path
+        if settings.codeapi_jwt_enabled:
+            jwt_token = self._extract_bearer_jwt(request)
+            if jwt_token:
+                from ..services.codeapi_jwt import (
+                    CodeApiJwtConfigurationError,
+                    CodeApiJwtError,
+                    verify,
+                )
+
+                try:
+                    claims = verify(jwt_token)
+                    scope_state["user_id"] = claims.sub
+                    scope_state["auth_principal_source"] = "codeapi_jwt_bypassed"
+                    if claims.tenant_id and settings.codeapi_jwt_trust_tenant_id:
+                        scope_state["tenant_id"] = claims.tenant_id
+                    scope["state"] = scope_state
+                    return
+                except CodeApiJwtConfigurationError as exc:
+                    # Operator told us JWT is on but didn't configure a key.
+                    # In bypass mode we can't 500 — log loudly and fall back.
+                    logger.error(
+                        "CodeAPI JWT misconfigured (auth bypassed, identity unknown)",
+                        error=str(exc),
+                    )
+                except CodeApiJwtError as exc:
+                    logger.info(
+                        "CodeAPI JWT rejected during bypass (continuing anonymous)",
+                        error=str(exc),
+                    )
+
+        # Header path
+        header_user_id = request.headers.get("user-id") or request.headers.get("x-user-id")
+        if header_user_id:
+            scope_state["user_id"] = header_user_id
+            scope_state.setdefault("auth_principal_source", "header_bypassed")
+            scope["state"] = scope_state
 
     @staticmethod
     def _parse_trusted_networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
