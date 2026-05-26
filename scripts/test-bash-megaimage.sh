@@ -22,6 +22,14 @@ PLATFORM="${PLATFORM:-linux/amd64}"
 # `Args` field of each LangSpec in docker/runner/executor.go. {file}
 # resolves to the absolute path of source_filename inside /work, and
 # {wd} resolves to /work.
+#
+# NOTE: r and fortran are deliberately NOT in the bash image because
+# their apt packages (r-base-core, gfortran-14) require liblapack3 /
+# libgfortran5 with stock gcc-14-base, which conflicts with DHI's
+# hardened gcc-14-base+dhi0. The dedicated `lang=r` and `lang=f90`
+# per-language images still serve those callers via /exec. LC's
+# bash_tool collapse doesn't reach for r/fortran in practice, so
+# this trade-off is invisible to the user.
 LANGUAGES=(
     "bash|code.sh|echo 'Hello, World!'|bash {file}"
     "python|code.py|print('Hello, World!')|python {file}"
@@ -33,10 +41,11 @@ LANGUAGES=(
     "cpp|code.cpp|#include <iostream>\nint main() { std::cout << \"Hello, World!\" << std::endl; return 0; }|g++ {file} -o /tmp/code && /tmp/code"
     "php|code.php|<?php echo \"Hello, World!\\\\n\"; ?>|php {file}"
     "rust|main.rs|fn main() { println!(\"Hello, World!\"); }|rustc {file} -o /tmp/main && /tmp/main"
-    "r|code.r|cat('Hello, World!\\\\n')|Rscript {file}"
-    "fortran|code.f90|program hello\n  print *, 'Hello, World!'\nend program hello|gfortran {file} -o /tmp/code && /tmp/code"
     "d|code.d|import std.stdio; void main() { writeln(\"Hello, World!\"); }|ldc2 {file} -of=/tmp/code && /tmp/code"
 )
+
+# Languages intentionally NOT in the bash image (served by dedicated images).
+SKIPPED_LANGUAGES=(r fortran)
 
 EXPECTED="Hello, World!"
 PASS=0
@@ -101,11 +110,16 @@ for entry in "${LANGUAGES[@]}"; do
     fi
 done
 
+for lang in "${SKIPPED_LANGUAGES[@]}"; do
+    echo "↷ $(pad "$lang") skipped (served by dedicated per-language image)"
+done
+
 echo
 echo "─────────────────────────────────────────"
-echo "  Passed: $PASS / $((PASS + FAIL))"
+echo "  Passed:  $PASS / $((PASS + FAIL))"
+echo "  Skipped: ${#SKIPPED_LANGUAGES[@]} (${SKIPPED_LANGUAGES[*]})"
 if [[ $FAIL -gt 0 ]]; then
-    echo "  Failed: ${FAILED_LANGS[*]}"
+    echo "  Failed:  ${FAILED_LANGS[*]}"
     exit 1
 fi
 exit 0
