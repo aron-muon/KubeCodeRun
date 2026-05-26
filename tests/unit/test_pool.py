@@ -523,6 +523,111 @@ class TestPodPoolWaitForPodReady:
 
         assert result is False
 
+    @pytest.mark.asyncio
+    async def test_wait_for_pod_ready_uses_settings_default(self, pod_pool, pod_handle):
+        """When called with no explicit timeout, picks up the configured
+        settings.pod_pool_ready_timeout_seconds. Documents that the
+        previous 60s hardcoded default is gone — pools warming up large
+        images now have a configurable window.
+        """
+        mock_core_api = MagicMock()
+        mock_pod = MagicMock()
+        mock_pod.status.pod_ip = "10.0.0.1"
+        mock_pod.status.phase = "Running"
+        cs = MagicMock()
+        cs.name = "main"
+        cs.ready = True
+        mock_pod.status.container_statuses = [cs]
+        mock_core_api.read_namespaced_pod.return_value = mock_pod
+
+        with (
+            patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api),
+            patch("src.config.settings") as mock_settings,
+        ):
+            mock_settings.pod_pool_ready_timeout_seconds = 7
+            # No explicit timeout — picks up settings.
+            result = await pod_pool._wait_for_pod_ready(pod_handle)
+        assert result is True
+
+    @pytest.mark.parametrize(
+        "reason",
+        [
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "InvalidImageName",
+            "CrashLoopBackOff",
+            "CreateContainerConfigError",
+            "CreateContainerError",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_wait_for_pod_ready_early_aborts_on_terminal_waiting_reason(self, pod_pool, pod_handle, reason):
+        """Pods stuck in ImagePullBackOff / CrashLoopBackOff / etc. won't
+        ever become Ready. Early-abort so a misconfigured image fails in
+        a few seconds instead of after the full 300s timeout (and so the
+        operator sees the actual reason in logs, not a generic 'timeout').
+        """
+        mock_core_api = MagicMock()
+        mock_pod = MagicMock()
+        mock_pod.status.pod_ip = None
+        mock_pod.status.phase = "Pending"
+
+        cs = MagicMock()
+        cs.name = "main"
+        cs.ready = False
+        waiting = MagicMock()
+        waiting.reason = reason
+        waiting.message = "synthetic test message"
+        cs.state.waiting = waiting
+        mock_pod.status.container_statuses = [cs]
+        mock_core_api.read_namespaced_pod.return_value = mock_pod
+
+        with patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api):
+            # Pass a long timeout — early-abort should fire well before
+            # we'd otherwise wait it out.
+            import time
+
+            start = time.monotonic()
+            result = await pod_pool._wait_for_pod_ready(pod_handle, timeout=30)
+            elapsed = time.monotonic() - start
+
+        assert result is False
+        assert elapsed < 5, f"early-abort took {elapsed:.2f}s; should be <5s on {reason}"
+
+    @pytest.mark.asyncio
+    async def test_wait_for_pod_ready_waits_through_container_creating(self, pod_pool, pod_handle):
+        """ContainerCreating is NOT a terminal state — image is being
+        pulled and the pod will become Ready eventually. Don't early-abort.
+        """
+        mock_core_api = MagicMock()
+
+        # First two polls: still pulling. Third poll: ready.
+        pod_pulling = MagicMock()
+        pod_pulling.status.pod_ip = None
+        pod_pulling.status.phase = "Pending"
+        cs_pulling = MagicMock()
+        cs_pulling.name = "main"
+        cs_pulling.ready = False
+        waiting = MagicMock()
+        waiting.reason = "ContainerCreating"
+        cs_pulling.state.waiting = waiting
+        pod_pulling.status.container_statuses = [cs_pulling]
+
+        pod_ready = MagicMock()
+        pod_ready.status.pod_ip = "10.0.0.1"
+        pod_ready.status.phase = "Running"
+        cs_ready = MagicMock()
+        cs_ready.name = "main"
+        cs_ready.ready = True
+        pod_ready.status.container_statuses = [cs_ready]
+
+        mock_core_api.read_namespaced_pod.side_effect = [pod_pulling, pod_pulling, pod_ready]
+
+        with patch("src.services.kubernetes.pool.get_core_api", return_value=mock_core_api):
+            result = await pod_pool._wait_for_pod_ready(pod_handle, timeout=10)
+
+        assert result is True
+
 
 class TestPodPoolDeletePod:
     """Tests for _delete_pod method."""

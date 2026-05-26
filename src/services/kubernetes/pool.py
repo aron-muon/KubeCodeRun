@@ -382,10 +382,14 @@ class PodPool:
             # Wait for pod to be ready
             ready = await self._wait_for_pod_ready(handle)
             if not ready:
-                logger.warning(
-                    "Warm pod did not become ready, deleting",
+                # _wait_for_pod_ready already logged the detailed failure
+                # reason at ERROR; this is the higher-level rollup so
+                # operators grepping for "pool" find both.
+                logger.error(
+                    "Warm pod failed to ready up — deleting and pool stays short",
                     pod_name=pod_name,
                     language=self.language,
+                    target_pool_size=self.pool_size,
                 )
                 await self._delete_pod(handle)
                 return None
@@ -432,14 +436,45 @@ class PodPool:
     async def _wait_for_pod_ready(
         self,
         handle: PodHandle,
-        timeout: int = 60,
+        timeout: int | None = None,
     ) -> bool:
-        """Wait for a pod to be ready."""
+        """Wait for a pod to be ready.
+
+        Timeout defaults to ``settings.pod_pool_ready_timeout_seconds``
+        (5 min). The previous 60s hardcoded default was too short for the
+        first pull of large multi-runtime images (the unified bash image
+        is ~1.13 GB), causing every configured ``POD_POOL_<LANG>`` to
+        silently materialise as 0 warm replicas because pods were torn
+        down before image pull finished.
+
+        We also early-abort on definitively-broken pod states
+        (ImagePullBackOff, ErrImagePull, CrashLoopBackOff, InvalidImageName)
+        so configuration errors fail fast at ~5s instead of after the
+        whole timeout window.
+        """
+        if timeout is None:
+            from ...config import settings
+
+            timeout = settings.pod_pool_ready_timeout_seconds
+
+        # Container statuses that mean "this pod will never go Ready" —
+        # no point waiting out the full timeout. Mostly image-pull and
+        # crash-loop failures.
+        _terminal_waiting_reasons = {
+            "ImagePullBackOff",
+            "ErrImagePull",
+            "InvalidImageName",
+            "CreateContainerConfigError",
+            "CreateContainerError",
+            "CrashLoopBackOff",
+        }
+
         core_api = get_core_api()
         if not core_api:
             return False
 
         start_time = asyncio.get_event_loop().time()
+        last_reason: str | None = None
 
         while asyncio.get_event_loop().time() - start_time < timeout:
             try:
@@ -463,11 +498,47 @@ class PodPool:
                 elif pod.status.phase in ("Failed", "Succeeded"):
                     return False
 
+                # Early-abort on terminal failures (image-pull, crash-loop).
+                if pod.status and pod.status.container_statuses:
+                    for cs in pod.status.container_statuses:
+                        waiting = getattr(getattr(cs, "state", None), "waiting", None)
+                        reason = getattr(waiting, "reason", None) if waiting else None
+                        if reason:
+                            last_reason = reason
+                            if reason in _terminal_waiting_reasons:
+                                logger.error(
+                                    "Pool pod hit terminal waiting state — aborting wait early",
+                                    pod_name=handle.name,
+                                    language=self.language,
+                                    reason=reason,
+                                    message=getattr(waiting, "message", None),
+                                )
+                                return False
+
             except ApiException:
                 pass
 
             await asyncio.sleep(0.5)
 
+        # Timeout. Log loudly with the last observed waiting reason so an
+        # operator can see at a glance whether to bump the timeout (image
+        # pull was in progress) vs investigate the cluster (probe wedged,
+        # OOM, etc.). Quiet warnings here were the original "I set
+        # POD_POOL_BASH=5 but kubectl shows 0 and nothing in the logs
+        # explains why" report.
+        logger.error(
+            "Pool pod did NOT reach Ready within timeout — pool will stay short",
+            pod_name=handle.name,
+            language=self.language,
+            timeout_seconds=timeout,
+            last_waiting_reason=last_reason,
+            hint=(
+                "If reason is 'ContainerCreating' the image is probably still "
+                "being pulled — raise POD_POOL_READY_TIMEOUT_SECONDS. "
+                "If reason is missing or 'PodInitializing' the runner /ready probe "
+                "may be wedged."
+            ),
+        )
         return False
 
     async def _delete_pod(self, handle: PodHandle):

@@ -332,6 +332,21 @@ class Settings(BaseSettings):
         default=True,
         description="Trigger immediate replenishment when pool is exhausted",
     )
+    pod_pool_ready_timeout_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=1800,
+        description=(
+            "Max seconds to wait for a freshly-created pool pod to reach Ready. "
+            "Default 300s (5 min) accommodates first-pull of large multi-runtime "
+            "images (e.g. the unified bash image is ~1.13 GB and can take 90-180s "
+            "to pull on a cold node). If a pod doesn't go Ready within this "
+            "window, the pool deletes it and tries again — too short a timeout "
+            "in front of a slow image pull is the most common reason a configured "
+            "POD_POOL_<LANG> value never materialises as warm replicas. "
+            "The 30s lower bound prevents accidental misconfig that always fails."
+        ),
+    )
 
     # WAN Network Access Configuration
     # When enabled, execution pods can access the public internet
