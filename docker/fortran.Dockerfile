@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1
 # Fortran execution environment with Docker Hardened Images.
-# Uses -dev variant because compilers and dev libraries must be available at runtime.
+#
+# DHI ships gcc-14-base=14.2.0-19dhi0 which conflicts with stock Debian's
+# gfortran → libgfortran5 → gcc-14-base (= 14.2.0-19) dependency chain.
+# Solution: use equivs to create a dummy package satisfying the version
+# constraint, then install gfortran-12 normally via apt.
 
 ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
 FROM ${RUNNER_IMAGE} AS runner
@@ -20,17 +24,22 @@ LABEL org.opencontainers.image.title="KubeCodeRun Fortran Environment" \
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Fortran compiler and scientific libraries
+# Install gfortran-12 via equivs dummy package to resolve DHI gcc-14-base conflict
 RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends equivs && \
+    printf 'Section: misc\nPriority: optional\nStandards-Version: 3.9.2\nPackage: gcc-14-base-dummy\nVersion: 14.2.0-19\nProvides: gcc-14-base (= 14.2.0-19)\nDescription: Satisfies gcc-14-base version constraint on DHI\n' > /tmp/gcc-14-base-dummy && \
+    cd /tmp && equivs-build gcc-14-base-dummy && \
+    dpkg -i gcc-14-base-dummy_14.2.0-19_all.deb && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    gfortran \
+    gfortran-12 \
     cmake \
     make \
-    libblas-dev \
-    liblapack-dev \
-    libnetcdf-dev \
-    libhdf5-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get purge -y equivs && \
+    apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/* /tmp/*.deb /tmp/gcc-14-base-dummy
+
+# Create symlink so 'gfortran' command works
+RUN mkdir -p /usr/local/bin && ln -sf /usr/bin/gfortran-12 /usr/local/bin/gfortran
 
 RUN mkdir -p /mnt/data && chown 65532:65532 /mnt/data
 

@@ -26,7 +26,6 @@ simple-statistics
 
 # File formats - Office documents
 exceljs
-xlsx
 pptxgenjs
 mammoth
 

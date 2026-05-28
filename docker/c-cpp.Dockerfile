@@ -20,17 +20,13 @@ LABEL org.opencontainers.image.title="KubeCodeRun C/C++ Environment" \
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install compilers, development tools and scientific libraries
+# Install compilers, development tools and libraries
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     make \
     cmake \
-    # Math and science libraries
-    libgsl-dev \
-    libblas-dev \
-    liblapack-dev \
     # File handling libraries
     libzip-dev \
     zlib1g-dev \

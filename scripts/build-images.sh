@@ -199,6 +199,7 @@ build_image() {
         --build-arg VERSION="$TAG" \
         --build-arg BUILD_DATE="$build_date" \
         --build-arg VCS_REF="$vcs_ref" \
+        --build-arg RUNNER_IMAGE="$(get_full_image_name runner)" \
         -t "$full_name" \
         -f "$DOCKER_DIR/$dockerfile" \
         "$context_path" 2>&1) || exit_code=$?
@@ -292,6 +293,7 @@ build_single_image() {
                 --build-arg VERSION="$TAG" \
                 --build-arg BUILD_DATE="$build_date" \
                 --build-arg VCS_REF="$vcs_ref" \
+                --build-arg RUNNER_IMAGE="$(get_full_image_name runner)" \
                 -t "$full_name" \
                 -f "$DOCKER_DIR/$dockerfile" \
                 "$context_path"

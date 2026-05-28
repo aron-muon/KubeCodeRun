@@ -97,6 +97,7 @@ RUN apt-get update && \
     gawk \
     findutils \
     jq \
+    bc \
     ca-certificates \
     # --- python (interpreter; lib stack installed via pip below) ---
     # No apt python3-numpy/pandas/etc. — they pull liblapack3 +
@@ -179,6 +180,9 @@ RUN python3 -m pip install --break-system-packages --no-cache-dir \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/*
+
+# yq — YAML/JSON/XML/TOML processor (static Go binary, no system deps)
+ADD --chmod=755 https://github.com/mikefarah/yq/releases/download/v4.53.2/yq_linux_amd64 /usr/local/bin/yq
 
 WORKDIR /mnt/data
 

@@ -5,7 +5,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-FROM golang:1.24-alpine AS builder
+FROM dhi.io/golang:1.26-debian13-dev AS builder
 
 WORKDIR /build
 COPY go.mod *.go ./
