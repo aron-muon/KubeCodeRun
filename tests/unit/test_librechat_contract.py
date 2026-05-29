@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.api.files import list_files, upload_file, upload_files_batch
+from src.api.files import get_session_object, list_files, upload_file, upload_files_batch
 from src.models.exec import FileRef, RequestFile
 
 # ---------------------------------------------------------------------------
@@ -340,3 +340,104 @@ class TestListFilesContract:
         assert len(result) == 1
         assert result[0]["storage_session_id"] == "sess-1"
         assert result[0]["session_id"] == "sess-1"
+
+
+class TestGetSessionObject:
+    """Tests for GET /sessions/{session_id}/objects/{file_id}.
+
+    LibreChat's ``getSessionInfo`` (process.js) calls this endpoint to check
+    whether a previously-uploaded file is still active.  It expects a JSON
+    response with ``lastModified``.  A 404 triggers a re-upload cycle.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_last_modified_for_existing_file(self):
+        from datetime import UTC, datetime
+
+        from src.models.files import FileInfo
+        from src.models.session import Session, SessionStatus
+
+        file_info = FileInfo(
+            file_id="file-abc",
+            filename="data.csv",
+            size=42,
+            content_type="text/csv",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            path="/data.csv",
+        )
+        file_service = MagicMock()
+        file_service.get_file_info = AsyncMock(return_value=file_info)
+
+        session = MagicMock()
+        session.status = SessionStatus.ACTIVE
+        session.last_activity = datetime(2026, 1, 2, tzinfo=UTC)
+
+        session_service = MagicMock()
+        session_service.get_session = AsyncMock(return_value=session)
+
+        result = await get_session_object(
+            session_id="sess-1",
+            file_id="file-abc",
+            kind="user",
+            id="user-123",
+            version=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert "lastModified" in result
+        assert result["name"] == "sess-1/file-abc"
+        # Active session should yield a recent timestamp (not None)
+        assert result["lastModified"].endswith("Z")
+
+    @pytest.mark.asyncio
+    async def test_returns_404_when_file_not_found(self):
+        from fastapi import HTTPException
+
+        file_service = MagicMock()
+        file_service.get_file_info = AsyncMock(return_value=None)
+        session_service = MagicMock()
+
+        with pytest.raises(HTTPException) as exc:
+            await get_session_object(
+                session_id="sess-1",
+                file_id="nonexistent",
+                kind="user",
+                id="user-123",
+                version=None,
+                file_service=file_service,
+                session_service=session_service,
+            )
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_accepts_kind_id_version_params_without_error(self):
+        """The kind/id/version query params must be accepted (no 422)."""
+        from datetime import UTC, datetime
+
+        from src.models.files import FileInfo
+
+        file_info = FileInfo(
+            file_id="fid",
+            filename="script.py",
+            size=10,
+            content_type="text/x-python",
+            created_at=datetime(2026, 5, 1, tzinfo=UTC),
+            path="/script.py",
+        )
+        file_service = MagicMock()
+        file_service.get_file_info = AsyncMock(return_value=file_info)
+        session_service = MagicMock()
+        session_service.get_session = AsyncMock(return_value=None)
+
+        result = await get_session_object(
+            session_id="s1",
+            file_id="fid",
+            kind="skill",
+            id="skill-42",
+            version=3,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert "lastModified" in result

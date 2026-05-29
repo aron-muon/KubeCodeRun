@@ -572,6 +572,75 @@ async def download_file_options(session_id: str, file_id: str):
     )
 
 
+@router.get("/sessions/{session_id}/objects/{file_id}")
+async def get_session_object(
+    session_id: str,
+    file_id: str,
+    kind: str | None = Query(None, description="Resource kind: 'skill', 'agent', or 'user'"),
+    id: str | None = Query(None, description="Resource id (userId / agentId / skillId)"),
+    version: int | None = Query(None, description="Resource version (only meaningful for kind=skill)"),
+    file_service: FileServiceDep = None,
+    session_service: SessionServiceDep = None,
+):
+    """Return file object metadata for a session - LibreChat compatible.
+
+    Called by LibreChat's ``getSessionInfo`` (process.js) to check whether a
+    previously-uploaded file is still live in the code environment.  The
+    response must include ``lastModified`` — LibreChat uses it to decide
+    whether to re-upload.
+
+    Query params ``kind``/``id``/``version`` are accepted for parity with
+    LibreChat's ``buildCodeEnvDownloadQuery`` but are not enforced today.
+    """
+    try:
+        file_info = await file_service.get_file_info(session_id, file_id)
+        if not file_info:
+            raise HTTPException(status_code=404, detail="File not found")
+
+        # Determine lastModified: prefer session last_activity for active
+        # sessions (mirrors the /files/{session_id} detail=summary logic).
+        last_modified = None
+        try:
+            session = await session_service.get_session(session_id)
+            if session:
+                if session.status == SessionStatus.ACTIVE:
+                    last_modified = datetime.now(UTC)
+                elif session.last_activity:
+                    act = session.last_activity
+                    if isinstance(act, str):
+                        act = datetime.fromisoformat(act)
+                    if act.tzinfo is None:
+                        act = act.replace(tzinfo=UTC)
+                    last_modified = act
+        except Exception:
+            pass
+
+        if last_modified is None:
+            last_modified = file_info.created_at
+            if isinstance(last_modified, str):
+                last_modified = datetime.fromisoformat(last_modified)
+            if last_modified.tzinfo is None:
+                last_modified = last_modified.replace(tzinfo=UTC)
+
+        last_modified_str = last_modified.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        return {
+            "name": f"{session_id}/{file_id}",
+            "lastModified": last_modified_str,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Failed to get session object info",
+            session_id=session_id,
+            file_id=file_id,
+            error=str(e),
+        )
+        raise HTTPException(status_code=404, detail="File not found")
+
+
 @router.delete("/files/{session_id}/{file_id}")
 async def delete_file(session_id: str, file_id: str, file_service: FileServiceDep = None):
     """Delete a file from the session - LibreChat compatible."""
