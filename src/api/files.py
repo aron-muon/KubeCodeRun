@@ -577,7 +577,7 @@ async def get_session_object(
     session_id: str,
     file_id: str,
     kind: str | None = Query(None, description="Resource kind: 'skill', 'agent', or 'user'"),
-    id: str | None = Query(None, description="Resource id (userId / agentId / skillId)"),
+    resource_id: str | None = Query(None, alias="id", description="Resource id (userId / agentId / skillId)"),
     version: int | None = Query(None, description="Resource version (only meaningful for kind=skill)"),
     file_service: FileServiceDep = None,
     session_service: SessionServiceDep = None,
@@ -612,8 +612,12 @@ async def get_session_object(
                     if act.tzinfo is None:
                         act = act.replace(tzinfo=UTC)
                     last_modified = act
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to retrieve session for lastModified derivation, falling back to file created_at",
+                session_id=session_id,
+                error=str(exc),
+            )
 
         if last_modified is None:
             last_modified = file_info.created_at
@@ -638,7 +642,7 @@ async def get_session_object(
             file_id=file_id,
             error=str(e),
         )
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete("/files/{session_id}/{file_id}")

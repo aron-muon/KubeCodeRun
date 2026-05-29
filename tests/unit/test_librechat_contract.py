@@ -379,7 +379,7 @@ class TestGetSessionObject:
             session_id="sess-1",
             file_id="file-abc",
             kind="user",
-            id="user-123",
+            resource_id="user-123",
             version=None,
             file_service=file_service,
             session_service=session_service,
@@ -387,8 +387,10 @@ class TestGetSessionObject:
 
         assert "lastModified" in result
         assert result["name"] == "sess-1/file-abc"
-        # Active session should yield a recent timestamp (not None)
+        # Active session should yield a timestamp close to now (not file's created_at)
         assert result["lastModified"].endswith("Z")
+        parsed = datetime.fromisoformat(result["lastModified"].replace("Z", "+00:00"))
+        assert abs((datetime.now(UTC) - parsed).total_seconds()) < 5
 
     @pytest.mark.asyncio
     async def test_returns_404_when_file_not_found(self):
@@ -403,7 +405,7 @@ class TestGetSessionObject:
                 session_id="sess-1",
                 file_id="nonexistent",
                 kind="user",
-                id="user-123",
+                resource_id="user-123",
                 version=None,
                 file_service=file_service,
                 session_service=session_service,
@@ -434,10 +436,48 @@ class TestGetSessionObject:
             session_id="s1",
             file_id="fid",
             kind="skill",
-            id="skill-42",
+            resource_id="skill-42",
             version=3,
             file_service=file_service,
             session_service=session_service,
         )
 
         assert "lastModified" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_last_activity_for_inactive_session(self):
+        """Inactive session with last_activity should use that timestamp."""
+        from datetime import UTC, datetime
+
+        from src.models.files import FileInfo
+        from src.models.session import Session, SessionStatus
+
+        file_info = FileInfo(
+            file_id="file-abc",
+            filename="data.csv",
+            size=42,
+            content_type="text/csv",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            path="/data.csv",
+        )
+        file_service = MagicMock()
+        file_service.get_file_info = AsyncMock(return_value=file_info)
+
+        session = MagicMock()
+        session.status = SessionStatus.TERMINATED
+        session.last_activity = datetime(2026, 3, 15, 10, 30, 0, tzinfo=UTC)
+
+        session_service = MagicMock()
+        session_service.get_session = AsyncMock(return_value=session)
+
+        result = await get_session_object(
+            session_id="sess-1",
+            file_id="file-abc",
+            kind="user",
+            resource_id="user-123",
+            version=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert result["lastModified"] == "2026-03-15T10:30:00.000Z"
