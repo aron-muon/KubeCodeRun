@@ -358,9 +358,13 @@ class JobExecutor:
         for file_data in files:
             try:
                 files_payload = {"files": (file_data.filename, file_data.content)}
+                # The nested relative path is sent out-of-band because RFC 7578
+                # strips directories from the multipart filename; the runner
+                # recreates the directory tree from this ``path`` value.
                 await client.post(
                     f"{runner_url}/files",
                     files=files_payload,
+                    data={"path": file_data.filename},
                     timeout=30,
                 )
             except Exception as e:

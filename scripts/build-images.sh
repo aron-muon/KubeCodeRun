@@ -362,9 +362,40 @@ main() {
     echo "Building ${#all_images[@]} images..."
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
+    # Build the runner image FIRST (synchronously). Every language image does
+    # `FROM ${RUNNER_IMAGE} AS runner`, so the runner must already be built and
+    # tagged locally before those builds start — otherwise their `FROM`
+    # resolves against the registry tag (which only exists after a push) and
+    # fails with "not found". Gate the rest of the build on its success.
+    for entry in "${INFRA_IMAGES[@]}"; do
+        IFS=':' read -r dockerfile image_name context_dir <<< "$entry"
+        [[ "$image_name" != "runner" ]] && continue
+
+        if [[ ! -f "$DOCKER_DIR/$dockerfile" ]]; then
+            echo "Error: runner Dockerfile not found: $dockerfile"
+            exit 1
+        fi
+
+        echo "Starting: runner (dependency — built first)"
+        build_image_wrapper "$dockerfile" "$image_name" "$context_dir"
+        if ! ( source "$RESULTS_DIR/${image_name}.result"; [[ "$EXIT_CODE" -eq 0 ]] ); then
+            echo ""
+            echo "runner image build failed — aborting (all language images depend on it)."
+            if [[ -f "$RESULTS_DIR/${image_name}.result.log" ]]; then
+                echo "━━━ runner ━━━"
+                tail -n 30 "$RESULTS_DIR/${image_name}.result.log"
+            fi
+            exit 1
+        fi
+        break
+    done
+
     for entry in "${all_images[@]}"; do
         # Parse entry: dockerfile:image_name:context_dir
         IFS=':' read -r dockerfile image_name context_dir <<< "$entry"
+
+        # runner was already built above as a prerequisite for the rest
+        [[ "$image_name" == "runner" ]] && continue
 
         if [[ ! -f "$DOCKER_DIR/$dockerfile" ]]; then
             echo "Warning: Dockerfile not found: $dockerfile"

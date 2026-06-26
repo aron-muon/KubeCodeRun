@@ -1227,6 +1227,63 @@ class TestBuildResponse:
         assert response.state_size == len(state_bytes)
         assert response.state_hash == "abc123"
 
+    def test_build_response_echoes_readonly_as_inherited(self, orchestrator):
+        """Read-only mounted inputs are echoed in files[] flagged inherited=True (Gap A)."""
+        request = ExecRequest(code="print('hi')", lang="py")
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-123",
+            session_id="session-123",
+            stdout="",
+            stderr="",
+            new_state=None,
+            mounted_files=[
+                {
+                    "file_id": "skill-1",
+                    "filename": "skillName/SKILL.md",
+                    "session_id": "upload-sess",
+                    "read_only": True,
+                    "auto_mounted": False,
+                },
+                {
+                    "file_id": "user-1",
+                    "filename": "data.csv",
+                    "session_id": "upload-sess",
+                    "read_only": False,
+                    "auto_mounted": False,
+                },
+            ],
+        )
+
+        response = orchestrator._build_response(ctx)
+
+        # The read-only input is echoed inside files[] flagged inherited=True.
+        inherited = [f for f in response.files if f.inherited]
+        assert len(inherited) == 1
+        assert inherited[0].id == "skill-1"
+        assert inherited[0].name == "skillName/SKILL.md"
+        assert inherited[0].session_id == "upload-sess"
+        assert inherited[0].inherited is True
+
+    def test_build_response_no_inherited_when_no_readonly(self, orchestrator):
+        """No read-only inputs means no inherited entries in files[]."""
+        request = ExecRequest(code="print('hi')", lang="py")
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-123",
+            session_id="session-123",
+            stdout="",
+            stderr="",
+            new_state=None,
+            mounted_files=[
+                {"file_id": "user-1", "filename": "data.csv", "read_only": False},
+            ],
+        )
+
+        response = orchestrator._build_response(ctx)
+
+        assert all(f.inherited is False for f in response.files)
+
 
 class TestCleanupExtended:
     """Tests for _cleanup method - extended."""

@@ -105,6 +105,70 @@ class TestSanitizeFilename:
         assert "-" in result
 
 
+class TestSanitizeFilepath:
+    """Tests for the path-preserving sanitize_filepath method (Gap G)."""
+
+    def test_preserves_safe_nested_path(self):
+        """Nested skill paths keep their directory structure."""
+        result = OutputProcessor.sanitize_filepath("skillName/SKILL.md")
+        assert result == "skillName/SKILL.md"
+
+    def test_preserves_deeply_nested_path(self):
+        """Multi-level nesting is preserved."""
+        result = OutputProcessor.sanitize_filepath("skillName/sub/dir/file.py")
+        assert result == "skillName/sub/dir/file.py"
+
+    def test_sanitizes_each_segment(self):
+        """Each path segment is individually sanitized while '/' is kept."""
+        result = OutputProcessor.sanitize_filepath("my skill/data (v2).csv")
+        assert result == "my_skill/data__v2_.csv"
+
+    def test_backslashes_normalized(self):
+        """Windows-style separators normalize to forward slashes."""
+        result = OutputProcessor.sanitize_filepath("skillName\\SKILL.md")
+        assert result == "skillName/SKILL.md"
+
+    def test_absolute_path_falls_back_to_basename(self):
+        """Absolute paths are unsafe and collapse to a sanitized basename."""
+        result = OutputProcessor.sanitize_filepath("/etc/passwd")
+        assert result == "passwd"
+
+    def test_parent_traversal_falls_back_to_basename(self):
+        """'..' segments are unsafe and collapse to a sanitized basename."""
+        result = OutputProcessor.sanitize_filepath("../../etc/passwd")
+        assert result == "passwd"
+
+    def test_embedded_traversal_falls_back_to_basename(self):
+        """A traversal segment anywhere makes the whole path unsafe."""
+        result = OutputProcessor.sanitize_filepath("skillName/../../../etc/passwd")
+        assert result == "passwd"
+
+    def test_dot_segment_falls_back_to_basename(self):
+        """A '.' segment is rejected, collapsing to the basename."""
+        result = OutputProcessor.sanitize_filepath("skillName/./file.txt")
+        assert result == "file.txt"
+
+    def test_empty_segment_falls_back_to_basename(self):
+        """Double slashes create an empty segment and are rejected."""
+        result = OutputProcessor.sanitize_filepath("skillName//file.txt")
+        assert result == "file.txt"
+
+    def test_flat_filename_unchanged(self):
+        """A non-nested name behaves like sanitize_filename."""
+        result = OutputProcessor.sanitize_filepath("data.csv")
+        assert result == "data.csv"
+
+    def test_empty_returns_underscore(self):
+        """Empty input returns a safe placeholder."""
+        assert OutputProcessor.sanitize_filepath("") == "_"
+
+    def test_no_segment_can_become_traversal(self):
+        """Sanitized output must never contain a usable '..' traversal segment."""
+        result = OutputProcessor.sanitize_filepath("ok/normal/file.txt")
+        assert ".." not in result.split("/")
+        assert not result.startswith("/")
+
+
 class TestNormalizeFilename:
     """Tests for the deprecated normalize_filename method."""
 

@@ -46,18 +46,40 @@ func (h *FileHandler) validatePath(reqPath string) (string, error) {
 }
 
 // HandleUpload processes POST /files (multipart file upload).
+//
+// RFC 7578 (and Go's net/http multipart parser) strip directory components
+// from the part filename, so nested skill bundles cannot ride on the filename
+// alone. The control plane therefore sends the intended relative path in an
+// out-of-band ``path`` form field (one value per file, in order). When absent,
+// the basenamed filename is used, preserving legacy single-file behavior.
 func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"detail": "Invalid multipart form"})
 		return
 	}
 
-	var uploaded []FileInfo
+	absWD, _ := filepath.Abs(h.workingDir)
+	explicitPaths := r.MultipartForm.Value["path"]
 
+	var uploaded []FileInfo
+	idx := 0
 	for _, fileHeaders := range r.MultipartForm.File {
 		for _, fh := range fileHeaders {
-			safeName := filepath.Base(fh.Filename)
-			if safeName == "" || safeName[0] == '.' {
+			// Prefer the explicit relative path (preserves nested layout);
+			// fall back to the parser-basenamed filename.
+			rawName := fh.Filename
+			if idx < len(explicitPaths) && explicitPaths[idx] != "" {
+				rawName = explicitPaths[idx]
+			}
+			idx++
+
+			destPath, err := h.validatePath(filepath.ToSlash(rawName))
+			if err != nil {
+				continue
+			}
+			base := filepath.Base(destPath)
+			if base == "" || base == "." || base == ".." || base[0] == '.' || destPath == absWD {
+				// Skip empty, traversal, hidden, or working-dir targets.
 				continue
 			}
 
@@ -66,7 +88,11 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			destPath := filepath.Join(h.workingDir, safeName)
+			if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+				src.Close()
+				continue
+			}
+
 			dst, err := os.Create(destPath)
 			if err != nil {
 				src.Close()
@@ -84,8 +110,12 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 				modTime = fi.ModTime().Unix()
 			}
 
+			rel, err := filepath.Rel(absWD, destPath)
+			if err != nil {
+				rel = base
+			}
 			uploaded = append(uploaded, FileInfo{
-				Name:    safeName,
+				Name:    filepath.ToSlash(rel),
 				Path:    destPath,
 				Size:    n,
 				ModTime: modTime,
@@ -97,29 +127,43 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleList processes GET /files (list working directory).
+//
+// The listing is recursive and returns each regular file's path relative to
+// the working directory (e.g. "skillName/SKILL.md"). This keeps nested skill
+// bundles and nested generated files visible to the control plane, which
+// matches them against mounted files by relative path.
 func (h *FileHandler) HandleList(w http.ResponseWriter, r *http.Request) {
-	entries, err := os.ReadDir(h.workingDir)
+	absWD, err := filepath.Abs(h.workingDir)
 	if err != nil {
 		http.Error(w, `{"detail":"Working directory not found"}`, http.StatusNotFound)
 		return
 	}
 
-	files := make([]FileInfo, 0, len(entries))
-	for _, e := range entries {
-		info, err := e.Info()
+	files := make([]FileInfo, 0)
+	walkErr := filepath.WalkDir(h.workingDir, func(p string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
 		if err != nil {
-			continue
+			return nil
 		}
-		size := info.Size()
-		if e.IsDir() {
-			size = 0
+		rel, err := filepath.Rel(absWD, p)
+		if err != nil {
+			return nil
 		}
+		relSlash := filepath.ToSlash(rel)
 		files = append(files, FileInfo{
-			Name:    e.Name(),
-			Path:    e.Name(),
-			Size:    size,
+			Name:    relSlash,
+			Path:    relSlash,
+			Size:    info.Size(),
 			ModTime: info.ModTime().Unix(),
 		})
+		return nil
+	})
+	if walkErr != nil {
+		http.Error(w, `{"detail":"Working directory not found"}`, http.StatusNotFound)
+		return
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"files": files})

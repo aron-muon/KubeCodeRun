@@ -102,6 +102,25 @@ class TestFileRefStorageSessionId:
         assert "version" not in dumped
 
 
+class TestFileRefInherited:
+    """``inherited`` is emitted inside each files[] entry so LibreChat's host
+    (callbacks.js / tools.js ``if (file.inherited) continue``) and
+    @librechat/agents (CodeSessionFileSummary ``file.inherited !== true``) can
+    skip read-only passthroughs when building user downloads and the model
+    summary. The flag lives on the file ref, not a separate response field."""
+
+    def test_inherited_defaults_false(self):
+        ref = FileRef(id="f", name="out.png", session_id="sess-A")
+        assert ref.model_dump()["inherited"] is False
+
+    def test_inherited_true_round_trips(self):
+        ref = FileRef(id="skill-1", name="skillName/SKILL.md", session_id="sess-A", inherited=True)
+        dumped = ref.model_dump()
+        assert dumped["inherited"] is True
+        assert dumped["id"] == "skill-1"
+        assert dumped["name"] == "skillName/SKILL.md"
+
+
 # ---------------------------------------------------------------------------
 # Endpoint contract — /upload, /upload/batch, /files/{session_id}
 # ---------------------------------------------------------------------------
@@ -151,6 +170,10 @@ class TestUploadResponseShape:
             file=_mock_file(),
             files=None,
             entity_id=None,
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
             user_id_header=None,
             x_user_id_header=None,
             file_service=file_service,
@@ -161,6 +184,100 @@ class TestUploadResponseShape:
         # Dual-emit: session_id still present for back-compat.
         assert result["session_id"] == "sess-1"
         assert result["files"][0]["fileId"] == "fid-1"
+
+    @pytest.mark.asyncio
+    async def test_upload_preserves_nested_skill_path(self):
+        """Skill bundles upload files whose multipart filename carries a
+        relative path (e.g. ``skillName/SKILL.md`` — see packages/api
+        .../form.ts ``getCodeEnvFileOptions``). The stored name must keep the
+        directory structure instead of being flattened to a basename, so the
+        skill's relative references resolve under /mnt/data."""
+        session_service = MagicMock()
+        session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        session_service.create_session = AsyncMock(return_value=_mock_session("sess-1"))
+
+        file_service = MagicMock()
+        file_service.store_uploaded_file = AsyncMock(return_value="fid-1")
+
+        result = await upload_file(
+            request=_anon_http_request(),
+            file=_mock_file(filename="skillName/SKILL.md"),
+            files=None,
+            entity_id=None,
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
+            user_id_header=None,
+            x_user_id_header=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        stored_name = file_service.store_uploaded_file.call_args.kwargs["filename"]
+        assert stored_name == "skillName/SKILL.md"
+        assert result["files"][0]["filename"] == "skillName/SKILL.md"
+
+    @pytest.mark.asyncio
+    async def test_upload_threads_identity_fields(self):
+        """Single /upload accepts kind/id/version/read_only like /upload/batch:
+        ``read_only`` is persisted on the file and ``kind`` / ``id`` land on
+        session metadata."""
+        from src.models.session import SessionCreate
+
+        session_service = MagicMock()
+        session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        session_service.create_session = AsyncMock(return_value=_mock_session("sess-1"))
+
+        file_service = MagicMock()
+        file_service.store_uploaded_file = AsyncMock(return_value="fid-1")
+
+        await upload_file(
+            request=_anon_http_request(),
+            file=_mock_file(filename="skillName/SKILL.md"),
+            files=None,
+            entity_id=None,
+            kind="skill",
+            id="skill-123",
+            version="3",
+            read_only="true",
+            user_id_header="user-A",
+            x_user_id_header=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert file_service.store_uploaded_file.call_args.kwargs["read_only"] is True
+        sc: SessionCreate = session_service.create_session.call_args.args[0]
+        assert sc.metadata.get("kind") == "skill"
+        assert sc.metadata.get("resource_id") == "skill-123"
+
+    @pytest.mark.asyncio
+    async def test_upload_read_only_defaults_false(self):
+        """Without identity fields, single /upload defaults read_only=False."""
+        session_service = MagicMock()
+        session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        session_service.create_session = AsyncMock(return_value=_mock_session("sess-1"))
+
+        file_service = MagicMock()
+        file_service.store_uploaded_file = AsyncMock(return_value="fid-1")
+
+        await upload_file(
+            request=_anon_http_request(),
+            file=_mock_file(),
+            files=None,
+            entity_id=None,
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
+            user_id_header=None,
+            x_user_id_header=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert file_service.store_uploaded_file.call_args.kwargs["read_only"] is False
 
 
 class TestUploadBatchEndpoint:
@@ -195,6 +312,62 @@ class TestUploadBatchEndpoint:
         assert result["succeeded"] == 2
         assert result["failed"] == 0
         assert {f["fileId"] for f in result["files"]} == {"fid-a", "fid-b"}
+
+    @pytest.mark.asyncio
+    async def test_batch_read_only_threaded_to_storage(self):
+        """``read_only=true`` is persisted on each stored file so the executor
+        can echo it as an inherited input instead of a generated artifact."""
+        session_service = MagicMock()
+        session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        session_service.create_session = AsyncMock(return_value=_mock_session("sess-b"))
+
+        file_service = MagicMock()
+        file_service.store_uploaded_file = AsyncMock(side_effect=["fid-a", "fid-b"])
+
+        await upload_files_batch(
+            request=_anon_http_request(),
+            file=[_mock_file("skillName/SKILL.md", b"x"), _mock_file("skillName/run.py", b"y")],
+            files=None,
+            entity_id=None,
+            kind="skill",
+            id="skill-123",
+            version="3",
+            read_only="true",
+            user_id_header=None,
+            x_user_id_header=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert file_service.store_uploaded_file.await_count == 2
+        assert all(c.kwargs["read_only"] is True for c in file_service.store_uploaded_file.await_args_list)
+
+    @pytest.mark.asyncio
+    async def test_batch_read_only_defaults_false(self):
+        """Without ``read_only``, stored files default to writable (read_only=False)."""
+        session_service = MagicMock()
+        session_service.list_sessions_by_entity = AsyncMock(return_value=[])
+        session_service.create_session = AsyncMock(return_value=_mock_session("sess-b"))
+
+        file_service = MagicMock()
+        file_service.store_uploaded_file = AsyncMock(return_value="fid-a")
+
+        await upload_files_batch(
+            request=_anon_http_request(),
+            file=[_mock_file("data.csv", b"x")],
+            files=None,
+            entity_id=None,
+            kind="user",
+            id=None,
+            version=None,
+            read_only=None,
+            user_id_header=None,
+            x_user_id_header=None,
+            file_service=file_service,
+            session_service=session_service,
+        )
+
+        assert file_service.store_uploaded_file.await_args.kwargs["read_only"] is False
 
     @pytest.mark.asyncio
     async def test_batch_kind_skill_persists_on_session_metadata(self):
@@ -481,3 +654,72 @@ class TestGetSessionObject:
         )
 
         assert result["lastModified"] == "2026-03-15T10:30:00.000Z"
+
+
+class TestProgrammaticToolCallingContract:
+    """Wire contract for ``POST /exec/programmatic`` (@librechat/agents PTC).
+
+    The agents ``ProgrammaticToolCalling`` client POSTs ``{code, tools, ...}``
+    (initial) or ``{continuation_token, tool_results}`` (continuation) and reads
+    ``{status, tool_calls:[{id,name,input}], continuation_token}`` /
+    ``{status:'completed', stdout, stderr, files}``.
+    """
+
+    def test_language_lang_alias_normalizes(self):
+        from src.models.programmatic import ProgrammaticRequest
+
+        # bash client sends `lang`; canonical field is `language`
+        assert ProgrammaticRequest(code="x", lang="bash").resolved_language == "bash"
+        # `language` wins when both present
+        assert ProgrammaticRequest(code="x", language="python", lang="bash").resolved_language == "python"
+        # default is python
+        assert ProgrammaticRequest(code="x").resolved_language == "python"
+
+    def test_continuation_detection(self):
+        from src.models.programmatic import ProgrammaticRequest, ToolResultIn
+
+        initial = ProgrammaticRequest(code="x", tools=[])
+        assert initial.is_continuation is False
+        cont = ProgrammaticRequest(continuation_token="tok", tool_results=[ToolResultIn(call_id="call_001", result=1)])
+        assert cont.is_continuation is True
+
+    def test_tool_result_shape(self):
+        from src.models.programmatic import ToolResultIn
+
+        tr = ToolResultIn(call_id="call_001", result={"k": "v"}, is_error=False)
+        assert tr.call_id == "call_001"
+        assert tr.result == {"k": "v"}
+        assert tr.is_error is False
+        # error result carries a message
+        err = ToolResultIn(call_id="call_002", result=None, is_error=True, error_message="boom")
+        assert err.is_error is True
+        assert err.error_message == "boom"
+
+    def test_tool_call_out_shape(self):
+        from src.models.programmatic import ProgrammaticToolCall
+
+        tc = ProgrammaticToolCall(id="call_001", name="get_weather", input={"city": "SF"})
+        dumped = tc.model_dump()
+        assert dumped == {"id": "call_001", "name": "get_weather", "input": {"city": "SF"}}
+
+    def test_response_status_values(self):
+        from src.models.programmatic import ProgrammaticResponse
+
+        assert ProgrammaticResponse(status="tool_call_required").status == "tool_call_required"
+        assert ProgrammaticResponse(status="completed").status == "completed"
+        assert ProgrammaticResponse(status="error").status == "error"
+
+    def test_completed_response_carries_files_and_session(self):
+        from src.models.programmatic import ProgrammaticResponse
+
+        resp = ProgrammaticResponse(
+            status="completed",
+            stdout="done",
+            stderr="",
+            files=[FileRef(id="f1", name="out.csv", session_id="s1")],
+            session_id="s1",
+        )
+        dumped = resp.model_dump()
+        assert dumped["status"] == "completed"
+        assert dumped["files"][0]["storage_session_id"] == "s1"
+        assert dumped["session_id"] == "s1"

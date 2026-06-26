@@ -260,3 +260,50 @@ class OutputProcessor:
         sanitize_filename which matches LibreChat's sanitization logic.
         """
         return cls.sanitize_filename(filename)
+
+    @classmethod
+    def _is_safe_relative_path(cls, path: str) -> bool:
+        """True if ``path`` is a safe, nested-but-non-escaping relative path.
+
+        Mirrors LibreChat's ``isSafeCodeEnvFilepath``
+        (packages/api/src/files/code/form.ts): a path is safe only when it is
+        non-empty, not absolute, and every ``/``-delimited segment is a real
+        directory/file name (never ``''``, ``.`` or ``..``). Character-level
+        cleaning is deferred to per-segment :meth:`sanitize_filename`, so this
+        check is purely structural — it decides whether the directory layout
+        may be preserved or must collapse to a basename.
+        """
+        if not path or path.startswith("/"):
+            return False
+        return all(segment not in ("", ".", "..") for segment in path.split("/"))
+
+    @classmethod
+    def sanitize_filepath(cls, input_path: str) -> str:
+        """Sanitize an upload name while preserving safe nested directories.
+
+        LibreChat skill priming uploads files whose multipart filename carries
+        a relative path (e.g. ``skillName/SKILL.md``) via
+        ``getCodeEnvFileOptions`` — see
+        api/server/services/Files/Code/crud.js and packages/api .../form.ts.
+        The legacy :meth:`sanitize_filename` flattens these with
+        ``os.path.basename``, which collapses skill directory structure, breaks
+        relative references inside skills, and causes cross-skill name
+        collisions.
+
+        This preserves a safe relative layout: each path segment is sanitized
+        independently (re-using :meth:`sanitize_filename`) and rejoined with
+        ``/``. Unsafe inputs (absolute paths or ``.`` / ``..`` / empty
+        segments) collapse to a single sanitized basename — the legacy
+        behavior — so path traversal can never widen the stored name. The Go
+        runner's ``validatePath`` is the authoritative second line of defense
+        when the file is materialized into the pod.
+        """
+        if not input_path:
+            return "_"
+
+        normalized = input_path.replace("\\", "/")
+        if not cls._is_safe_relative_path(normalized):
+            return cls.sanitize_filename(normalized)
+
+        segments = [cls.sanitize_filename(segment) for segment in normalized.split("/")]
+        return "/".join(segments)

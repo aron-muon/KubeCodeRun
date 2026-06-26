@@ -26,6 +26,17 @@ class FileRef(BaseModel):
     resource_id: str | None = None
     kind: str | None = None  # 'skill' | 'agent' | 'user'
     version: int | None = None
+    inherited: bool = Field(
+        default=False,
+        description=(
+            "True when this entry is an unchanged passthrough of a read-only "
+            "input the caller already owns (skill/agent bundle). LibreChat's "
+            "host (callbacks.js / tools.js) and @librechat/agents "
+            "(CodeSessionFileSummary) skip inherited entries when creating user "
+            "download artifacts, re-downloads, and the model-facing summary, so "
+            "they are never surfaced as generated outputs."
+        ),
+    )
 
     @computed_field  # type: ignore[prop-decorator]
     @property

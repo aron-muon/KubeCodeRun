@@ -74,6 +74,10 @@ class ExecutionContext:
     is_env_key: bool = False
     container_source: str = "pool_hit"  # pool_hit, pool_miss, pool_disabled
     execution_start_time: datetime | None = None
+    # Programmatic Tool Calling: extra inline files to mount (name/content/read_only)
+    # and an explicit override of Python state capture (PTC runs are stateless).
+    extra_files: list[dict[str, Any]] | None = None
+    capture_state_override: bool | None = None
 
 
 class ExecutionOrchestrator:
@@ -109,6 +113,8 @@ class ExecutionOrchestrator:
         request_id: str = "",
         api_key_hash: str | None = None,
         is_env_key: bool = False,
+        extra_files: list[dict[str, Any]] | None = None,
+        capture_state_override: bool | None = None,
     ) -> ExecResponse:
         """Execute code and return LibreChat-compatible response.
 
@@ -117,6 +123,11 @@ class ExecutionOrchestrator:
             request_id: Optional request ID for logging
             api_key_hash: Hash of the API key for metrics tracking
             is_env_key: True if using env var API key (no rate limiting)
+            extra_files: Optional inline files to mount in addition to
+                request.files (each ``{"filename", "content", "read_only"?}``).
+                Used by Programmatic Tool Calling to inject the replay history.
+            capture_state_override: When set, forces Python state capture on/off
+                (PTC runs are stateless and pass ``False``).
 
         Returns:
             ExecResponse: LibreChat-compatible response with session_id, files, stdout, stderr
@@ -127,6 +138,8 @@ class ExecutionOrchestrator:
             api_key_hash=api_key_hash,
             is_env_key=is_env_key,
             execution_start_time=datetime.now(),
+            extra_files=extra_files,
+            capture_state_override=capture_state_override,
         )
 
         try:
@@ -444,6 +457,7 @@ class ExecutionOrchestrator:
                     "session_id": file_ref.session_id,
                     "content": content,
                     "auto_mounted": False,
+                    "read_only": file_info.read_only,
                 }
             )
             mounted_keys.add(key)
@@ -459,6 +473,7 @@ class ExecutionOrchestrator:
                         filename=file_info.filename,
                         content=content,
                         content_type=file_info.content_type,
+                        read_only=file_info.read_only,
                     )
                     logger.info(
                         "Consolidated cross-session file",
@@ -526,6 +541,7 @@ class ExecutionOrchestrator:
                         "session_id": ctx.session_id,
                         "content": content,
                         "auto_mounted": True,
+                        "read_only": file_info.read_only,
                     }
                 )
                 mounted_keys.add(key)
@@ -547,6 +563,31 @@ class ExecutionOrchestrator:
                 auto_mounted=auto_mount_count,
                 explicit=len(mounted) - auto_mount_count,
             )
+
+        # Append caller-supplied inline files (Programmatic Tool Calling injects
+        # the replay history here). They carry content directly and are mounted
+        # read-only so they never surface as generated outputs.
+        if ctx.extra_files:
+            for extra in ctx.extra_files:
+                filename = extra["filename"]
+                if filename in mounted_filenames:
+                    continue
+                content = extra["content"]
+                if isinstance(content, str):
+                    content = content.encode("utf-8")
+                mounted.append(
+                    {
+                        "file_id": filename,
+                        "filename": filename,
+                        "path": f"/mnt/data/{filename}",
+                        "size": len(content),
+                        "session_id": ctx.session_id,
+                        "content": content,
+                        "auto_mounted": False,
+                        "read_only": extra.get("read_only", True),
+                    }
+                )
+                mounted_filenames.add(filename)
 
         return mounted
 
@@ -646,8 +687,11 @@ class ExecutionOrchestrator:
             timeout=settings.max_execution_time,
         )
 
-        # Determine if we should use state persistence (Python only)
+        # Determine if we should use state persistence (Python only).
+        # PTC runs are stateless and pass capture_state_override=False.
         use_state = settings.state_persistence_enabled and ctx.request.lang == "py"
+        if ctx.capture_state_override is not None:
+            use_state = ctx.capture_state_override
 
         # execute_code returns (execution, container, new_state, state_errors, container_source) tuple
         (
@@ -786,9 +830,27 @@ class ExecutionOrchestrator:
 
         auto_mounted = sum(1 for f in ctx.mounted_files if f.get("auto_mounted")) if ctx.mounted_files else 0
 
+        # Echo read-only inputs (skill/agent bundles the caller already owns)
+        # inside `files` flagged inherited=True. LibreChat's host
+        # (callbacks.js / tools.js) and @librechat/agents
+        # (CodeSessionFileSummary) skip inherited entries when building user
+        # download artifacts, re-downloads, and the model-facing summary, so
+        # they are never surfaced as generated outputs. This matches the SaaS
+        # code-interpreter wire contract.
+        inherited_files = [
+            FileRef(
+                id=f["file_id"],
+                name=f["filename"],
+                session_id=f.get("session_id"),
+                inherited=True,
+            )
+            for f in (ctx.mounted_files or [])
+            if f.get("read_only")
+        ]
+
         return ExecResponse(
             session_id=ctx.session_id,
-            files=ctx.generated_files or [],
+            files=(ctx.generated_files or []) + inherited_files,
             stdout=ctx.stdout,
             stderr=ctx.stderr,
             has_state=has_state,

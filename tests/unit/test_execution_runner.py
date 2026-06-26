@@ -383,6 +383,13 @@ class TestGetMountedFilenames:
         assert "test.txt" in result
         assert "data.csv" in result
 
+    def test_get_mounted_filenames_nested_includes_basename(self, runner):
+        """Nested mounted paths expose both the full relative path and basename."""
+        files = [{"filename": "skillName/SKILL.md"}]
+        result = runner._get_mounted_filenames(files)
+        assert "skillName/SKILL.md" in result
+        assert "SKILL.md" in result
+
 
 class TestFilterGeneratedFiles:
     """Tests for _filter_generated_files method."""
@@ -442,10 +449,66 @@ class TestFilterGeneratedFiles:
         assert len(result) == 1
         assert result[0]["path"] == "/mnt/data/output.txt"
 
+    def test_filter_nested_mounted_excluded_when_unmodified(self, runner):
+        """A nested mounted skill file is matched by relative path and excluded."""
+        generated = [
+            {"path": "/mnt/data/skillName/SKILL.md", "mod_time": 900},
+            {"path": "/mnt/data/skillName/out.png", "mod_time": 1005},
+        ]
+        mounted = {"skillName/SKILL.md", "SKILL.md"}
+
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=1000)
+
+        # SKILL.md (mounted, unmodified) excluded; out.png (new) kept.
+        assert len(result) == 1
+        assert result[0]["path"] == "/mnt/data/skillName/out.png"
+
+    def test_filter_nested_mounted_kept_when_modified(self, runner):
+        """A nested mounted file modified during execution is retained (issue #56)."""
+        generated = [
+            {"path": "/mnt/data/skillName/SKILL.md", "mod_time": 1004},
+        ]
+        mounted = {"skillName/SKILL.md", "SKILL.md"}
+
+        result = runner._filter_generated_files(generated, mounted, execution_start_unix=1000)
+
+        assert len(result) == 1
+        assert result[0]["path"] == "/mnt/data/skillName/SKILL.md"
+
     def test_filter_empty_generated(self, runner):
         """Test filtering with no generated files."""
         result = runner._filter_generated_files([], {"input.csv"})
         assert result == []
+
+    def test_filter_readonly_excluded_even_when_modified(self, runner):
+        """Read-only inputs are never surfaced as generated artifacts (Gap A)."""
+        generated = [
+            {"path": "/mnt/data/skillName/SKILL.md", "mod_time": 1005},
+            {"path": "/mnt/data/out.png", "mod_time": 1005},
+        ]
+        mounted = {"skillName/SKILL.md", "SKILL.md"}
+        readonly = {"skillName/SKILL.md", "SKILL.md"}
+
+        result = runner._filter_generated_files(
+            generated, mounted, execution_start_unix=1000, readonly_filenames=readonly
+        )
+
+        # SKILL.md (read-only, even though modified) excluded; out.png kept.
+        assert len(result) == 1
+        assert result[0]["path"] == "/mnt/data/out.png"
+
+    def test_get_readonly_filenames_only_flagged(self, runner):
+        """Only files flagged read_only are returned, with basename expansion."""
+        files = [
+            {"filename": "skillName/SKILL.md", "read_only": True},
+            {"filename": "user_upload.csv", "read_only": False},
+            {"filename": "no_flag.txt"},
+        ]
+        result = runner._get_readonly_filenames(files)
+        assert "skillName/SKILL.md" in result
+        assert "SKILL.md" in result
+        assert "user_upload.csv" not in result
+        assert "no_flag.txt" not in result
 
     def test_filter_empty_mounted(self, runner):
         """Test filtering with no mounted files."""

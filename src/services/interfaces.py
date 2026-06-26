@@ -148,7 +148,12 @@ class FileServiceInterface(ABC):
 
     @abstractmethod
     async def store_uploaded_file(
-        self, session_id: str, filename: str, content: bytes, content_type: str | None = None
+        self,
+        session_id: str,
+        filename: str,
+        content: bytes,
+        content_type: str | None = None,
+        read_only: bool = False,
     ) -> str:
         """Store an uploaded file directly. Returns file_id."""
         pass

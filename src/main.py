@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 # Local application imports
 from ._version import __version__
-from .api import admin, dashboard_metrics, exec, files, health, state
+from .api import admin, dashboard_metrics, exec, files, health, programmatic, state
 from .config import settings
 from .middleware.metrics import MetricsMiddleware
 from .middleware.security import RequestLoggingMiddleware, SecurityMiddleware
@@ -321,6 +321,8 @@ async def config_info():
 app.include_router(files.router, tags=["files"])
 
 app.include_router(exec.router, tags=["exec"])
+
+app.include_router(programmatic.router, tags=["exec"])
 
 app.include_router(health.router, tags=["health", "monitoring"])
 

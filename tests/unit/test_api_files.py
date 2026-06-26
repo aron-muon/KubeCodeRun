@@ -10,6 +10,7 @@ from src.api.files import (
     _ascii_fallback_filename,
     _build_content_disposition,
     delete_file,
+    delete_session_object,
     download_file,
     download_file_options,
     list_files,
@@ -140,6 +141,10 @@ class TestUploadFile:
             file=mock_upload_file,
             files=None,
             entity_id="entity-123",
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )
@@ -176,6 +181,10 @@ class TestUploadFile:
             file=file,
             files=None,
             entity_id=None,
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )
@@ -199,6 +208,10 @@ class TestUploadFile:
             file=None,
             files=files,
             entity_id="entity-123",
+            kind=None,
+            id=None,
+            version=None,
+            read_only=None,
             file_service=mock_file_service,
             session_service=mock_session_service,
         )
@@ -216,6 +229,10 @@ class TestUploadFile:
                 file=None,
                 files=None,
                 entity_id="entity-123",
+                kind=None,
+                id=None,
+                version=None,
+                read_only=None,
                 file_service=mock_file_service,
             )
 
@@ -235,6 +252,10 @@ class TestUploadFile:
                     file=mock_upload_file,
                     files=None,
                     entity_id="entity-123",
+                    kind=None,
+                    id=None,
+                    version=None,
+                    read_only=None,
                     file_service=mock_file_service,
                 )
 
@@ -255,6 +276,10 @@ class TestUploadFile:
                     file=None,
                     files=files,
                     entity_id="entity-123",
+                    kind=None,
+                    id=None,
+                    version=None,
+                    read_only=None,
                     file_service=mock_file_service,
                 )
 
@@ -277,6 +302,10 @@ class TestUploadFile:
                     file=mock_upload_file,
                     files=None,
                     entity_id="entity-123",
+                    kind=None,
+                    id=None,
+                    version=None,
+                    read_only=None,
                     file_service=mock_file_service,
                     session_service=mock_session_service,
                 )
@@ -568,3 +597,36 @@ class TestDeleteFile:
             )
 
         assert exc_info.value.status_code == 500
+
+    @pytest.mark.asyncio
+    async def test_delete_session_object_aliases_delete_file(self, mock_file_service, mock_file_info):
+        """The /sessions/{s}/objects/{f} alias deletes via the same path as
+        /files/{s}/{f}; LibreChat tries this route first to avoid a 404 fallback."""
+        mock_file_service.get_file_info.return_value = mock_file_info
+        mock_file_service.delete_file.return_value = True
+
+        response = await delete_session_object(
+            session_id="session-123",
+            file_id="file-123",
+            kind="skill",
+            resource_id="skill-1",
+            version=2,
+            file_service=mock_file_service,
+        )
+
+        assert response.status_code == 200
+        mock_file_service.delete_file.assert_called_once_with("session-123", "file-123")
+
+    @pytest.mark.asyncio
+    async def test_delete_session_object_not_found(self, mock_file_service):
+        """Missing file via the alias still raises 404."""
+        mock_file_service.get_file_info.return_value = None
+
+        with pytest.raises(HTTPException) as exc_info:
+            await delete_session_object(
+                session_id="session-123",
+                file_id="nonexistent",
+                file_service=mock_file_service,
+            )
+
+        assert exc_info.value.status_code == 404
