@@ -786,3 +786,71 @@ class TestCloseMethod:
 
         # Should not raise
         await file_service.close()
+
+
+class TestRedisMetadataEncoding:
+    """File metadata must only contain values redis-py can encode.
+
+    redis-py's Encoder accepts bytes/str/int/float and raises DataError for
+    everything else - including bool, which fails the WHOLE hset. That is
+    exactly how 3.7.0 shipped with every upload logging 'Failed to store file
+    metadata' in production: the new read_only field went in as a raw bool
+    and unit tests only used a permissive AsyncMock. These tests enforce
+    redis-py's real type contract on everything we hset.
+    """
+
+    @staticmethod
+    def _strict_hset(key, mapping=None, **kwargs):
+        # Mirror redis.connection.Encoder.encode: bool checked before int
+        # (bool is an int subclass), then bytes/str/int/float allowed.
+        for k, v in (mapping or {}).items():
+            if isinstance(v, bool) or not isinstance(v, (bytes, str, int, float)):
+                raise TypeError(
+                    f"Invalid input of type: '{type(v).__name__}' for field {k!r}. "
+                    "Convert to a bytes, string, int or float first."
+                )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("read_only, stored", [(True, "true"), (False, "false")])
+    async def test_store_uploaded_file_metadata_is_redis_encodable(
+        self, file_service, mock_minio_client, mock_redis_client, read_only, stored
+    ):
+        mock_minio_client.bucket_exists.return_value = True
+        mock_redis_client.hset.side_effect = self._strict_hset
+
+        with patch("src.services.file.generate_file_id", return_value="file-ro-1"):
+            file_id = await file_service.store_uploaded_file(
+                session_id="session-123",
+                filename="skill/SKILL.md",
+                content=b"# skill",
+                content_type="text/markdown",
+                read_only=read_only,
+            )
+
+        assert file_id == "file-ro-1"
+        mapping = mock_redis_client.hset.call_args.kwargs["mapping"]
+        assert mapping["read_only"] == stored
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "stored, expected",
+        [("true", True), ("false", False), (None, False)],
+    )
+    async def test_get_file_info_parses_read_only_string(self, file_service, mock_redis_client, stored, expected):
+        # hgetall returns strings, exactly as redis does on the way back out.
+        metadata = {
+            "file_id": "file-456",
+            "filename": "test.txt",
+            "size": "1024",
+            "content_type": "text/plain",
+            "path": "/test.txt",
+            "created_at": "2024-01-01T00:00:00",
+        }
+        if stored is not None:
+            metadata["read_only"] = stored
+        mock_redis_client.hgetall.return_value = metadata
+
+        result = await file_service.get_file_info("session-123", "file-456")
+
+        assert result is not None
+        assert result.read_only is expected
