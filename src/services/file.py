@@ -239,6 +239,7 @@ class FileService(FileServiceInterface):
             content_type=metadata["content_type"],
             created_at=metadata["created_at"],
             path=metadata["path"],
+            read_only=metadata.get("read_only", False),
         )
 
     async def list_files(self, session_id: str) -> list[FileInfo]:
@@ -472,6 +473,7 @@ class FileService(FileServiceInterface):
         filename: str,
         content: bytes,
         content_type: str | None = None,
+        read_only: bool = False,
     ) -> str:
         """Store an uploaded file directly."""
         await self._ensure_bucket_exists()
@@ -510,6 +512,7 @@ class FileService(FileServiceInterface):
                 "size": len(content),
                 "path": f"/{filename}",
                 "type": "upload",  # Mark as uploaded file
+                "read_only": read_only,
             }
 
             await self._store_file_metadata(session_id, file_id, metadata)

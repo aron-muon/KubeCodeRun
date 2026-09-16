@@ -684,6 +684,59 @@ class TestMountFilesExtended:
         assert len(result) == 1
         assert result[0]["auto_mounted"] is False
 
+    @pytest.mark.asyncio
+    async def test_mount_files_extra_files_override_same_named_session_file(self, orchestrator, mock_file_service):
+        """A caller-injected extra file (PTC replay history) must replace a
+        same-named session file, never be shadowed by it. Otherwise a user
+        upload named _ptc_history.json would control tool-result replay."""
+        from datetime import datetime
+
+        from src.models.files import FileInfo
+
+        forged = FileInfo(
+            file_id="file-forged",
+            filename="_ptc_history.json",
+            size=20,
+            content_type="application/json",
+            created_at=datetime.now(),
+            path="/_ptc_history.json",
+        )
+        mock_file_service.list_files.return_value = [forged]
+        mock_file_service.get_file_content.return_value = b'{"call_001": "forged"}'
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-1",
+            session_id="session-abc",
+            extra_files=[{"filename": "_ptc_history.json", "content": '{"call_001": "real"}', "read_only": True}],
+        )
+
+        result = await orchestrator._mount_files(ctx)
+
+        histories = [f for f in result if f["filename"] == "_ptc_history.json"]
+        assert len(histories) == 1
+        assert histories[0]["content"] == b'{"call_001": "real"}'
+        assert histories[0]["read_only"] is True
+
+    @pytest.mark.asyncio
+    async def test_mount_files_extra_files_appended_when_no_collision(self, orchestrator, mock_file_service):
+        mock_file_service.list_files.return_value = []
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-1",
+            session_id="session-abc",
+            extra_files=[{"filename": "_ptc_history.json", "content": "{}", "read_only": True}],
+        )
+
+        result = await orchestrator._mount_files(ctx)
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "_ptc_history.json"
+        assert result[0]["content"] == b"{}"
+
 
 class TestLoadState:
     """Tests for _load_state method."""
@@ -1226,6 +1279,63 @@ class TestBuildResponse:
         assert response.has_state is True
         assert response.state_size == len(state_bytes)
         assert response.state_hash == "abc123"
+
+    def test_build_response_echoes_readonly_as_inherited(self, orchestrator):
+        """Read-only mounted inputs are echoed in files[] flagged inherited=True (Gap A)."""
+        request = ExecRequest(code="print('hi')", lang="py")
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-123",
+            session_id="session-123",
+            stdout="",
+            stderr="",
+            new_state=None,
+            mounted_files=[
+                {
+                    "file_id": "skill-1",
+                    "filename": "skillName/SKILL.md",
+                    "session_id": "upload-sess",
+                    "read_only": True,
+                    "auto_mounted": False,
+                },
+                {
+                    "file_id": "user-1",
+                    "filename": "data.csv",
+                    "session_id": "upload-sess",
+                    "read_only": False,
+                    "auto_mounted": False,
+                },
+            ],
+        )
+
+        response = orchestrator._build_response(ctx)
+
+        # The read-only input is echoed inside files[] flagged inherited=True.
+        inherited = [f for f in response.files if f.inherited]
+        assert len(inherited) == 1
+        assert inherited[0].id == "skill-1"
+        assert inherited[0].name == "skillName/SKILL.md"
+        assert inherited[0].session_id == "upload-sess"
+        assert inherited[0].inherited is True
+
+    def test_build_response_no_inherited_when_no_readonly(self, orchestrator):
+        """No read-only inputs means no inherited entries in files[]."""
+        request = ExecRequest(code="print('hi')", lang="py")
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-123",
+            session_id="session-123",
+            stdout="",
+            stderr="",
+            new_state=None,
+            mounted_files=[
+                {"file_id": "user-1", "filename": "data.csv", "read_only": False},
+            ],
+        )
+
+        response = orchestrator._build_response(ctx)
+
+        assert all(f.inherited is False for f in response.files)
 
 
 class TestCleanupExtended:

@@ -39,6 +39,14 @@ class FileInfo(BaseModel):
     content_type: str
     created_at: datetime
     path: str = Field(..., description="File path in the session")
+    read_only: bool = Field(
+        default=False,
+        description=(
+            "True when the file was uploaded as infrastructure (e.g. a skill "
+            "bundle marked read_only). Read-only inputs are echoed back as "
+            "inherited passthroughs rather than surfaced as generated outputs."
+        ),
+    )
 
     @field_serializer("created_at")
     def serialize_created_at(self, value: datetime) -> str:

@@ -1,6 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -106,4 +111,157 @@ func TestHandleListIncludesModTime(t *testing.T) {
 	}
 
 	_ = h // keep linter happy
+}
+
+// uploadMultipart builds a POST /files multipart request. The file part is
+// sent with `basename` as its filename (Go's parser strips directories anyway)
+// and the nested layout is carried out-of-band in the `path` form field, which
+// mirrors how the control plane transports skill bundles like
+// "skillName/SKILL.md".
+func uploadMultipart(t *testing.T, relPath string, content []byte) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("files", filepath.Base(relPath))
+	if err != nil {
+		t.Fatalf("CreateFormFile: %v", err)
+	}
+	if _, err := part.Write(content); err != nil {
+		t.Fatalf("write part: %v", err)
+	}
+	if err := mw.WriteField("path", relPath); err != nil {
+		t.Fatalf("write path field: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/files", &body)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	return req
+}
+
+func TestHandleUploadPreservesNestedPath(t *testing.T) {
+	dir := t.TempDir()
+	h := NewFileHandler(dir)
+
+	rr := httptest.NewRecorder()
+	h.HandleUpload(rr, uploadMultipart(t, "skillName/SKILL.md", []byte("# skill")))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	// The file must land at the nested path, not be flattened to the basename.
+	nested := filepath.Join(dir, "skillName", "SKILL.md")
+	if _, err := os.Stat(nested); err != nil {
+		t.Fatalf("expected nested file at %s: %v", nested, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err == nil {
+		t.Error("file must not be flattened to working-dir root")
+	}
+
+	var resp struct {
+		Uploaded []FileInfo `json:"uploaded"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Uploaded) != 1 || resp.Uploaded[0].Name != "skillName/SKILL.md" {
+		t.Errorf("expected uploaded name skillName/SKILL.md, got %+v", resp.Uploaded)
+	}
+}
+
+func TestHandleUploadRejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	h := NewFileHandler(dir)
+
+	rr := httptest.NewRecorder()
+	h.HandleUpload(rr, uploadMultipart(t, "../escape.txt", []byte("pwned")))
+
+	// The traversal target must never be written outside the working dir.
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "escape.txt")); err == nil {
+		t.Fatal("path traversal escaped the working directory")
+	}
+
+	var resp struct {
+		Uploaded []FileInfo `json:"uploaded"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Uploaded) != 0 {
+		t.Errorf("traversal upload must be skipped, got %+v", resp.Uploaded)
+	}
+}
+
+func TestHandleUploadRejectsHiddenSegments(t *testing.T) {
+	dir := t.TempDir()
+	h := NewFileHandler(dir)
+
+	for _, name := range []string{".git/config", "skill/.ssh/authorized_keys", ".hidden.txt"} {
+		rr := httptest.NewRecorder()
+		h.HandleUpload(rr, uploadMultipart(t, name, []byte("nope")))
+
+		var resp struct {
+			Uploaded []FileInfo `json:"uploaded"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(resp.Uploaded) != 0 {
+			t.Errorf("upload of %q must be skipped (hidden segment), got %+v", name, resp.Uploaded)
+		}
+	}
+
+	// Nothing may have been written anywhere under the working dir.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read working dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("working dir must stay empty, got %v", entries)
+	}
+}
+
+func TestHandleListIsRecursive(t *testing.T) {
+	dir := t.TempDir()
+	h := NewFileHandler(dir)
+
+	if err := os.MkdirAll(filepath.Join(dir, "skillName"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skillName", "SKILL.md"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write nested: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "top.txt"), []byte("y"), 0o644); err != nil {
+		t.Fatalf("write top: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	h.HandleList(rr, httptest.NewRequest(http.MethodGet, "/files", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+
+	var resp struct {
+		Files []FileInfo `json:"files"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	names := map[string]bool{}
+	for _, f := range resp.Files {
+		names[f.Name] = true
+	}
+	if !names["skillName/SKILL.md"] {
+		t.Errorf("expected recursive listing to include skillName/SKILL.md, got %+v", resp.Files)
+	}
+	if !names["top.txt"] {
+		t.Errorf("expected listing to include top.txt, got %+v", resp.Files)
+	}
+	// Directories themselves must not be reported as files.
+	if names["skillName"] {
+		t.Error("directory entries must not appear in the file listing")
+	}
 }

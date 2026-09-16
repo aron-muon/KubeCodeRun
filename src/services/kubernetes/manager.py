@@ -349,9 +349,14 @@ class KubernetesManager:
         async with httpx.AsyncClient(timeout=30.0) as client:
             for file_data in files:
                 try:
+                    # RFC 7578 strips directories from the multipart filename,
+                    # so the nested layout (e.g. skill bundles uploaded as
+                    # "skillName/SKILL.md") is sent out-of-band in the ``path``
+                    # field for the runner to recreate the directory tree.
                     await client.post(
                         f"{handle.runner_url}/files",
                         files={"files": (file_data.filename, file_data.content)},
+                        data={"path": file_data.filename},
                     )
                 except Exception as e:
                     logger.error(
