@@ -31,8 +31,11 @@ jobs:
           node-version: "lts/*"
 
       - name: Install semantic-release
+        # Pinned: conventional-changelog-conventionalcommits@10 requires
+        # conventional-changelog-writer@9, but @semantic-release/release-notes-generator
+        # still bundles writer@8 - the unpinned combo broke generateNotes on 2026-09-16.
         run: |
-          npm install -g semantic-release conventional-changelog-conventionalcommits
+          npm install -g semantic-release@25.0.9 conventional-changelog-conventionalcommits@9.3.1
 
       - name: Get latest release before
         id: before

@@ -6,6 +6,7 @@ Supports both in-cluster and out-of-cluster (kubeconfig) authentication.
 
 import json
 import os
+import time
 from functools import lru_cache
 from typing import Optional, Tuple
 
@@ -123,6 +124,13 @@ _batch_api: BatchV1Api | None = None
 _initialized: bool = False
 _init_error: str | None = None
 
+# Throttle for 401-triggered client resets (seconds). A reset re-runs config
+# loading, which re-reads the mounted ServiceAccount token from disk. The
+# throttle keeps a persistent auth failure (e.g. RBAC misconfiguration) from
+# turning every API call into a config reload.
+_UNAUTHORIZED_RESET_INTERVAL_SECONDS = 30.0
+_last_unauthorized_reset: float = 0.0
+
 
 def _load_config() -> bool:
     """Load Kubernetes configuration.
@@ -201,6 +209,50 @@ def get_kubernetes_client() -> tuple[CoreV1Api | None, BatchV1Api | None]:
         initialize_client()
 
     return _core_api, _batch_api
+
+
+def reset_clients() -> None:
+    """Drop the cached API clients so the next call rebuilds them.
+
+    Rebuilding re-runs config loading, which re-reads the mounted
+    ServiceAccount token from disk. Old client objects are left for GC so
+    in-flight requests on them can complete.
+    """
+    global _core_api, _batch_api, _initialized, _init_error
+    _core_api = None
+    _batch_api = None
+    _initialized = False
+    _init_error = None
+
+
+def handle_unauthorized(status: int | None) -> bool:
+    """Recover from a 401 by resetting the cached clients (throttled).
+
+    The API server returning 401 means the token we presented is no longer
+    valid — most commonly a stale bound ServiceAccount token after kubelet
+    rotation (issue #72). Resetting forces the next ``get_core_api()`` /
+    ``get_batch_api()`` to reload config and pick up the fresh on-disk token.
+
+    Call this from ``except ApiException`` handlers with ``e.status``.
+
+    Returns:
+        True when a reset was performed.
+    """
+    global _last_unauthorized_reset
+
+    if status != 401:
+        return False
+
+    now = time.monotonic()
+    if now - _last_unauthorized_reset < _UNAUTHORIZED_RESET_INTERVAL_SECONDS:
+        return False
+    _last_unauthorized_reset = now
+
+    logger.warning(
+        "Kubernetes API returned 401 Unauthorized — resetting cached clients to reload credentials",
+    )
+    reset_clients()
+    return True
 
 
 def get_core_api() -> CoreV1Api | None:

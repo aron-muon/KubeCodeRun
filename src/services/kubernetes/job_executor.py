@@ -19,6 +19,7 @@ from .client import (
     get_batch_api,
     get_core_api,
     get_current_namespace,
+    handle_unauthorized,
 )
 from .models import (
     ExecutionResult,
@@ -155,6 +156,7 @@ class JobExecutor:
             )
 
         except ApiException as e:
+            handle_unauthorized(e.status)
             logger.error(
                 "Failed to create job",
                 job_name=job_name,
@@ -225,6 +227,7 @@ class JobExecutor:
                         return False
 
             except ApiException as e:
+                handle_unauthorized(e.status)
                 logger.warning(
                     "Error checking pod status",
                     job_name=job.name,
@@ -401,6 +404,7 @@ class JobExecutor:
             logger.debug("Deleted job", job_name=job.name)
 
         except ApiException as e:
+            handle_unauthorized(e.status)
             if e.status != 404:
                 logger.warning(
                     "Failed to delete job",
