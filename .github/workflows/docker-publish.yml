@@ -124,7 +124,19 @@ jobs:
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
           echo "image_tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "runner_image=ghcr.io/${OWNER_LC}/kubecoderun-runner:${TAG}" >> $GITHUB_OUTPUT
+          # Language images do `FROM runner_image`. Point them at ${TAG} only
+          # when that tag will actually exist in this run: the runner build
+          # job creates it when docker/runner/** changed (or force_all), and
+          # retag-runner creates it on releases. Otherwise (a PR or main push
+          # touching a language Dockerfile but not the runner) fall back to
+          # :latest - the last released runner - since nothing pushes a
+          # dev-${SHORT_SHA} runner tag in that run.
+          if [[ "${{ steps.filter.outputs.runner }}" == "true" || "${{ github.event.inputs.force_all }}" == "true" || "${{ github.ref }}" == refs/tags/* ]]; then
+            RUNNER_TAG="${TAG}"
+          else
+            RUNNER_TAG="latest"
+          fi
+          echo "runner_image=ghcr.io/${OWNER_LC}/kubecoderun-runner:${RUNNER_TAG}" >> $GITHUB_OUTPUT
 
   # ==================== Build Jobs ====================
   # Note: All build jobs skip when is_cross_repo_pr == 'true' (cross-repo PRs can't push to upstream registry)
