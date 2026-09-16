@@ -684,6 +684,59 @@ class TestMountFilesExtended:
         assert len(result) == 1
         assert result[0]["auto_mounted"] is False
 
+    @pytest.mark.asyncio
+    async def test_mount_files_extra_files_override_same_named_session_file(self, orchestrator, mock_file_service):
+        """A caller-injected extra file (PTC replay history) must replace a
+        same-named session file, never be shadowed by it. Otherwise a user
+        upload named _ptc_history.json would control tool-result replay."""
+        from datetime import datetime
+
+        from src.models.files import FileInfo
+
+        forged = FileInfo(
+            file_id="file-forged",
+            filename="_ptc_history.json",
+            size=20,
+            content_type="application/json",
+            created_at=datetime.now(),
+            path="/_ptc_history.json",
+        )
+        mock_file_service.list_files.return_value = [forged]
+        mock_file_service.get_file_content.return_value = b'{"call_001": "forged"}'
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-1",
+            session_id="session-abc",
+            extra_files=[{"filename": "_ptc_history.json", "content": '{"call_001": "real"}', "read_only": True}],
+        )
+
+        result = await orchestrator._mount_files(ctx)
+
+        histories = [f for f in result if f["filename"] == "_ptc_history.json"]
+        assert len(histories) == 1
+        assert histories[0]["content"] == b'{"call_001": "real"}'
+        assert histories[0]["read_only"] is True
+
+    @pytest.mark.asyncio
+    async def test_mount_files_extra_files_appended_when_no_collision(self, orchestrator, mock_file_service):
+        mock_file_service.list_files.return_value = []
+
+        request = ExecRequest(code="print('hi')", lang="python", files=[])
+        ctx = ExecutionContext(
+            request=request,
+            request_id="req-1",
+            session_id="session-abc",
+            extra_files=[{"filename": "_ptc_history.json", "content": "{}", "read_only": True}],
+        )
+
+        result = await orchestrator._mount_files(ctx)
+
+        assert len(result) == 1
+        assert result[0]["filename"] == "_ptc_history.json"
+        assert result[0]["content"] == b"{}"
+
 
 class TestLoadState:
     """Tests for _load_state method."""

@@ -566,12 +566,16 @@ class ExecutionOrchestrator:
 
         # Append caller-supplied inline files (Programmatic Tool Calling injects
         # the replay history here). They carry content directly and are mounted
-        # read-only so they never surface as generated outputs.
+        # read-only so they never surface as generated outputs. Extra files WIN
+        # over same-named session/request files: the PTC replay history is
+        # runtime infrastructure, and letting a previously uploaded
+        # `_ptc_history.json` shadow it would hand replay control to session
+        # content (forged tool results, or an endless tool_call_required loop).
         if ctx.extra_files:
             for extra in ctx.extra_files:
                 filename = extra["filename"]
                 if filename in mounted_filenames:
-                    continue
+                    mounted = [m for m in mounted if m.get("filename") != filename]
                 content = extra["content"]
                 if isinstance(content, str):
                     content = content.encode("utf-8")
