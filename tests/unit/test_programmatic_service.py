@@ -172,9 +172,7 @@ class TestValidation:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("bad_param", ["", "   ", "!!!"])
     async def test_invalid_parameter_name_rejected(self, service, bad_param):
-        tool = ProgrammaticTool(
-            name="t", parameters={"type": "object", "properties": {bad_param: {"type": "string"}}}
-        )
+        tool = ProgrammaticTool(name="t", parameters={"type": "object", "properties": {bad_param: {"type": "string"}}})
         with pytest.raises(ProgrammaticError) as exc:
             await service.execute(ProgrammaticRequest(code="x", tools=[tool]))
         assert exc.value.status_code == 400
