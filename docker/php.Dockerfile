@@ -28,11 +28,12 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy PHP installation from DHI PHP image
 COPY --from=php-source /opt/php-8.5 /opt/php-8.5
-# Copy shared libraries PHP depends on (avoids chasing individual packages)
-COPY --from=php-source /usr/lib/x86_64-linux-gnu/libargon2.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=php-source /usr/lib/x86_64-linux-gnu/libsodium.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=php-source /usr/lib/x86_64-linux-gnu/libicu*.so* /usr/lib/x86_64-linux-gnu/
-COPY --from=php-source /usr/lib/x86_64-linux-gnu/libonig.so* /usr/lib/x86_64-linux-gnu/
+# Copy shared libraries PHP depends on (avoids chasing individual packages).
+# The multiarch dir differs per platform (x86_64-linux-gnu vs
+# aarch64-linux-gnu), so glob it and land the libs in /usr/local/lib, which
+# is on the default ld.so search path for either arch. The compile steps
+# below run ldconfig before first invoking php.
+COPY --from=php-source /usr/lib/*-linux-gnu/libargon2.so* /usr/lib/*-linux-gnu/libsodium.so* /usr/lib/*-linux-gnu/libicu*.so* /usr/lib/*-linux-gnu/libonig.so* /usr/local/lib/
 
 # Put PHP in PATH for build steps
 ENV PATH="/opt/php-8.5/bin:${PATH}"
