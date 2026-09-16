@@ -6,14 +6,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // FileInfo represents a file in the working directory.
 type FileInfo struct {
-	Name    string  `json:"name"`
-	Path    string  `json:"path"`
-	Size    int64   `json:"size"`
-	ModTime int64   `json:"mod_time"`
+	Name     string  `json:"name"`
+	Path     string  `json:"path"`
+	Size     int64   `json:"size"`
+	ModTime  int64   `json:"mod_time"`
 	MimeType *string `json:"mime_type,omitempty"`
 }
 
@@ -50,7 +52,7 @@ func (h *FileHandler) validatePath(reqPath string) (string, error) {
 // RFC 7578 (and Go's net/http multipart parser) strip directory components
 // from the part filename, so nested skill bundles cannot ride on the filename
 // alone. The control plane therefore sends the intended relative path in an
-// out-of-band ``path`` form field (one value per file, in order). When absent,
+// out-of-band “path“ form field (one value per file, in order). When absent,
 // the basenamed filename is used, preserving legacy single-file behavior.
 func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -61,10 +63,20 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	absWD, _ := filepath.Abs(h.workingDir)
 	explicitPaths := r.MultipartForm.Value["path"]
 
+	// Iterate multipart field names in sorted order: map iteration order is
+	// randomized, and the out-of-band explicit paths are matched to files
+	// positionally. The control plane sends a single field per request, but
+	// determinism must not depend on that.
+	fieldNames := make([]string, 0, len(r.MultipartForm.File))
+	for name := range r.MultipartForm.File {
+		fieldNames = append(fieldNames, name)
+	}
+	sort.Strings(fieldNames)
+
 	var uploaded []FileInfo
 	idx := 0
-	for _, fileHeaders := range r.MultipartForm.File {
-		for _, fh := range fileHeaders {
+	for _, fieldName := range fieldNames {
+		for _, fh := range r.MultipartForm.File[fieldName] {
 			// Prefer the explicit relative path (preserves nested layout);
 			// fall back to the parser-basenamed filename.
 			rawName := fh.Filename
@@ -80,6 +92,13 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 			base := filepath.Base(destPath)
 			if base == "" || base == "." || base == ".." || base[0] == '.' || destPath == absWD {
 				// Skip empty, traversal, hidden, or working-dir targets.
+				continue
+			}
+			if hasHiddenSegment(destPath, absWD) {
+				// No segment of the relative path may be hidden: nested
+				// uploads must not smuggle dotfile directories (.ssh, .git,
+				// .bashrc-adjacent paths) that the flat basename check above
+				// cannot see.
 				continue
 			}
 
@@ -124,6 +143,21 @@ func (h *FileHandler) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"uploaded": uploaded})
+}
+
+// hasHiddenSegment reports whether any segment of destPath relative to the
+// working directory starts with a dot.
+func hasHiddenSegment(destPath, absWD string) bool {
+	rel, err := filepath.Rel(absWD, destPath)
+	if err != nil {
+		return true
+	}
+	for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+		if seg != "" && seg[0] == '.' {
+			return true
+		}
+	}
+	return false
 }
 
 // HandleList processes GET /files (list working directory).

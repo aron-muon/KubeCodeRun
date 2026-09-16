@@ -194,6 +194,35 @@ func TestHandleUploadRejectsTraversal(t *testing.T) {
 	}
 }
 
+func TestHandleUploadRejectsHiddenSegments(t *testing.T) {
+	dir := t.TempDir()
+	h := NewFileHandler(dir)
+
+	for _, name := range []string{".git/config", "skill/.ssh/authorized_keys", ".hidden.txt"} {
+		rr := httptest.NewRecorder()
+		h.HandleUpload(rr, uploadMultipart(t, name, []byte("nope")))
+
+		var resp struct {
+			Uploaded []FileInfo `json:"uploaded"`
+		}
+		if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		if len(resp.Uploaded) != 0 {
+			t.Errorf("upload of %q must be skipped (hidden segment), got %+v", name, resp.Uploaded)
+		}
+	}
+
+	// Nothing may have been written anywhere under the working dir.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read working dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("working dir must stay empty, got %v", entries)
+	}
+}
+
 func TestHandleListIsRecursive(t *testing.T) {
 	dir := t.TempDir()
 	h := NewFileHandler(dir)
