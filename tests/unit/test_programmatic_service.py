@@ -170,6 +170,30 @@ class TestValidation:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("bad_param", ["", "   ", "!!!"])
+    async def test_invalid_parameter_name_rejected(self, service, bad_param):
+        tool = ProgrammaticTool(
+            name="t", parameters={"type": "object", "properties": {bad_param: {"type": "string"}}}
+        )
+        with pytest.raises(ProgrammaticError) as exc:
+            await service.execute(ProgrammaticRequest(code="x", tools=[tool]))
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_colliding_parameter_names_rejected(self, service):
+        # "user-name" and "user_name" both normalize to "user_name"
+        tool = ProgrammaticTool(
+            name="t",
+            parameters={
+                "type": "object",
+                "properties": {"user-name": {"type": "string"}, "user_name": {"type": "string"}},
+            },
+        )
+        with pytest.raises(ProgrammaticError) as exc:
+            await service.execute(ProgrammaticRequest(code="x", tools=[tool]))
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
     async def test_bash_rejected(self, service):
         with pytest.raises(ProgrammaticError) as exc:
             await service.execute(

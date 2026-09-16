@@ -52,7 +52,67 @@ class TestHarnessGeneration:
         wrapped = wrap_user_code_in_async("x = 1\nprint(x)")
         assert "async def __user_main__():" in wrapped
         assert "asyncio.run(__user_main__())" in wrapped
-        assert "    x = 1" in wrapped  # indented into the wrapper
+        # user code is embedded verbatim as a literal, not re-indented
+        assert json.dumps("x = 1\nprint(x)") in wrapped
+
+    def _run_wrapped(self, user_code: str) -> None:
+        """Execute wrapped user code exactly like the sandbox would."""
+        wrapped = wrap_user_code_in_async(user_code)
+        compile(wrapped, "main.py", "exec")
+        exec(wrapped, {"__name__": "__main__"})  # noqa: S102
+
+    def test_wrap_preserves_multiline_string_content(self, capsys):
+        # A naive re-indent injects 4 spaces into the *content* of multi-line
+        # string literals; the literal-embedding wrap must not.
+        self._run_wrapped('report = """line1\nline2"""\nprint(report)')
+        assert capsys.readouterr().out == "line1\nline2\n"
+
+    def test_wrap_supports_top_level_await(self, capsys):
+        self._run_wrapped("import asyncio\nawait asyncio.sleep(0)\nprint('after-await')")
+        assert capsys.readouterr().out == "after-await\n"
+
+    def test_wrap_keeps_module_level_scoping(self, capsys):
+        # Top-level defs and `global` must behave as in a real module.
+        self._run_wrapped("counter = 0\ndef bump():\n    global counter\n    counter += 1\nbump()\nprint(counter)")
+        assert capsys.readouterr().out == "1\n"
+
+    def test_param_name_with_hyphen_generates_valid_python(self):
+        tool = {
+            "name": "search",
+            "description": "x",
+            "parameters": {
+                "type": "object",
+                "properties": {"user-name": {"type": "string"}},
+                "required": ["user-name"],
+            },
+        }
+        code = build_python_code("exec1", [tool], "pass")
+        compile(code, "main.py", "exec")
+        # stub takes the normalized identifier but dispatches the original name
+        assert "async def search(user_name: str)" in code
+        assert '"user-name": user_name' in code
+
+    def test_param_name_with_quote_generates_valid_python(self):
+        tool = {
+            "name": "t",
+            "description": "x",
+            "parameters": {"type": "object", "properties": {'a"b': {"type": "string"}}},
+        }
+        code = build_python_code("exec1", [tool], "pass")
+        compile(code, "main.py", "exec")
+
+    @pytest.mark.parametrize(
+        "description",
+        [
+            'ends with a quote"',
+            'contains """triple quotes"""',
+            "ends with a backslash\\",
+        ],
+    )
+    def test_hostile_docstrings_generate_valid_python(self, description):
+        tool = {"name": "t", "description": description, "parameters": None}
+        code = build_python_code("exec1", [tool], "pass")
+        compile(code, "main.py", "exec")
 
     def test_preamble_embeds_scoped_sentinel_and_history_path(self):
         preamble = build_replay_preamble("execABC", [WEATHER_TOOL])

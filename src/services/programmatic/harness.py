@@ -15,6 +15,7 @@ The API parses the sentinel, relays the call to LibreChat, merges the result
 into history and re-runs — until the code completes without a new call.
 """
 
+import json
 from typing import Any
 
 from .constants import PTC_HISTORY_SANDBOX_PATH, build_scoped_sentinel
@@ -80,10 +81,11 @@ def _schema_to_params(schema: dict[str, Any] | None) -> str:
     params: list[str] = []
     for name in _sorted_property_names(list(properties.keys()), required):
         py_type = _json_schema_to_python_type(properties[name])
+        py_name = normalize_python_function_name(name)
         if name in required_set:
-            params.append(f"{name}: {py_type}")
+            params.append(f"{py_name}: {py_type}")
         else:
-            params.append(f"{name}: Optional[{py_type}] = None")
+            params.append(f"{py_name}: Optional[{py_type}] = None")
     return ", ".join(params)
 
 
@@ -91,7 +93,10 @@ def _generate_input_dict(schema: dict[str, Any] | None) -> str:
     properties = (schema or {}).get("properties")
     if not properties:
         return ""
-    return ", ".join(f'"{name}": {name}' for name in properties)
+    # Key: the original tool-schema property name (JSON-escaped, so quotes and
+    # backslashes in the name cannot break out of the generated literal).
+    # Value: the normalized Python parameter that carries it.
+    return ", ".join(f"{json.dumps(name)}: {normalize_python_function_name(name)}" for name in properties)
 
 
 def _infer_return_type(description: str | None) -> str:
@@ -106,8 +111,11 @@ def _infer_return_type(description: str | None) -> str:
 
 
 def _escape_docstring(text: str) -> str:
-    # Keep the generated triple-quoted string literal valid.
-    return text.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+    # Keep the generated triple-quoted string literal valid: escape every
+    # backslash and every double quote. Escaping single quotes as well would
+    # be harmless, but escaping every `"` already covers `"""` sequences and
+    # a trailing `"` (which would otherwise terminate the literal early).
+    return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def _generate_docstring(tool: dict[str, Any]) -> str:
@@ -236,20 +244,34 @@ def build_replay_preamble(execution_id: str, tools: list[dict[str, Any]]) -> str
 
 
 def wrap_user_code_in_async(user_code: str) -> str:
-    """Wrap user code in an async main so top-level await works."""
-    wrapped = (
+    """Wrap user code in an async main so top-level await works.
+
+    The user code is embedded as a string literal and compiled at runtime
+    with ``PyCF_ALLOW_TOP_LEVEL_AWAIT``, then evaluated against the module
+    globals. Compared to re-indenting the source into a nested function
+    body, this preserves the user code byte-for-byte (a naive re-indent
+    corrupts the *content* of multi-line string literals), keeps module-level
+    scoping semantics (``global``, top-level ``def``/``class``), and keeps
+    traceback line numbers aligned with the code the model wrote.
+    """
+    user_literal = json.dumps(user_code)
+    return (
         "# ============================================================================\n"
-        "# USER CODE BEGINS BELOW\n"
+        "# USER CODE BEGINS BELOW (embedded verbatim, compiled with top-level await)\n"
         "# ============================================================================\n\n"
+        f"_USER_CODE = {user_literal}\n\n"
         "async def __user_main__():\n"
         '    """Auto-generated wrapper for user code to support top-level await"""\n'
+        "    import ast as _ast\n"
+        '    _compiled = compile(_USER_CODE, "<user_code>", "exec", flags=_ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)\n'
+        "    _coro = eval(_compiled, globals())\n"
+        "    if _coro is not None:\n"
+        "        await _coro\n"
+        "\n"
+        'if __name__ == "__main__":\n'
+        "    import asyncio\n"
+        "    asyncio.run(__user_main__())\n"
     )
-    for line in user_code.split("\n"):
-        wrapped += "\n" if line.strip() == "" else "    " + line + "\n"
-    wrapped += '\nif __name__ == "__main__":\n'
-    wrapped += "    import asyncio\n"
-    wrapped += "    asyncio.run(__user_main__())\n"
-    return wrapped
 
 
 def build_python_code(execution_id: str, tools: list[dict[str, Any]], user_code: str) -> str:

@@ -46,14 +46,19 @@ class ProgrammaticError(Exception):
         self.message = message
 
 
-def _validate_tool_names(tools: list[ProgrammaticTool]) -> None:
-    """Reject tool names that would generate invalid Python in the replay harness.
+def _validate_tools(tools: list[ProgrammaticTool]) -> None:
+    """Reject tool definitions that would generate invalid Python in the harness.
 
-    An empty/whitespace name or one with no identifier-safe characters yields
-    ``async def ()`` (a syntax error) which would otherwise surface as a
-    confusing ``completed`` response carrying a traceback instead of a clear
-    400. Two distinct names that normalize to the same identifier are also
-    rejected, since the second stub would silently shadow the first.
+    Tool names: an empty/whitespace name or one with no identifier-safe
+    characters yields ``async def ()`` (a syntax error) which would otherwise
+    surface as a confusing ``completed`` response carrying a traceback instead
+    of a clear 400. Two distinct names that normalize to the same identifier
+    are also rejected, since the second stub would silently shadow the first.
+
+    Parameter names: each JSON-schema property name is normalized into the
+    stub's Python parameter the same way, so a name with no identifier-safe
+    characters, or two names collapsing to one identifier, is rejected up
+    front for the same reason.
     """
     seen: dict[str, str] = {}
     for tool in tools:
@@ -70,6 +75,26 @@ def _validate_tool_names(tools: list[ProgrammaticTool]) -> None:
                 f'identifier "{normalized}"; rename one to avoid a collision',
             )
         seen[normalized] = tool.name
+
+        properties = (tool.parameters or {}).get("properties") or {}
+        seen_params: dict[str, str] = {}
+        for param_name in properties:
+            if not isinstance(param_name, str) or not param_name.strip():
+                raise ProgrammaticError(400, f'Tool "{tool.name}" has a parameter with an empty name')
+            param_normalized = normalize_python_function_name(param_name)
+            if not param_normalized:
+                raise ProgrammaticError(
+                    400,
+                    f'Parameter "{param_name}" of tool "{tool.name}" has no identifier-safe characters',
+                )
+            param_prior = seen_params.get(param_normalized)
+            if param_prior is not None and param_prior != param_name:
+                raise ProgrammaticError(
+                    400,
+                    f'Parameters "{param_prior}" and "{param_name}" of tool "{tool.name}" both '
+                    f'normalize to the Python identifier "{param_normalized}"; rename one',
+                )
+            seen_params[param_normalized] = param_name
 
 
 class ProgrammaticService:
@@ -111,7 +136,7 @@ class ProgrammaticService:
             raise ProgrammaticError(
                 400, f"Too many tools provided ({len(request.tools)}). Maximum is {MAX_TOOLS_PER_REQUEST}."
             )
-        _validate_tool_names(request.tools)
+        _validate_tools(request.tools)
         if request.resolved_language == "bash":
             raise ProgrammaticError(400, "bash programmatic tool calling is not supported by this server")
         if request.resolved_language != "python":
