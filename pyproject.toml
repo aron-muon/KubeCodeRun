@@ -9,7 +9,9 @@ dependencies = [
     "docker>=7.1.0",
     "fastapi>=0.128.0",
     "httpx>=0.28.1",
-    "kubernetes>=34.1.0",
+    # <36: kubernetes-client 36.0.0 stops picking up kubelet-rotated bound SA
+    # tokens in-cluster, causing permanent 401s after ~1h on AKS (issue #72).
+    "kubernetes>=34.1.0,<36",
     "minio>=7.2.20",
     "pyasn1>=0.6.3",
     "pydantic>=2.12.5",

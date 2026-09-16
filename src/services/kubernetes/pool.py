@@ -22,6 +22,7 @@ from .client import (
     get_core_api,
     get_current_namespace,
     get_initialization_error,
+    handle_unauthorized,
 )
 from .models import (
     ExecutionResult,
@@ -414,6 +415,7 @@ class PodPool:
             return pooled_pod
 
         except ApiException as e:
+            handle_unauthorized(e.status)
             logger.error(
                 "Failed to create warm pod (Kubernetes API error)",
                 pod_name=pod_name,
@@ -559,6 +561,7 @@ class PodPool:
             logger.debug("Deleted pod", pod_name=handle.name)
 
         except ApiException as e:
+            handle_unauthorized(e.status)
             if e.status != 404:
                 logger.warning(
                     "Failed to delete pod",
@@ -936,6 +939,7 @@ class PodPool:
                 lambda: core_api.read_namespaced_pod(handle.name, handle.namespace),
             )
         except ApiException as e:
+            handle_unauthorized(e.status)
             if e.status == 404:
                 return "pod not found (deleted or restarted)"
             return None
