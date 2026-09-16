@@ -153,6 +153,7 @@ class ProgrammaticService:
             session_id=request.session_id or "",
             language="python",
             code=request.code,
+            user_id=user_id or None,
             tools=request.tools,
             files=request.files,
             timeout=request.timeout,
@@ -169,13 +170,35 @@ class ProgrammaticService:
     ) -> ProgrammaticResponse:
         execution_id = request.continuation_token or ""
         state = await self.state.load(execution_id)
+        # A continuation under a different identity is treated exactly like an
+        # unknown token — the state's existence is not revealed.
+        if state is not None and (state.user_id or None) != (user_id or None):
+            logger.warning(
+                "PTC continuation user mismatch",
+                execution_id=execution_id,
+                expected_user=state.user_id,
+                got_user=user_id,
+            )
+            state = None
         if state is None:
-            raise ProgrammaticError(404, "Execution not found or expired")
+            # Mid-loop failure: return HTTP 200 with status="error" so the
+            # @librechat/agents client takes its structured error path
+            # ("Execution error: ...") instead of aborting on a raw non-2xx.
+            return ProgrammaticResponse(
+                status="error",
+                error=(
+                    "Execution not found or expired. The continuation_token is invalid, belongs "
+                    "to another identity, or its state TTL elapsed; start a new execution."
+                ),
+            )
 
         self.state.merge_tool_results(state, request.tool_results or [])
         if state.call_count > MAX_REPLAY_CALLS:
             await self.state.delete(execution_id)
-            raise ProgrammaticError(400, f"Exceeded maximum tool calls ({MAX_REPLAY_CALLS})")
+            return ProgrammaticResponse(
+                status="error",
+                error=f"Exceeded maximum tool calls ({MAX_REPLAY_CALLS})",
+            )
 
         return await self._run_and_respond(state, user_id, request_id, api_key_hash, is_env_key)
 

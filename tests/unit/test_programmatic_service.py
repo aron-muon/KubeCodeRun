@@ -235,13 +235,42 @@ class TestValidation:
 
     @pytest.mark.asyncio
     async def test_unknown_continuation_token(self, service):
-        with pytest.raises(ProgrammaticError) as exc:
-            await service.execute(
-                ProgrammaticRequest(
-                    continuation_token="does-not-exist", tool_results=[ToolResultIn(call_id="call_001", result=1)]
-                )
+        # Mid-loop failures come back as HTTP 200 + status="error" so the
+        # agents client takes its structured error path instead of aborting
+        # on a raw non-2xx.
+        resp = await service.execute(
+            ProgrammaticRequest(
+                continuation_token="does-not-exist", tool_results=[ToolResultIn(call_id="call_001", result=1)]
             )
-        assert exc.value.status_code == 404
+        )
+        assert resp.status == "error"
+        assert "not found or expired" in resp.error
+
+    @pytest.mark.asyncio
+    async def test_continuation_token_without_tool_results_is_still_a_continuation(self, service):
+        # A body with only continuation_token must never be misread as an
+        # initial request (which would 400 with "Missing required field: code").
+        resp = await service.execute(ProgrammaticRequest(continuation_token="does-not-exist"))
+        assert resp.status == "error"
+        assert "not found or expired" in resp.error
+
+    @pytest.mark.asyncio
+    async def test_continuation_bound_to_initial_user(self, service):
+        first = await service.execute(_initial(), user_id="alice")
+        assert first.status == "tool_call_required"
+
+        # Another identity presenting the token gets the unknown-token error...
+        cont = ProgrammaticRequest(
+            continuation_token=first.continuation_token,
+            tool_results=[ToolResultIn(call_id="call_001", result="sunny")],
+        )
+        stolen = await service.execute(cont, user_id="mallory")
+        assert stolen.status == "error"
+        assert "not found or expired" in stolen.error
+
+        # ...while the original identity can continue normally.
+        legit = await service.execute(cont, user_id="alice")
+        assert legit.status == "completed"
 
     @pytest.mark.asyncio
     async def test_unregistered_tool_call_errors(self):

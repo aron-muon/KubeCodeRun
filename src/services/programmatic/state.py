@@ -31,6 +31,8 @@ class ExecutionState(BaseModel):
     session_id: str
     language: str = "python"
     code: str
+    # Identity the execution was started under; continuations must match it.
+    user_id: str | None = None
     tools: list[ProgrammaticTool] = Field(default_factory=list)
     files: list[RequestFile] = Field(default_factory=list)
     timeout: int | None = None

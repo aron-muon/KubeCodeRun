@@ -35,7 +35,12 @@ _EXECUTION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 # Guard rails (mirror the reference service caps).
 MAX_TOOLS_PER_REQUEST = 128
 MAX_REPLAY_CALLS = 200
-EXECUTION_STATE_TTL_SECONDS = 600
+# The @librechat/agents PTC loop (3.2.46) runs up to 20 round trips with NO
+# client-side timeout between them — each gap is bounded only by however long
+# the host takes to execute the requested tool (MCP servers, slow APIs, ...).
+# The TTL is sliding (refreshed on every save), so it only needs to outlive a
+# single tool execution, but 10 minutes proved tight for slow MCP tools.
+EXECUTION_STATE_TTL_SECONDS = 3600
 
 
 def build_scoped_sentinel(execution_id: str) -> tuple[str, str]:

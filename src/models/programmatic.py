@@ -67,7 +67,12 @@ class ProgrammaticRequest(BaseModel):
 
     @property
     def is_continuation(self) -> bool:
-        return bool(self.continuation_token) and self.tool_results is not None
+        # The @librechat/agents client always sends tool_results alongside
+        # continuation_token (possibly an empty array), but the token alone is
+        # unambiguous: a continuation body carries no code/tools, so treating
+        # it as an initial request would yield a misleading "Missing required
+        # field: code" error.
+        return bool(self.continuation_token)
 
 
 class ProgrammaticToolCall(BaseModel):
