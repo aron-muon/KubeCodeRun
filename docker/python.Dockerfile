@@ -25,7 +25,12 @@ RUN apt-get update && \
     g++ \
     make \
     pkg-config \
-    python3-dev \
+    # NOTE: no python3-dev here - Debian's python3 (3.13) chain CONFLICTS with
+    # the DHI python-3.14 packages and apt resolves it by REMOVING python 3.14
+    # entirely ("python: command not found"). The image already ships
+    # python-3.14-dev / libpython-3.14-dev. Same reason portaudio19-dev and
+    # libpulse-dev were dropped below: their chains pull Debian python3 and
+    # nothing in requirements/ compiles against them.
     # Development libraries (runtime libs installed in final stage)
     libxml2-dev \
     libxslt-dev \
@@ -38,8 +43,6 @@ RUN apt-get update && \
     libfreetype6-dev \
     liblcms2-dev \
     libwebp-dev \
-    portaudio19-dev \
-    libpulse-dev \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -135,10 +138,13 @@ COPY --from=runtime-deps /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
 COPY --from=runtime-deps /usr/bin/pdftotext /usr/bin/pdftoppm /usr/bin/pdfinfo /usr/bin/
 COPY --from=runtime-deps /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/
 
-# Copy installed Python packages from builder
-# DHI Python is installed in /opt/python, not /usr/local
-COPY --from=builder /opt/python/lib/python3.14/site-packages /opt/python/lib/python3.14/site-packages
-COPY --from=builder /opt/python/bin /opt/python/bin
+# Copy installed Python packages from builder.
+# DHI python >=3.14.7 is packaged under /usr (interpreter at /usr/bin/python,
+# site-packages at /usr/lib/python3.14/site-packages); the old /opt/python
+# layout no longer exists. Console-script shims are not carried over - the
+# runner invokes `python {file}` and library use is import-based (`python -m
+# pip` still works since the upgraded pip lands in site-packages).
+COPY --from=builder /usr/lib/python3.14/site-packages /usr/lib/python3.14/site-packages
 
 # Copy /usr/bin/env for ENTRYPOINT
 COPY --from=runtime-deps /usr/bin/env /usr/bin/
@@ -150,7 +156,7 @@ WORKDIR /mnt/data
 
 # Sanitized environment via env -i
 ENTRYPOINT ["/usr/bin/env", "-i", \
-    "PATH=/opt/python/bin:/usr/bin:/bin", \
+    "PATH=/usr/bin:/bin", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "PYTHONUNBUFFERED=1", \
