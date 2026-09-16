@@ -215,6 +215,25 @@ class TestValidation:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
+    async def test_truncated_stdout_reports_error_not_completed(self):
+        """If the output cap cut stdout, the sentinel (printed last) is what
+        got lost — the service must not misreport the run as completed."""
+        from src.services.execution.output import OutputProcessor
+
+        orch = FakeOrchestrator()
+        orch._pending_factory = lambda: []
+        store = FakeStateStore()
+        svc = ProgrammaticService(orch, state_store=store)
+
+        truncated = "x" * 100 + "\n" + OutputProcessor.TRUNCATION_NOTICE
+        orch._completed_stdout = truncated
+
+        resp = await svc.execute(_initial())
+        assert resp.status == "error"
+        assert "truncated" in resp.error
+        assert store._mem == {}  # continuation state cleaned up
+
+    @pytest.mark.asyncio
     async def test_unknown_continuation_token(self, service):
         with pytest.raises(ProgrammaticError) as exc:
             await service.execute(

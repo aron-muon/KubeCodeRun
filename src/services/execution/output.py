@@ -35,6 +35,11 @@ class OutputProcessor:
     # Dangerous extensions that should be blocked
     DANGEROUS_EXTENSIONS = [".exe", ".bat", ".cmd", ".sh", ".ps1", ".scr", ".com"]
 
+    # Appended when output exceeds the size cap. Downstream consumers that
+    # need byte-accurate tails (the PTC sentinel parser) key off this marker
+    # to detect that the end of stdout was cut.
+    TRUNCATION_NOTICE = "[Output truncated - size limit exceeded]"
+
     @classmethod
     def sanitize_output(cls, output: str, max_size: int = 64 * 1024) -> str:
         """Sanitize execution output for security and display.
@@ -48,7 +53,7 @@ class OutputProcessor:
         """
         try:
             if len(output) > max_size:
-                output = output[:max_size] + "\n[Output truncated - size limit exceeded]"
+                output = output[:max_size] + "\n" + cls.TRUNCATION_NOTICE
 
             # Remove dangerous control characters but keep newlines
             output = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "", output)

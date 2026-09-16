@@ -23,6 +23,7 @@ from ...models.programmatic import (
     ProgrammaticTool,
     ProgrammaticToolCall,
 )
+from ..execution.output import OutputProcessor
 from ..orchestrator import ExecutionOrchestrator
 from .constants import (
     MAX_REPLAY_CALLS,
@@ -213,6 +214,24 @@ class ProgrammaticService:
 
         if pending is not None:
             return await self._respond_tool_calls(state, pending, clean_stdout, resp.stderr)
+
+        # No sentinel found. If stdout was truncated by the output size cap,
+        # the sentinel (always the LAST thing the harness prints) is the part
+        # that got cut — reporting "completed" here would silently drop a
+        # pending tool call. Surface a structured error instead.
+        if resp.stdout and OutputProcessor.TRUNCATION_NOTICE in resp.stdout:
+            await self.state.delete(state.execution_id)
+            return ProgrammaticResponse(
+                status="error",
+                error=(
+                    "Execution output exceeded the size limit and was truncated, so the "
+                    "tool-call state could not be read. Reduce the amount printed to stdout "
+                    "before calling tools."
+                ),
+                stdout=clean_stdout,
+                stderr=resp.stderr,
+                session_id=state.session_id,
+            )
 
         # No new tool call: the run completed.
         await self.state.delete(state.execution_id)
