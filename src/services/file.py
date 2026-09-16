@@ -103,6 +103,8 @@ class FileService(FileServiceInterface):
                 metadata["size"] = int(metadata["size"])
             if "created_at" in metadata:
                 metadata["created_at"] = datetime.fromisoformat(metadata["created_at"])
+            if "read_only" in metadata:
+                metadata["read_only"] = str(metadata["read_only"]).lower() == "true"
 
             return metadata
 
@@ -512,7 +514,9 @@ class FileService(FileServiceInterface):
                 "size": len(content),
                 "path": f"/{filename}",
                 "type": "upload",  # Mark as uploaded file
-                "read_only": read_only,
+                # Redis hashes only accept bytes/str/int/float (redis-py raises
+                # DataError on bool, failing the whole hset) - store as string.
+                "read_only": "true" if read_only else "false",
             }
 
             await self._store_file_metadata(session_id, file_id, metadata)
