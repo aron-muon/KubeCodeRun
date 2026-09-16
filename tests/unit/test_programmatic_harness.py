@@ -205,3 +205,52 @@ class TestReservedFilenames:
     def test_invalid_execution_id_rejected(self):
         with pytest.raises(ValueError):
             build_scoped_sentinel("bad id with spaces")
+
+
+class TestHarnessEndToEnd:
+    """Run the generated harness for real (subprocess) through a replay round-trip."""
+
+    USER_CODE = 'print("fetching")\nw = await get_weather(city="SF")\nprint("got", w["temp"])'
+
+    def _run(self, tmp_path, history: dict) -> str:
+        import os
+        import subprocess
+        import sys
+
+        code = build_python_code("e2e1", [WEATHER_TOOL], self.USER_CODE)
+        history_file = tmp_path / "_ptc_history.json"
+        history_file.write_text(json.dumps(history))
+        env = dict(os.environ, PTC_HISTORY_PATH=str(history_file))
+        proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        return proc.stdout
+
+    def test_round_one_emits_pending_and_round_two_completes(self, tmp_path):
+        # Round 1: empty history -> the first tool call surfaces as a sentinel.
+        stdout = self._run(tmp_path, {})
+        clean, pending = extract_pending_from_stdout(stdout, "e2e1")
+        assert pending == [{"call_id": "call_001", "tool_name": "get-weather", "input": {"city": "SF"}}]
+        assert clean == "fetching\n"
+
+        # Round 2: history carries the tool result -> the code runs to completion.
+        stdout = self._run(tmp_path, {"call_001": {"result": {"temp": 21}, "is_error": False}})
+        clean, pending = extract_pending_from_stdout(stdout, "e2e1")
+        assert pending is None
+        assert clean == "fetching\ngot 21\n"
+
+    def test_cached_error_result_raises_in_user_code(self, tmp_path):
+        import os
+        import subprocess
+        import sys
+
+        code = build_python_code(
+            "e2e1",
+            [WEATHER_TOOL],
+            'try:\n    await get_weather(city="SF")\nexcept Exception as e:\n    print("tool failed:", e)',
+        )
+        history_file = tmp_path / "_ptc_history.json"
+        history_file.write_text(json.dumps({"call_001": {"is_error": True, "error_message": "boom"}}))
+        env = dict(os.environ, PTC_HISTORY_PATH=str(history_file))
+        proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env, timeout=30)
+        assert proc.returncode == 0, proc.stderr
+        assert "tool failed: boom" in proc.stdout
