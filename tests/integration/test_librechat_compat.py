@@ -461,6 +461,8 @@ class TestLibreChatFileRetrieval:
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
+        # checkSessionsAlive (LibreChat >= 0.8.8) matches liveness on fileId
+        assert data[0]["fileId"] == "file-123"
 
     def test_files_endpoint_with_detail_full(self, client, auth_headers):
         """

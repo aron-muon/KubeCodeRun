@@ -379,6 +379,8 @@ class TestListFiles:
         assert len(result) == 1
         assert "name" in result[0]
         assert "lastModified" in result[0]
+        # LibreChat's checkSessionsAlive matches on fileId
+        assert result[0]["fileId"] == mock_file_info.file_id
 
     @pytest.mark.asyncio
     async def test_list_files_summary_uses_fresh_timestamp_for_active_session(
