@@ -11,14 +11,14 @@ serde_yaml = "0.9.34"
 
 # Data formats
 csv = "1.4.0"
-zip = "8.1.0"
+zip = "9.0.3"
 flate2 = "1.1.9"
 
-# Spreadsheets (Excel, ODS)
-calamine = { version = "0.33.0", features = ["dates"] }
+# Spreadsheets: calamine is out until it supports zip 9 (every zip 7.x/8.x
+# release is yanked; tafia/calamine#742). undoc below reads XLSX meanwhile.
 
 # Office documents (DOCX, PPTX, XLSX)
-undoc = "0.1.13"
+undoc = "0.27.0"
 
 # Markdown parsing
 pulldown-cmark = "0.13.0"

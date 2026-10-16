@@ -85,18 +85,23 @@ jobs:
               - 'docker/runner/**'
             python:
               - 'docker/python.Dockerfile'
+              - 'docker/requirements/python-*.txt'
             javascript:
               - 'docker/nodejs.Dockerfile'
+              - 'docker/requirements/nodejs.txt'
             go:
               - 'docker/go.Dockerfile'
+              - 'docker/requirements/go.mod'
             java:
               - 'docker/java.Dockerfile'
+              - 'docker/requirements/java-deps.txt'
             c-cpp:
               - 'docker/c-cpp.Dockerfile'
             php:
               - 'docker/php.Dockerfile'
             rust:
               - 'docker/rust.Dockerfile'
+              - 'docker/requirements/rust-Cargo.toml'
             r:
               - 'docker/r.Dockerfile'
             fortran:
@@ -105,6 +110,7 @@ jobs:
               - 'docker/d.Dockerfile'
             bash:
               - 'docker/bash.Dockerfile'
+              - 'docker/requirements/python-*.txt'
 
       - name: Set image tag
         id: tag
