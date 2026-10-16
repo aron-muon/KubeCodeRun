@@ -467,6 +467,9 @@ async def list_files(
                 summary_files.append(
                     {
                         "name": f"{session_id}/{file_info.file_id}",
+                        # LibreChat >= 0.8.8 matches liveness on fileId; without
+                        # it every probed file reads as expired and is re-uploaded.
+                        "fileId": file_info.file_id,
                         "lastModified": last_modified,
                     }
                 )
